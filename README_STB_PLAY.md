@@ -1,4 +1,4 @@
-# STB PLAY Android TV — v1.8.19
+# STB PLAY Android TV — v1.8.20
 
 This is the **native Android TV** project for STB PLAY. It is not a WebView or a
 copy of the Windows HTML UI. The screen flow is built with Kotlin, Jetpack
@@ -29,7 +29,7 @@ portals still use HTTP.
 | Movies and Series | Shared catalogue, category browser, movie details, series → season → episode → quality path |
 | Search | Local strict 3-character minimum search over title, alternative metadata, genre, language, cast and year |
 | Favourites and history | Persistent per-profile favourites, resume point, remove one item or clear all history |
-| Player preferences | Internal Media3, explicit VLC, or Auto fallback to VLC if installed |
+| Player preferences | Internal Media3, explicit VLC, or Auto fallback to VLC for decoder errors if installed |
 | Subtitles | Provider subtitle tracks with Auto, Off, English, Hindi and Punjabi preferences |
 | Refresh and cache | Manual refresh, clear local catalogue state, last-refresh display and portal loading progress |
 | Parental controls | Locked adult/A-rated categories and titles, PIN prompt and re-lock when leaving the area |
@@ -61,5 +61,6 @@ app/build/outputs/apk/debug/app-debug.apk
 The app asks the authorized Stalker portal for a `create_link` stream command
 and plays that response. Live streams open directly. Movies and episode streams
 open through the provider quality selector when quality variants are reported.
-If a provider does not return a stream command, the app deliberately reports it
-as unavailable instead of inventing a URL.
+For movies and episodes, the app reads the selected file row and sends its
+file-specific command to `create_link`. If the provider still does not return a
+playable link, the app reports the item as unavailable.

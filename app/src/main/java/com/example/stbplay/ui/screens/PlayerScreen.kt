@@ -144,7 +144,8 @@ private fun NativePlayerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var playerError by remember { mutableStateOf<String?>(null) }
+    var playerError by remember(playbackUrl) { mutableStateOf<String?>(null) }
+    var decoderError by remember(playbackUrl) { mutableStateOf(false) }
     var didStart by remember(playbackUrl) { mutableStateOf(false) }
     var didRestore by remember(playbackUrl) { mutableStateOf(false) }
     var autoVlcTried by remember(playbackUrl) { mutableStateOf(false) }
@@ -192,6 +193,13 @@ private fun NativePlayerScreen(
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
+                        decoderError = error.errorCode in setOf(
+                            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+                            PlaybackException.ERROR_CODE_DECODING_FAILED,
+                            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+                            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
+                        )
                         val message = "Playback failed: ${error.errorCodeName}"
                         playerError = message
                         failureCallback(message)
@@ -220,12 +228,12 @@ private fun NativePlayerScreen(
             if (player.duration > 0L && player.currentPosition > 0L) progressCallback(player.currentPosition, player.duration)
         }
     }
-    LaunchedEffect(playerError, playerPreference) {
-        val error = playerError ?: return@LaunchedEffect
-        if (playerPreference == PlayerPreference.AUTO && !autoVlcTried) {
+    LaunchedEffect(playerError, playerPreference, decoderError) {
+        if (playerError == null) return@LaunchedEffect
+        if (playerPreference == PlayerPreference.AUTO && decoderError && !autoVlcTried) {
             autoVlcTried = true
             if (launchVlc(context, playbackUrl, title)) {
-                playerError = "Opening VLC because internal playback failed."
+                playerError = "Opening VLC because this device could not decode the stream."
             }
         }
     }

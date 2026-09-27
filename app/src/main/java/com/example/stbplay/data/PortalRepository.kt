@@ -310,19 +310,86 @@ class PortalRepository {
      * command is labelled Auto rather than inventing a 4K/1080p label.
      */
     suspend fun getMovieQualityOptions(stream: PortalStream): List<PortalQualityOption> =
-        getQualityOptions(stream, stream.cmd, stream.series.orEmpty())
+        withContext(Dispatchers.IO) {
+            // MAG requests the movie's file rows before create_link. The catalogue
+            // command identifies the title, while /media/file_<id>.mpg identifies
+            // the selected file on this portal.
+            val files = getVodFileOptions(stream, "0", "0", stream.series.orEmpty())
+            if (files.isNotEmpty()) files
+            else getQualityOptions(stream, stream.cmd, stream.series.orEmpty())
+        }
 
     suspend fun getEpisodeQualityOptions(
         series: PortalStream,
         episode: PortalEpisode
-    ): List<PortalQualityOption> {
-        val command = episode.cmd?.takeIf { it.isNotBlank() } ?: return emptyList()
-        return listOf(PortalQualityOption(
+    ): List<PortalQualityOption> = withContext(Dispatchers.IO) {
+        val files = getVodFileOptions(
+            series,
+            episode.seasonId.orEmpty().ifBlank { "0" },
+            episode.id,
+            episode.series.orEmpty()
+        )
+        if (files.isNotEmpty()) return@withContext files
+
+        val command = episode.cmd?.takeIf { it.isNotBlank() }
+            ?: series.cmd?.takeIf { it.isNotBlank() }
+            ?: return@withContext emptyList()
+        listOf(PortalQualityOption(
             id = episode.id,
             label = "Auto",
             command = command,
             seriesValue = episode.series.orEmpty()
         ))
+    }
+
+    private suspend fun getVodFileOptions(
+        stream: PortalStream,
+        seasonId: String,
+        episodeId: String,
+        seriesValue: String
+    ): List<PortalQualityOption> {
+        val settings = currentSettings ?: return emptyList()
+        val session = currentSession ?: return emptyList()
+        val params = buildMap {
+            put("movie_id", stream.id)
+            put("season_id", seasonId)
+            put("episode_id", episodeId)
+            if (episodeId != "0") put("row", "0")
+            put("fav", "0")
+            put("sortby", "added")
+            put("hd", "0")
+            put("not_ended", "0")
+            put("category", stream.categoryId?.takeIf { it.isNotBlank() && it != "0" } ?: "*")
+            put("p", "0")
+        }
+        val response = runCatching {
+            stalkerClient.call(settings.url, settings.mac, session, "vod", "get_ordered_list", params)
+        }.getOrNull() ?: return emptyList()
+        val js = response.opt("js")
+        val rows = when (js) {
+            is JSONArray -> js
+            is JSONObject -> js.optJSONArray("data")
+                ?: js.optJSONArray("items")
+                ?: js.optJSONArray("rows")
+            else -> null
+        } ?: return emptyList()
+
+        return buildList {
+            for (index in 0 until rows.length()) {
+                val file = rows.optJSONObject(index) ?: continue
+                val isFile = file.opt("is_file")?.toString()?.lowercase()
+                if (isFile !in setOf("1", "true")) continue
+                val fileId = file.optString("id").trim()
+                if (fileId.isEmpty() || !fileId.all(Char::isDigit)) continue
+                val command = "/media/file_${fileId}.mpg"
+                add(PortalQualityOption(
+                    id = fileId,
+                    label = normaliseQualityLabel(file.optString("quality")),
+                    command = command,
+                    seriesValue = seriesValue
+                ))
+            }
+        }.distinctBy { it.command }
     }
 
     private suspend fun getQualityOptions(
