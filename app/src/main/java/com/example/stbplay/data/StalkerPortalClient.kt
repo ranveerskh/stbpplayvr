@@ -140,7 +140,7 @@ class StalkerPortalClient(
         )
     }
 
-    private fun buildCookieHeader(session: StalkerSession, mac: String) {
+    private fun buildCookieHeader(session: StalkerSession, mac: String): String {
         val cookies = session.cookie
             .split(';')
             .map { it.trim() }
