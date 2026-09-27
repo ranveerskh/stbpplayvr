@@ -441,8 +441,8 @@ class PortalRepository {
         type: String,
         action: String,
         parameters: Map<String, String>,
-        parser: (JSONObject) -> List<T>,
-        pageValues: List<String?> = listOf("1", "0")
+        pageValues: List<String?> = listOf("1", "0"),
+        parser: (JSONObject) -> List<T>
     ): List<T> {
         // Captured Stalker clients start at page 1. A few older builds start at
         // page 0, and some channel endpoints ignore paging entirely. Walk pages

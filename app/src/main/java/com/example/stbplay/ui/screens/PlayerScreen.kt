@@ -43,7 +43,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Button
-import androidx.tv.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.tv.material3.Text
 import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.PortalUrl

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -111,7 +110,7 @@ fun QualitySelectionScreen(
     Box(Modifier.fillMaxSize().background(DetailNavy), contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier.widthIn(min = 420.dp, max = 720.dp),
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
+            shape = RoundedCornerShape(18.dp),
             colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = DetailPanel)
         ) {
             Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

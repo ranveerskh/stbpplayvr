@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as columnItems
@@ -635,7 +634,7 @@ private fun ContentBrowserScreen(
                     Text(state.totalItemsText.ifBlank { "Provider catalogue" }, color = Muted, fontSize = 13.sp)
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                ContentFilter.entries.forEach { filter ->
+                ContentKindFilter.entries.forEach { filter ->
                     FilterChip(filter, filter == selectedFilter) { onFilterChanged(filter) }
                     Spacer(modifier = Modifier.width(8.dp))
                 }
@@ -1039,7 +1038,7 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Navy), contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier.widthIn(max = 690.dp).padding(32.dp),
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
+            shape = RoundedCornerShape(20.dp),
             colors = SurfaceDefaults.colors(containerColor = Panel)
         ) {
             Column(Modifier.padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(15.dp)) {
@@ -1060,7 +1059,7 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
     Box(Modifier.fillMaxSize().background(Color(0xD9020914)), contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier.widthIn(min = 370.dp, max = 520.dp),
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
+            shape = RoundedCornerShape(18.dp),
             colors = SurfaceDefaults.colors(containerColor = Panel)
         ) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -1092,7 +1091,7 @@ fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () 
     Box(Modifier.fillMaxSize().background(Color(0xD9020914)), contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier.widthIn(min = 400.dp, max = 560.dp),
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
+            shape = RoundedCornerShape(18.dp),
             colors = SurfaceDefaults.colors(containerColor = Panel)
         ) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(13.dp)) {
