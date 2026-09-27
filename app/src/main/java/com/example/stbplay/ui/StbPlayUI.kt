@@ -57,7 +57,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
-import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.MaterialTheme
@@ -294,7 +293,7 @@ private fun StbPlayNavigationRail(
             .padding(horizontal = 12.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Surface(
+        QuestSurface(
             onClick = onToggle,
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
@@ -332,7 +331,7 @@ private fun StbPlayNavigationRail(
 private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val initialFocus = if (selected) Modifier.questInitialFocus() else Modifier
-    Surface(
+    QuestSurface(
         onClick = onClick,
         modifier = Modifier.then(initialFocus).fillMaxWidth().height(48.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
@@ -392,7 +391,7 @@ private fun StbPlayHeader(
 @Composable
 private fun HeaderAction(label: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Surface(
+    QuestSurface(
         onClick = onClick,
         modifier = Modifier.height(40.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
@@ -452,7 +451,7 @@ private fun RotatingHero(
     }
     val item = heroes.getOrNull(index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))) ?: return
     val scale by animateFloatAsState(if (focused) 1.01f else 1f, label = "heroScale")
-    Surface(
+    QuestSurface(
         onClick = { onMediaClick(item) },
         modifier = Modifier
             .fillMaxWidth()
@@ -487,7 +486,7 @@ private fun RotatingHero(
                     Text(it, color = Color(0xFFD3DBE6), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(
+                    QuestButton(
                         onClick = { onMediaClick(item) },
                         colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)
                     ) { Text("Play now", fontWeight = FontWeight.Bold) }
@@ -588,7 +587,7 @@ private fun CategorySidebar(categories: List<UiCategory>, selected: Int, onSelec
 @Composable
 private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Surface(
+    QuestSurface(
         onClick = onClick,
         modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth().heightIn(min = 42.dp).onFocusChanged { focused = it.isFocused },
@@ -614,7 +613,7 @@ private fun LiveChannelRow(
     initialFocus: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
-    Surface(
+    QuestSurface(
         onClick = onClick,
         modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth().height(78.dp).onFocusChanged { focused = it.isFocused },
@@ -691,7 +690,7 @@ private fun FilterChip(filter: ContentKindFilter, selected: Boolean, onClick: ()
         ContentKindFilter.SERIES -> "Series"
     }
     var focused by remember { mutableStateOf(false) }
-    Surface(
+    QuestSurface(
         onClick = onClick,
         modifier = Modifier.height(38.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
@@ -743,7 +742,7 @@ private fun MediaCard(
     val scale by animateFloatAsState(if (focused) 1.055f else 1f, label = "cardScale")
     val width = if (item.portrait) 166.dp else 235.dp
     val height = if (item.portrait) 235.dp else 138.dp
-    Surface(
+    QuestSurface(
         onClick = onClick,
         modifier = Modifier.width(width).height(height).graphicsLayer(scaleX = scale, scaleY = scale).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
@@ -764,7 +763,7 @@ private fun MediaCard(
             if (item.isLocked) StatusPill("PIN", GoldLight, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
             FavoriteButton(item.isFavorite, onToggleFavorite, Modifier.align(Alignment.TopEnd).padding(6.dp))
             onRemoveHistory?.let { remove ->
-                Surface(
+                QuestSurface(
                     onClick = remove,
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp).height(30.dp),
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
@@ -786,7 +785,7 @@ private fun MediaCard(
 
 @Composable
 private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
+    QuestSurface(
         onClick = onClick,
         modifier = modifier.size(34.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(17.dp)),
@@ -959,7 +958,7 @@ private fun PortalProfileRow(profile: PortalSettings, active: Boolean, onUse: ()
 
 @Composable
 private fun PreferenceRow(title: String, value: String, onClick: () -> Unit) {
-    Surface(
+    QuestSurface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
@@ -976,7 +975,7 @@ private fun PreferenceRow(title: String, value: String, onClick: () -> Unit) {
 @Composable
 private fun WideAction(title: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Surface(
+    QuestSurface(
         onClick = onClick,
         modifier = Modifier.height(38.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
@@ -987,7 +986,7 @@ private fun WideAction(title: String, onClick: () -> Unit) {
 
 @Composable
 private fun PrimaryAction(title: String, onClick: () -> Unit) {
-    Button(onClick = onClick, colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)) {
+    QuestButton(onClick = onClick, colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)) {
         Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -1069,7 +1068,7 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
                 Text("Before you continue", color = GoldLight, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                 Text("STB Play is a media player. It does not provide IPTV service, channels, movies, subscriptions, stream URLs, or access credentials.", color = White, fontSize = 15.sp, textAlign = TextAlign.Center)
                 Text("Use only portals and content you are authorized to access. Your portal URL and MAC address remain on this device.", color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
-                Button(
+                QuestButton(
                     onClick = onAccept,
                     modifier = Modifier.questInitialFocus(),
                     colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)

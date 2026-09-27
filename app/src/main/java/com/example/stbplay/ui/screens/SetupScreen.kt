@@ -32,7 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Button
+import com.example.stbplay.ui.QuestButton
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import com.example.stbplay.domain.model.PortalSettings
@@ -92,7 +92,7 @@ fun SetupScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
+                QuestButton(
                     onClick = {
                         val normalUrl = url.trim().trimEnd('/')
                         val normalMac = mac.trim().uppercase()
@@ -128,7 +128,7 @@ fun SetupScreen(
                 ) { Text("Save & Connect", fontWeight = FontWeight.Bold) }
 
                 onCancel?.let { cancel ->
-                    Button(
+                    QuestButton(
                         onClick = cancel,
                         colors = ButtonDefaults.colors(
                             containerColor = Color(0xFF153452),

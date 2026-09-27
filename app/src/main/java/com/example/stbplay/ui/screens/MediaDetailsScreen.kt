@@ -27,7 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Button
+import com.example.stbplay.ui.QuestButton
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
@@ -80,18 +80,18 @@ fun MovieDetailsScreen(
                 item.cast?.takeIf { it.isNotBlank() }?.let { Text("Cast: $it", color = DetailMuted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 Spacer(Modifier.height(7.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = onPlay, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)) {
+                    QuestButton(onClick = onPlay, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)) {
                         Text("Play", fontWeight = FontWeight.Bold)
                     }
                     if (item.progress > 0f) {
-                        Button(onClick = onResume, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) {
+                        QuestButton(onClick = onResume, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) {
                             Text("Resume ${(item.progress * 100).toInt()}%")
                         }
                     }
-                    Button(onClick = onToggleFavorite, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) {
+                    QuestButton(onClick = onToggleFavorite, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) {
                         Text(if (item.isFavorite) "Remove favourite" else "Add to favourites")
                     }
-                    Button(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) { Text("Back") }
+                    QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) { Text("Back") }
                 }
             }
         }
@@ -122,14 +122,14 @@ fun QualitySelectionScreen(
                     !error.isNullOrBlank() -> Text(error, color = Color(0xFFFFA4A4), fontSize = 13.sp)
                     options.isEmpty() -> Text("This provider did not return a playable option.", color = DetailMuted, fontSize = 13.sp)
                     else -> options.forEachIndexed { index, option ->
-                        Button(
+                        QuestButton(
                             onClick = { onOptionClick(option) },
                             modifier = Modifier.then(if (index == 0) Modifier.questInitialFocus() else Modifier).fillMaxWidth(),
                             colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)
                         ) { Text(option.label, fontWeight = FontWeight.Bold) }
                     }
                 }
-                Button(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) { Text("Back") }
+                QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) { Text("Back") }
             }
         }
     }

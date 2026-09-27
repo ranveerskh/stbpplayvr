@@ -33,10 +33,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
-import androidx.tv.material3.Button
+import com.example.stbplay.ui.QuestButton
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.Surface
+import com.example.stbplay.ui.QuestSurface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.example.stbplay.data.PortalRepository
@@ -97,10 +97,10 @@ fun SeriesDetailsScreen(
             Text("SERIES", color = SeriesGoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Text(series.name, color = SeriesWhite, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             series.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 12.sp, maxLines = 5, overflow = TextOverflow.Ellipsis) }
-            Button(onClick = onToggleFavorite, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = SeriesWhite)) {
+            QuestButton(onClick = onToggleFavorite, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = SeriesWhite)) {
                 Text(if (isFavorite) "Remove favourite" else "Add to favourites")
             }
-            Button(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = SeriesWhite)) { Text("Back") }
+            QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = SeriesWhite)) { Text("Back") }
         }
         Spacer(Modifier.width(42.dp))
         Column(Modifier.weight(1f)) {
@@ -114,7 +114,7 @@ fun SeriesDetailsScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         seasons.take(12).forEach { season ->
                             val selected = selectedSeason?.id == season.id
-                            Surface(
+                            QuestSurface(
                                 onClick = { selectedSeason = season },
                                 modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier).height(42.dp),
                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
@@ -148,7 +148,7 @@ fun SeriesDetailsScreen(
 @Composable
 private fun EpisodeRow(episode: PortalEpisode, initialFocus: Boolean = false, onClick: () -> Unit) {
     val playable = !episode.cmd.isNullOrBlank()
-    Surface(
+    QuestSurface(
         onClick = { if (playable) onClick() },
         modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).fillMaxWidth().height(68.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),

@@ -42,7 +42,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
-import androidx.tv.material3.Button
+import com.example.stbplay.ui.QuestButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.tv.material3.Text
 import com.example.stbplay.data.PlayerPreference
@@ -253,7 +253,7 @@ private fun NativePlayerScreen(
             ) {
                 Text(error, color = Color.White)
                 if (playerPreference == PlayerPreference.AUTO && autoVlcTried) Text("VLC handoff attempted.", color = Color.LightGray)
-                Button(onClick = onBack, modifier = Modifier.questInitialFocus()) { Text("Back") }
+                QuestButton(onClick = onBack, modifier = Modifier.questInitialFocus()) { Text("Back") }
             }
         }
     }
@@ -296,8 +296,8 @@ private fun PlaybackErrorScreen(message: String, onRetry: () -> Unit, onBack: ()
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(30.dp)) {
             Text("Unable to start playback", color = Color.White)
             Text(message, color = Color.LightGray)
-            Button(onClick = onRetry, modifier = Modifier.questInitialFocus()) { Text("Retry") }
-            Button(onClick = onBack) { Text("Back") }
+            QuestButton(onClick = onRetry, modifier = Modifier.questInitialFocus()) { Text("Retry") }
+            QuestButton(onClick = onBack) { Text("Back") }
         }
     }
 }
