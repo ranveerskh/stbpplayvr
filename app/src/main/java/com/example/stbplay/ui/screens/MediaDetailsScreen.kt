@@ -35,6 +35,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.example.stbplay.data.model.PortalQualityOption
 import com.example.stbplay.ui.UiMedia
+import com.example.stbplay.ui.questInitialFocus
 
 private val DetailNavy = Color(0xFF061426)
 private val DetailPanel = Color(0xFF0D223B)
@@ -79,7 +80,7 @@ fun MovieDetailsScreen(
                 item.cast?.takeIf { it.isNotBlank() }?.let { Text("Cast: $it", color = DetailMuted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 Spacer(Modifier.height(7.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = onPlay, colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)) {
+                    Button(onClick = onPlay, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)) {
                         Text("Play", fontWeight = FontWeight.Bold)
                     }
                     if (item.progress > 0f) {
@@ -120,10 +121,10 @@ fun QualitySelectionScreen(
                     isLoading -> Text("Reading the provider's playback options…", color = DetailMuted, fontSize = 13.sp)
                     !error.isNullOrBlank() -> Text(error, color = Color(0xFFFFA4A4), fontSize = 13.sp)
                     options.isEmpty() -> Text("This provider did not return a playable option.", color = DetailMuted, fontSize = 13.sp)
-                    else -> options.forEach { option ->
+                    else -> options.forEachIndexed { index, option ->
                         Button(
                             onClick = { onOptionClick(option) },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.then(if (index == 0) Modifier.questInitialFocus() else Modifier).fillMaxWidth(),
                             colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)
                         ) { Text(option.label, fontWeight = FontWeight.Bold) }
                     }

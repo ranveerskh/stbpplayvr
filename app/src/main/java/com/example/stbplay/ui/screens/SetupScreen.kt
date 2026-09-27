@@ -37,6 +37,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import com.example.stbplay.domain.model.PortalSettings
 import com.example.stbplay.domain.model.generateStbPlayMac
+import com.example.stbplay.ui.questInitialFocus
 
 private val SetupNavy = Color(0xFF061426)
 private val SetupPanel = Color(0xFF0D223B)
@@ -78,7 +79,7 @@ fun SetupScreen(
             Spacer(modifier = Modifier.height(30.dp))
 
             SetupField("Nickname", name, "My IPTV Portal") { name = it }
-            SetupField("Portal URL", url, "http://your-portal.example") { url = it }
+            SetupField("Portal URL", url, "http://your-portal.example", initialFocus = true) { url = it }
             SetupField("MAC Address", mac, "02:00:00:00:00:00") { mac = it.uppercase() }
             SetupField("Parental PIN", pin, "4 to 8 digits", KeyboardType.NumberPassword) {
                 pin = it.filter(Char::isDigit).take(8)
@@ -155,6 +156,7 @@ private fun SetupField(
     value: String,
     placeholder: String,
     keyboardType: KeyboardType = KeyboardType.Text,
+    initialFocus: Boolean = false,
     onValueChange: (String) -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -167,6 +169,7 @@ private fun SetupField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier
+                .then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
                 .weight(1f)
                 .height(52.dp)
                 .onFocusChanged { focused = it.isFocused }

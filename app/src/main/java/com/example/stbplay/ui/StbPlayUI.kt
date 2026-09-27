@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -81,6 +82,16 @@ private val White = Color(0xFFF4F6FA)
 private val Muted = Color(0xFF9AA8B8)
 private val Danger = Color(0xFFFFA4A4)
 private val Good = Color(0xFF87E7B0)
+
+/** Gives a newly opened TV screen a focused control for Quest/gamepad input. */
+@Composable
+fun Modifier.questInitialFocus(): Modifier {
+    val requester = remember { FocusRequester() }
+    LaunchedEffect(requester) {
+        requester.requestFocus()
+    }
+    return then(focusRequester(requester))
+}
 
 enum class StbPlayTab { HOME, LIVE, CONTENT, FAVOURITES, SETTINGS }
 enum class ContentKindFilter { ALL, MOVIES, SERIES }
@@ -321,9 +332,10 @@ private fun StbPlayNavigationRail(
 @Composable
 private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    val initialFocus = if (selected) Modifier.questInitialFocus() else Modifier
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(48.dp).onFocusChanged { focused = it.isFocused },
+        modifier = Modifier.then(initialFocus).fillMaxWidth().height(48.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Gold.copy(alpha = 0.18f) else Color.Transparent,
@@ -548,7 +560,12 @@ private fun LiveTvScreen(
                     contentPadding = PaddingValues(bottom = 30.dp)
                 ) {
                     columnItems(state.items, key = { it.id }) { channel ->
-                        LiveChannelRow(channel, { onMediaClick(channel) }, { onToggleFavorite(channel) })
+                        LiveChannelRow(
+                            channel,
+                            { onMediaClick(channel) },
+                            { onToggleFavorite(channel) },
+                            initialFocus = channel.id == state.items.firstOrNull()?.id
+                        )
                     }
                 }
             }
@@ -574,7 +591,8 @@ private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp).onFocusChanged { focused = it.isFocused },
+        modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier)
+            .fillMaxWidth().heightIn(min = 42.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Gold.copy(alpha = 0.2f) else Color.Transparent,
@@ -590,11 +608,17 @@ private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick
 }
 
 @Composable
-private fun LiveChannelRow(item: UiMedia, onClick: () -> Unit, onToggleFavorite: () -> Unit) {
+private fun LiveChannelRow(
+    item: UiMedia,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    initialFocus: Boolean = false
+) {
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(78.dp).onFocusChanged { focused = it.isFocused },
+        modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
+            .fillMaxWidth().height(78.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(13.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Color(0xFF193B5D)),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
@@ -1046,7 +1070,11 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
                 Text("Before you continue", color = GoldLight, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                 Text("STB Play is a media player. It does not provide IPTV service, channels, movies, subscriptions, stream URLs, or access credentials.", color = White, fontSize = 15.sp, textAlign = TextAlign.Center)
                 Text("Use only portals and content you are authorized to access. Your portal URL and MAC address remain on this device.", color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
-                Button(onClick = onAccept, colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)) { Text("I have read and understand", fontWeight = FontWeight.Bold) }
+                Button(
+                    onClick = onAccept,
+                    modifier = Modifier.questInitialFocus(),
+                    colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)
+                ) { Text("I have read and understand", fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -1069,7 +1097,7 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
                 BasicTextField(
                     value = pin,
                     onValueChange = { pin = it.filter(Char::isDigit).take(8); error = false },
-                    modifier = Modifier.width(220.dp).height(52.dp).background(Navy, RoundedCornerShape(10.dp)).border(2.dp, if (error) Danger else Gold, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 14.dp),
+                    modifier = Modifier.questInitialFocus().width(220.dp).height(52.dp).background(Navy, RoundedCornerShape(10.dp)).border(2.dp, if (error) Danger else Gold, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 14.dp),
                     singleLine = true,
                     textStyle = TextStyle(color = White, fontSize = 19.sp, textAlign = TextAlign.Center)
                 )
@@ -1097,7 +1125,7 @@ fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () 
         ) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(13.dp)) {
                 Text("Change parental PIN", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                PinField("Current PIN", current) { current = it; error = "" }
+                PinField("Current PIN", current, initialFocus = true) { current = it; error = "" }
                 PinField("New PIN", next) { next = it; error = "" }
                 if (error.isNotBlank()) Text(error, color = Danger, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1116,13 +1144,14 @@ fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () 
 }
 
 @Composable
-private fun PinField(label: String, value: String, onChange: (String) -> Unit) {
+private fun PinField(label: String, value: String, initialFocus: Boolean = false, onChange: (String) -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(label, color = Muted, fontSize = 12.sp)
         BasicTextField(
             value = value,
             onValueChange = { onChange(it.filter(Char::isDigit).take(8)) },
-            modifier = Modifier.fillMaxWidth().height(48.dp).background(Navy, RoundedCornerShape(10.dp)).border(1.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 13.dp),
+            modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
+                .fillMaxWidth().height(48.dp).background(Navy, RoundedCornerShape(10.dp)).border(1.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 13.dp),
             singleLine = true,
             textStyle = TextStyle(color = White, fontSize = 16.sp)
         )

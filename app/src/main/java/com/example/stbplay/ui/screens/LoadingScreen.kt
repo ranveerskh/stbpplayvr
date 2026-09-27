@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
+import com.example.stbplay.ui.questInitialFocus
 
 private val LoadNavy = Color(0xFF061426)
 private val LoadGold = Color(0xFFDDB32F)
@@ -56,7 +57,7 @@ fun LoadingScreen(
                 Text("Connection error", color = Color(0xFFFFA4A4), fontSize = 22.sp)
                 Text(error, color = LoadMuted, fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = onRetry, colors = ButtonDefaults.colors(containerColor = LoadGold, contentColor = LoadNavy)) { Text("Retry") }
+                    Button(onClick = onRetry, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = LoadGold, contentColor = LoadNavy)) { Text("Retry") }
                     Button(onClick = onEdit, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = LoadWhite)) { Text("Edit portal") }
                 }
             }

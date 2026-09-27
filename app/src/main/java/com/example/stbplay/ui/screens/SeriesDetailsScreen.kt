@@ -43,6 +43,7 @@ import com.example.stbplay.data.PortalRepository
 import com.example.stbplay.data.model.PortalEpisode
 import com.example.stbplay.data.model.PortalSeason
 import com.example.stbplay.data.model.PortalStream
+import com.example.stbplay.ui.questInitialFocus
 
 private val SeriesNavy = Color(0xFF061426)
 private val SeriesPanel = Color(0xFF0D223B)
@@ -96,7 +97,7 @@ fun SeriesDetailsScreen(
             Text("SERIES", color = SeriesGoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Text(series.name, color = SeriesWhite, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             series.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 12.sp, maxLines = 5, overflow = TextOverflow.Ellipsis) }
-            Button(onClick = onToggleFavorite, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = SeriesWhite)) {
+            Button(onClick = onToggleFavorite, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = SeriesWhite)) {
                 Text(if (isFavorite) "Remove favourite" else "Add to favourites")
             }
             Button(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = SeriesWhite)) { Text("Back") }
@@ -115,7 +116,7 @@ fun SeriesDetailsScreen(
                             val selected = selectedSeason?.id == season.id
                             Surface(
                                 onClick = { selectedSeason = season },
-                                modifier = Modifier.height(42.dp),
+                                modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier).height(42.dp),
                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
                                 colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) SeriesGold else SeriesPanel, focusedContainerColor = SeriesGold),
                                 border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGoldLight)))
@@ -134,7 +135,7 @@ fun SeriesDetailsScreen(
                         episodes.isEmpty() -> Text("No episodes were returned for this season.", color = SeriesMuted, fontSize = 14.sp)
                         else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                             items(episodes, key = { it.id }) { episode ->
-                                EpisodeRow(episode) { onEpisodeClick(episode) }
+                                EpisodeRow(episode, initialFocus = episode.id == episodes.firstOrNull()?.id) { onEpisodeClick(episode) }
                             }
                         }
                     }
@@ -145,11 +146,11 @@ fun SeriesDetailsScreen(
 }
 
 @Composable
-private fun EpisodeRow(episode: PortalEpisode, onClick: () -> Unit) {
+private fun EpisodeRow(episode: PortalEpisode, initialFocus: Boolean = false, onClick: () -> Unit) {
     val playable = !episode.cmd.isNullOrBlank()
     Surface(
         onClick = { if (playable) onClick() },
-        modifier = Modifier.fillMaxWidth().height(68.dp),
+        modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).fillMaxWidth().height(68.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = SeriesPanel, focusedContainerColor = SeriesGold.copy(alpha = 0.2f)),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGold)))

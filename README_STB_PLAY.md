@@ -1,4 +1,4 @@
-# STB PLAY Android TV — v1.8.15
+# STB PLAY Android TV — v1.8.16
 
 This is the **native Android TV** project for STB PLAY. It is not a WebView or a
 copy of the Windows HTML UI. The screen flow is built with Kotlin, Jetpack

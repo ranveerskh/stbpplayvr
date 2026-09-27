@@ -7,6 +7,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -77,6 +80,95 @@ class MainActivity : ComponentActivity() {
     private lateinit var settingsManager: SettingsManager
     private lateinit var updateManager: UpdateManager
     private var pendingUpdateDownloadId = -1L
+    private var lastControllerDirection = 0
+    private var lastControllerDirectionAt = 0L
+    private var controllerTriggerHeld = false
+
+    /** Quest controllers may arrive as gamepad keys instead of TV remote keys. */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val mappedKeyCode = when (event.keyCode) {
+            KeyEvent.KEYCODE_BUTTON_A,
+            KeyEvent.KEYCODE_BUTTON_1,
+            KeyEvent.KEYCODE_BUTTON_R2 -> KeyEvent.KEYCODE_DPAD_CENTER
+            KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_BACK
+            else -> return super.dispatchKeyEvent(event)
+        }
+
+        val mapped = KeyEvent(
+            event.downTime,
+            event.eventTime,
+            event.action,
+            mappedKeyCode,
+            event.repeatCount,
+            event.metaState,
+            event.deviceId,
+            0,
+            event.flags,
+            InputDevice.SOURCE_DPAD
+        )
+        super.dispatchKeyEvent(mapped)
+        return true
+    }
+
+    /** Translate joystick axes and the Quest right trigger into focused TV controls. */
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        val isController = event.isFromSource(InputDevice.SOURCE_JOYSTICK) ||
+            event.isFromSource(InputDevice.SOURCE_GAMEPAD)
+        if (!isController || event.action != MotionEvent.ACTION_MOVE) {
+            return super.dispatchGenericMotionEvent(event)
+        }
+
+        var handled = false
+        val trigger = event.getAxisValue(MotionEvent.AXIS_RTRIGGER)
+        if (trigger >= 0.65f && !controllerTriggerHeld) {
+            dispatchControllerKey(KeyEvent.KEYCODE_DPAD_CENTER, event.deviceId, event.eventTime)
+            controllerTriggerHeld = true
+            handled = true
+        } else if (trigger <= 0.3f) {
+            controllerTriggerHeld = false
+        }
+
+        val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
+        val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
+        val axisX = if (kotlin.math.abs(hatX) >= 0.55f) hatX else event.getAxisValue(MotionEvent.AXIS_X)
+        val axisY = if (kotlin.math.abs(hatY) >= 0.55f) hatY else event.getAxisValue(MotionEvent.AXIS_Y)
+        val direction = when {
+            kotlin.math.abs(axisX) >= 0.55f && kotlin.math.abs(axisX) >= kotlin.math.abs(axisY) ->
+                if (axisX < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
+            kotlin.math.abs(axisY) >= 0.55f ->
+                if (axisY < 0) KeyEvent.KEYCODE_DPAD_UP else KeyEvent.KEYCODE_DPAD_DOWN
+            else -> 0
+        }
+
+        if (direction == 0) {
+            lastControllerDirection = 0
+            lastControllerDirectionAt = 0L
+        } else if (direction != lastControllerDirection || event.eventTime - lastControllerDirectionAt >= 230L) {
+            dispatchControllerKey(direction, event.deviceId, event.eventTime)
+            lastControllerDirection = direction
+            lastControllerDirectionAt = event.eventTime
+            handled = true
+        }
+
+        return if (handled) true else super.dispatchGenericMotionEvent(event)
+    }
+
+    private fun dispatchControllerKey(keyCode: Int, deviceId: Int, eventTime: Long) {
+        val down = KeyEvent(
+            eventTime,
+            eventTime,
+            KeyEvent.ACTION_DOWN,
+            keyCode,
+            0,
+            0,
+            deviceId,
+            0,
+            0,
+            InputDevice.SOURCE_DPAD
+        )
+        super.dispatchKeyEvent(down)
+        super.dispatchKeyEvent(KeyEvent.changeAction(down, KeyEvent.ACTION_UP))
+    }
 
     private val updateDownloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {

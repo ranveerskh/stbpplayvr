@@ -50,6 +50,7 @@ import com.example.stbplay.data.PortalUrl
 import com.example.stbplay.data.StalkerContentKind
 import com.example.stbplay.data.StalkerPlayRequest
 import com.example.stbplay.data.StalkerPlaybackResolver
+import com.example.stbplay.ui.questInitialFocus
 import com.example.stbplay.data.SubtitlePreference
 import kotlinx.coroutines.delay
 
@@ -252,7 +253,7 @@ private fun NativePlayerScreen(
             ) {
                 Text(error, color = Color.White)
                 if (playerPreference == PlayerPreference.AUTO && autoVlcTried) Text("VLC handoff attempted.", color = Color.LightGray)
-                Button(onClick = onBack) { Text("Back") }
+                Button(onClick = onBack, modifier = Modifier.questInitialFocus()) { Text("Back") }
             }
         }
     }
@@ -295,7 +296,7 @@ private fun PlaybackErrorScreen(message: String, onRetry: () -> Unit, onBack: ()
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(30.dp)) {
             Text("Unable to start playback", color = Color.White)
             Text(message, color = Color.LightGray)
-            Button(onClick = onRetry) { Text("Retry") }
+            Button(onClick = onRetry, modifier = Modifier.questInitialFocus()) { Text("Retry") }
             Button(onClick = onBack) { Text("Back") }
         }
     }
