@@ -19,7 +19,7 @@ object StalkerParser {
                 PortalStream(
                     id = id,
                     name = name,
-                    iconUrl = item.text("logo", "icon", "thumbnail", "screenshot_uri"),
+                    iconUrl = item.text("logo", "logo_url", "icon", "icon_url", "thumbnail", "thumbnail_url", "screenshot_uri", "screenshot_url", "picture", "image", "img", "pic"),
                     categoryId = item.text("tv_genre_id", "genre_id", "category_id"),
                     streamType = "live",
                     number = item.text("number", "channel_number")?.toIntOrNull(),
@@ -89,12 +89,22 @@ object StalkerParser {
                     name = name,
                     iconUrl = item.text(
                         "screenshot_uri",
+                        "screenshot_url",
                         "screenshot",
                         "cover",
+                        "cover_url",
                         "poster",
+                        "poster_url",
                         "logo",
+                        "logo_url",
                         "icon",
-                        "thumbnail"
+                        "icon_url",
+                        "thumbnail",
+                        "thumbnail_url",
+                        "picture",
+                        "image",
+                        "img",
+                        "pic"
                     ),
                     categoryId = item.text("category_id", "category", "genre_id"),
                     streamType = if (seriesOnly == null) (if (isSeries) "series" else "movie") else streamType,

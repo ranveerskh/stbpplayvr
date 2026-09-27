@@ -32,13 +32,13 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
-import coil.compose.AsyncImage
+import com.example.stbplay.ui.ArtworkImage
 import com.example.stbplay.data.model.PortalQualityOption
 import com.example.stbplay.ui.UiMedia
 import com.example.stbplay.ui.questInitialFocus
 
-private val DetailNavy = Color(0xFF061426)
-private val DetailPanel = Color(0xFF0D223B)
+private val DetailNavy = Color(0xFF070707)
+private val DetailPanel = Color(0xFF181818)
 private val DetailGold = Color(0xFFDDB32F)
 private val DetailGoldLight = Color(0xFFFFD966)
 private val DetailWhite = Color(0xFFF4F6FA)
@@ -54,19 +54,28 @@ fun MovieDetailsScreen(
 ) {
     BackHandler(onBack = onBack)
     Box(Modifier.fillMaxSize().background(DetailNavy)) {
+        ArtworkImage(
+            imageUrl = item.imageUrl,
+            title = item.title,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            requestHeaders = item.imageHeaders,
+            fallbackText = null
+        )
         if (!item.imageUrl.isNullOrBlank()) {
-            AsyncImage(item.imageUrl, item.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(DetailNavy, DetailNavy.copy(alpha = 0.92f), DetailNavy.copy(alpha = 0.55f)))))
         }
         Row(Modifier.fillMaxSize().padding(50.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(250.dp).height(360.dp)) {
-                if (!item.imageUrl.isNullOrBlank()) {
-                    AsyncImage(item.imageUrl, item.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                } else {
-                    Box(Modifier.fillMaxSize().background(DetailPanel), contentAlignment = Alignment.Center) {
-                        Text(item.title.take(1).uppercase(), color = DetailGold, fontSize = 70.sp, fontWeight = FontWeight.ExtraBold)
-                    }
-                }
+                ArtworkImage(
+                    imageUrl = item.imageUrl,
+                    title = item.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    requestHeaders = item.imageHeaders,
+                    fallbackTextSize = 70.sp,
+                    fallbackColor = DetailGold
+                )
             }
             Spacer(Modifier.width(44.dp))
             Column(Modifier.weight(1f).widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -84,14 +93,14 @@ fun MovieDetailsScreen(
                         Text("Play", fontWeight = FontWeight.Bold)
                     }
                     if (item.progress > 0f) {
-                        QuestButton(onClick = onResume, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) {
+                        QuestButton(onClick = onResume, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) {
                             Text("Resume ${(item.progress * 100).toInt()}%")
                         }
                     }
-                    QuestButton(onClick = onToggleFavorite, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) {
+                    QuestButton(onClick = onToggleFavorite, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) {
                         Text(if (item.isFavorite) "Remove favourite" else "Add to favourites")
                     }
-                    QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) { Text("Back") }
+                    QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) { Text("Back") }
                 }
             }
         }
@@ -129,7 +138,7 @@ fun QualitySelectionScreen(
                         ) { Text(option.label, fontWeight = FontWeight.Bold) }
                     }
                 }
-                QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = DetailWhite)) { Text("Back") }
+                QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) { Text("Back") }
             }
         }
     }

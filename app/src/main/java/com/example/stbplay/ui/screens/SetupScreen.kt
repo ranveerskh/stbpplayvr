@@ -39,8 +39,8 @@ import com.example.stbplay.domain.model.PortalSettings
 import com.example.stbplay.domain.model.generateStbPlayMac
 import com.example.stbplay.ui.questInitialFocus
 
-private val SetupNavy = Color(0xFF061426)
-private val SetupPanel = Color(0xFF0D223B)
+private val SetupNavy = Color(0xFF070707)
+private val SetupPanel = Color(0xFF181818)
 private val SetupGold = Color(0xFFDDB32F)
 private val SetupGoldLight = Color(0xFFFFD966)
 private val SetupText = Color(0xFFF4F6FA)
@@ -131,7 +131,7 @@ fun SetupScreen(
                     QuestButton(
                         onClick = cancel,
                         colors = ButtonDefaults.colors(
-                            containerColor = Color(0xFF153452),
+                            containerColor = Color(0xFF262626),
                             contentColor = SetupText
                         )
                     ) { Text("Cancel") }

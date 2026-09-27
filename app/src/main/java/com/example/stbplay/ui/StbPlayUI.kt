@@ -63,17 +63,16 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
-import coil.compose.AsyncImage
 import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.SubtitlePreference
 import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.domain.model.PortalSettings
 import kotlinx.coroutines.delay
 
-private val Navy = Color(0xFF061426)
-private val Rail = Color(0xFF081A2F)
-private val Panel = Color(0xFF0D223B)
-private val PanelSoft = Color(0xFF102A47)
+private val Navy = Color(0xFF070707)
+private val Rail = Color(0xFF111111)
+private val Panel = Color(0xFF181818)
+private val PanelSoft = Color(0xFF222222)
 private val Gold = Color(0xFFDDB32F)
 private val GoldLight = Color(0xFFFFD966)
 private val White = Color(0xFFF4F6FA)
@@ -104,6 +103,7 @@ data class UiMedia(
     val id: String,
     val title: String,
     val imageUrl: String? = null,
+    val imageHeaders: Map<String, String> = emptyMap(),
     val subtitle: String? = null,
     val description: String? = null,
     val badge: String? = null,
@@ -467,17 +467,22 @@ private fun RotatingHero(
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
     ) {
         Box(Modifier.fillMaxSize()) {
-            if (!item.imageUrl.isNullOrBlank()) {
-                AsyncImage(item.imageUrl, item.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            }
+            ArtworkImage(
+                imageUrl = item.imageUrl,
+                title = item.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                requestHeaders = item.imageHeaders,
+                fallbackText = null
+            )
             Box(
                 Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(listOf(Color(0xF8061426), Color(0xB8061426), Color.Transparent))
+                    Brush.horizontalGradient(listOf(Color(0xF8070707), Color(0xB8070707), Color.Transparent))
                 )
             )
             Box(
                 Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(listOf(Color.Transparent, Color(0xE8061426)))
+                    Brush.verticalGradient(listOf(Color.Transparent, Color(0xE8070707)))
                 )
             )
             Column(
@@ -512,9 +517,12 @@ private fun MediaRow(
     onRemoveHistory: (UiMedia) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.Bottom) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Text(row.title, color = White, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
-            row.subtitle?.let { Text("  $it", color = Muted, fontSize = 12.sp) }
+            row.subtitle?.let { Text(it, color = Muted, fontSize = 12.sp) }
         }
         LazyRow(
             modifier = Modifier.focusGroup(),
@@ -577,7 +585,13 @@ private fun LiveTvScreen(
 
 @Composable
 private fun CategorySidebar(categories: List<UiCategory>, selected: Int, onSelected: (Int) -> Unit) {
-    Column(modifier = Modifier.width(210.dp).fillMaxHeight().clip(RoundedCornerShape(15.dp)).background(Panel).padding(12.dp)) {
+    Column(
+        modifier = Modifier.width(210.dp).fillMaxHeight()
+            .clip(RoundedCornerShape(15.dp))
+            .background(Panel)
+            .border(1.dp, Color(0xFF292929), RoundedCornerShape(15.dp))
+            .padding(12.dp)
+    ) {
         Text("Categories", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             columnItems(categories) { category ->
@@ -622,13 +636,21 @@ private fun LiveChannelRow(
         modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth().height(78.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(13.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Color(0xFF193B5D)),
+        colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Color(0xFF292929)),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(102.dp).height(56.dp).clip(RoundedCornerShape(8.dp)).background(PanelSoft), contentAlignment = Alignment.Center) {
-                if (!item.imageUrl.isNullOrBlank()) AsyncImage(item.imageUrl, item.title, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                else Text(item.badge ?: "LIVE", color = GoldLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                ArtworkImage(
+                    imageUrl = item.imageUrl,
+                    title = item.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    requestHeaders = item.imageHeaders,
+                    fallbackText = item.badge ?: "LIVE",
+                    fallbackTextSize = 11.sp,
+                    fallbackColor = GoldLight
+                )
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -656,15 +678,23 @@ private fun ContentBrowserScreen(
         CategorySidebar(state.categories, state.selectedCategory, onCategorySelected)
         Spacer(modifier = Modifier.width(24.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text("Movies & Series", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                    Text(state.totalItemsText.ifBlank { "Provider catalogue" }, color = Muted, fontSize = 13.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column {
+                        Text("Movies & Series", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Provider catalogue", color = Muted, fontSize = 13.sp)
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(state.totalItemsText.ifBlank { "${state.items.size} titles" }, color = Muted, fontSize = 12.sp)
                 }
-                Spacer(modifier = Modifier.weight(1f))
-                ContentKindFilter.entries.forEach { filter ->
-                    FilterChip(filter, filter == selectedFilter) { onFilterChanged(filter) }
-                    Spacer(modifier = Modifier.width(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    ContentKindFilter.entries.forEach { filter ->
+                        FilterChip(filter, filter == selectedFilter) { onFilterChanged(filter) }
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(17.dp))
@@ -770,13 +800,18 @@ private fun MediaCard(
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
     ) {
         Box(Modifier.fillMaxSize()) {
-            if (!item.imageUrl.isNullOrBlank()) AsyncImage(item.imageUrl, item.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            else Box(Modifier.fillMaxSize().background(PanelSoft), contentAlignment = Alignment.Center) {
-                Text(item.title.take(1).uppercase(), color = Gold, fontSize = 35.sp, fontWeight = FontWeight.ExtraBold)
-            }
+            ArtworkImage(
+                imageUrl = item.imageUrl,
+                title = item.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                requestHeaders = item.imageHeaders,
+                fallbackTextSize = 35.sp,
+                fallbackColor = Gold
+            )
             Box(
                 Modifier.fillMaxWidth().height(82.dp).align(Alignment.BottomCenter).background(
-                    Brush.verticalGradient(listOf(Color.Transparent, Color(0xF8061426)))
+                    Brush.verticalGradient(listOf(Color.Transparent, Color(0xF8070707)))
                 )
             )
             item.badge?.let { Text(it, color = GoldLight, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopStart).padding(9.dp)) }
@@ -788,7 +823,7 @@ private fun MediaCard(
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp).height(30.dp),
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                     colors = ClickableSurfaceDefaults.colors(
-                        containerColor = Color(0xCC061426),
+                        containerColor = Color(0xCC070707),
                         focusedContainerColor = Danger
                     )
                 ) {
@@ -809,7 +844,7 @@ private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: M
         onClick = onClick,
         modifier = modifier.size(34.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(17.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xCC061426), focusedContainerColor = Gold)
+        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xCC070707), focusedContainerColor = Gold)
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(if (isFavorite) "★" else "☆", color = GoldLight, fontSize = 19.sp)
@@ -819,7 +854,7 @@ private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: M
 
 @Composable
 private fun ProgressBar(progress: Float, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(4.dp).background(Color(0x773D4A5B))) {
+    Box(modifier.fillMaxWidth().height(4.dp).background(Color(0x77565656))) {
         Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(Gold))
     }
 }
@@ -999,7 +1034,7 @@ private fun WideAction(title: String, onClick: () -> Unit) {
         onClick = onClick,
         modifier = Modifier.height(38.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF153452), focusedContainerColor = Gold),
+        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF262626), focusedContainerColor = Gold),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) { Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.Center) { Text(title, color = if (focused) Navy else White, fontSize = 12.sp) } }
 }
@@ -1103,7 +1138,7 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
     BackHandler(onBack = onCancel)
-    Box(Modifier.fillMaxSize().background(Color(0xD9020914)), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color(0xD9070707)), contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier.widthIn(min = 370.dp, max = 520.dp),
             shape = RoundedCornerShape(18.dp),
@@ -1157,7 +1192,7 @@ fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () 
     var next by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     BackHandler(onBack = onCancel)
-    Box(Modifier.fillMaxSize().background(Color(0xD9020914)), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color(0xD9070707)), contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier.widthIn(min = 400.dp, max = 560.dp),
             shape = RoundedCornerShape(18.dp),

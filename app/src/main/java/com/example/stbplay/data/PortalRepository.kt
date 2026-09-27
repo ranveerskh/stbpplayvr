@@ -1,5 +1,6 @@
 package com.example.stbplay.data
 
+import android.net.Uri
 import com.example.stbplay.data.model.*
 import com.example.stbplay.domain.model.PortalSettings
 import kotlinx.coroutines.Dispatchers
@@ -81,6 +82,30 @@ class PortalRepository {
             }
             LoginResponse(success = false, errorMessage = errorMsg)
         }
+    }
+
+    fun resolveArtworkUrl(rawUrl: String?): String? {
+        val portalUrl = currentSettings?.url
+        return PortalUrl.resolveArtworkUrl(rawUrl, portalUrl)
+    }
+
+    fun artworkRequestHeaders(rawUrl: String?): Map<String, String> {
+        val settings = currentSettings ?: return emptyMap()
+        val session = currentSession ?: return emptyMap()
+        val imageUrl = PortalUrl.resolveArtworkUrl(rawUrl, settings.url) ?: return emptyMap()
+        val image = Uri.parse(imageUrl)
+        val portal = Uri.parse(PortalUrl.stalkerRoot(settings.url))
+        if (!image.scheme.equals(portal.scheme, ignoreCase = true) ||
+            !image.host.equals(portal.host, ignoreCase = true) ||
+            image.effectivePort() != portal.effectivePort()
+        ) return emptyMap()
+        return stalkerClient.artworkRequestHeaders(settings.url, settings.mac, session)
+    }
+
+    private fun Uri.effectivePort(): Int = port.takeIf { it >= 0 } ?: when (scheme?.lowercase()) {
+        "http" -> 80
+        "https" -> 443
+        else -> -1
     }
 
     suspend fun getLiveCategories(): List<PortalCategory> = withContext(Dispatchers.IO) {

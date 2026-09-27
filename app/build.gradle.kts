@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.stbplay"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.8.20"
+        versionCode = 21
+        versionName = "1.8.21"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

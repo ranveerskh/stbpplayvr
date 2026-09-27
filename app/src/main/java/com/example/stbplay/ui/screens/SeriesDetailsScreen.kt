@@ -38,15 +38,15 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ClickableSurfaceDefaults
 import com.example.stbplay.ui.QuestSurface
 import androidx.tv.material3.Text
-import coil.compose.AsyncImage
+import com.example.stbplay.ui.ArtworkImage
 import com.example.stbplay.data.PortalRepository
 import com.example.stbplay.data.model.PortalEpisode
 import com.example.stbplay.data.model.PortalSeason
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.ui.questInitialFocus
 
-private val SeriesNavy = Color(0xFF061426)
-private val SeriesPanel = Color(0xFF0D223B)
+private val SeriesNavy = Color(0xFF070707)
+private val SeriesPanel = Color(0xFF181818)
 private val SeriesGold = Color(0xFFDDB32F)
 private val SeriesGoldLight = Color(0xFFFFD966)
 private val SeriesWhite = Color(0xFFF4F6FA)
@@ -70,6 +70,13 @@ fun SeriesDetailsScreen(
 
     BackHandler(onBack = onBack)
 
+    val artworkUrl = remember(series.id, series.iconUrl, repository) {
+        repository.resolveArtworkUrl(series.iconUrl)
+    }
+    val artworkHeaders = remember(series.id, artworkUrl, repository) {
+        repository.artworkRequestHeaders(series.iconUrl)
+    }
+
     LaunchedEffect(series.id) {
         loadingSeasons = true
         error = null
@@ -91,16 +98,23 @@ fun SeriesDetailsScreen(
     Row(Modifier.fillMaxSize().background(SeriesNavy).padding(40.dp)) {
         Column(Modifier.width(300.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(Modifier.fillMaxWidth().height(380.dp).background(SeriesPanel), contentAlignment = Alignment.Center) {
-                if (!series.iconUrl.isNullOrBlank()) AsyncImage(series.iconUrl, series.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                else Text(series.name.take(1).uppercase(), color = SeriesGold, fontSize = 70.sp, fontWeight = FontWeight.ExtraBold)
+                ArtworkImage(
+                    imageUrl = artworkUrl,
+                    title = series.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    requestHeaders = artworkHeaders,
+                    fallbackTextSize = 70.sp,
+                    fallbackColor = SeriesGold
+                )
             }
             Text("SERIES", color = SeriesGoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Text(series.name, color = SeriesWhite, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             series.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 12.sp, maxLines = 5, overflow = TextOverflow.Ellipsis) }
-            QuestButton(onClick = onToggleFavorite, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = SeriesWhite)) {
+            QuestButton(onClick = onToggleFavorite, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = SeriesWhite)) {
                 Text(if (isFavorite) "Remove favourite" else "Add to favourites")
             }
-            QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = SeriesWhite)) { Text("Back") }
+            QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = SeriesWhite)) { Text("Back") }
         }
         Spacer(Modifier.width(42.dp))
         Column(Modifier.weight(1f)) {

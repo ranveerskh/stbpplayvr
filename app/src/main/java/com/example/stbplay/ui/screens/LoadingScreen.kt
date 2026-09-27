@@ -24,7 +24,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import com.example.stbplay.ui.questInitialFocus
 
-private val LoadNavy = Color(0xFF061426)
+private val LoadNavy = Color(0xFF070707)
 private val LoadGold = Color(0xFFDDB32F)
 private val LoadGoldLight = Color(0xFFFFD966)
 private val LoadWhite = Color(0xFFF4F6FA)
@@ -49,7 +49,7 @@ fun LoadingScreen(
             Text("${portalName.ifBlank { "Portal" }} · Loading", color = LoadGoldLight, fontSize = 18.sp)
             if (error == null) {
                 Text(stage, color = LoadWhite, fontSize = 18.sp)
-                Box(Modifier.fillMaxWidth().height(7.dp).background(Color(0xFF19324D))) {
+                Box(Modifier.fillMaxWidth().height(7.dp).background(Color(0xFF252525))) {
                     Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(7.dp).background(LoadGold))
                 }
                 Text("${(progress.coerceIn(0f, 1f) * 100).toInt()}%", color = LoadMuted, fontSize = 12.sp)
@@ -58,7 +58,7 @@ fun LoadingScreen(
                 Text(error, color = LoadMuted, fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     QuestButton(onClick = onRetry, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = LoadGold, contentColor = LoadNavy)) { Text("Retry") }
-                    QuestButton(onClick = onEdit, colors = ButtonDefaults.colors(containerColor = Color(0xFF153452), contentColor = LoadWhite)) { Text("Edit portal") }
+                    QuestButton(onClick = onEdit, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = LoadWhite)) { Text("Edit portal") }
                 }
             }
         }

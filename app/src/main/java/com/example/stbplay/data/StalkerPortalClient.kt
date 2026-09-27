@@ -126,7 +126,21 @@ class StalkerPortalClient(
         }
     }
 
-    private fun buildCookieHeader(session: StalkerSession, mac: String): String {
+    fun artworkRequestHeaders(
+        portalUrl: String,
+        macAddress: String,
+        session: StalkerSession
+    ): Map<String, String> {
+        return mapOf(
+            "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 MAG254",
+            "X-User-Agent" to "Model: MAG254; Link: Ethernet",
+            "Referer" to PortalUrl.refererUrl(portalUrl),
+            "Authorization" to "Bearer ${session.token}",
+            "Cookie" to buildCookieHeader(session, macAddress.uppercase(Locale.ROOT))
+        )
+    }
+
+    private fun buildCookieHeader(session: StalkerSession, mac: String) {
         val cookies = session.cookie
             .split(';')
             .map { it.trim() }

@@ -492,7 +492,9 @@ private fun StbPlayRoot(
     fun toUi(stream: PortalStream): UiMedia = stream.toUiMedia(
         portrait = stream.streamType != "live",
         progress = progressById[stream.id] ?: 0f,
-        favorite = stream.id in favoriteIds
+        favorite = stream.id in favoriteIds,
+        imageUrl = portalRepository.resolveArtworkUrl(stream.iconUrl),
+        imageHeaders = portalRepository.artworkRequestHeaders(stream.iconUrl)
     )
 
     val safeLive = remember(liveStreams) { liveStreams.filterNot { it.isLocked } }
@@ -805,7 +807,13 @@ private fun StbPlayRoot(
     }
 }
 
-private fun PortalStream.toUiMedia(portrait: Boolean, progress: Float, favorite: Boolean): UiMedia {
+private fun PortalStream.toUiMedia(
+    portrait: Boolean,
+    progress: Float,
+    favorite: Boolean,
+    imageUrl: String?,
+    imageHeaders: Map<String, String>
+): UiMedia {
     val badge = when (streamType) {
         "live" -> number?.let { "CH $it" } ?: "LIVE"
         "series" -> "SERIES"
@@ -814,7 +822,8 @@ private fun PortalStream.toUiMedia(portrait: Boolean, progress: Float, favorite:
     return UiMedia(
         id = id,
         title = name,
-        imageUrl = iconUrl,
+        imageUrl = imageUrl,
+        imageHeaders = imageHeaders,
         subtitle = originalTitle,
         description = description,
         badge = badge,

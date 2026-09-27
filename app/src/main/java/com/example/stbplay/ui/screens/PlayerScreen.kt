@@ -264,11 +264,11 @@ private fun NativePlayerScreen(
         QuestButton(
             onClick = onBack,
             modifier = Modifier.align(Alignment.TopStart).padding(18.dp).questInitialFocus(),
-            colors = ButtonDefaults.colors(containerColor = Color(0xCC061426), contentColor = Color.White)
+            colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
         ) { Text("← Back") }
         playerError?.let { error ->
             Column(
-                modifier = Modifier.align(Alignment.Center).background(Color(0xEE071426)).padding(30.dp),
+                modifier = Modifier.align(Alignment.Center).background(Color(0xEE070707)).padding(30.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
@@ -303,7 +303,7 @@ private fun launchVlc(context: Context, stream: String, title: String): Boolean 
 
 @Composable
 private fun PlaybackLoadingScreen(title: String) {
-    Box(Modifier.fillMaxSize().background(Color(0xFF061426)), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF070707)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
             CircularProgressIndicator(color = Color(0xFFDDB32F))
             Text(title, color = Color.White)
@@ -313,7 +313,7 @@ private fun PlaybackLoadingScreen(title: String) {
 
 @Composable
 private fun PlaybackErrorScreen(message: String, onRetry: () -> Unit, onBack: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color(0xFF061426)), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF070707)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(30.dp)) {
             Text("Unable to start playback", color = Color.White)
             Text(message, color = Color.LightGray)
