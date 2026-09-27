@@ -1092,13 +1092,35 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Protected content", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text("Enter your parental PIN to open $title", color = White, fontSize = 14.sp, textAlign = TextAlign.Center, maxLines = 2)
-                BasicTextField(
-                    value = pin,
-                    onValueChange = { pin = it.filter(Char::isDigit).take(8); error = false },
-                    modifier = Modifier.questInitialFocus().width(220.dp).height(52.dp).background(Navy, RoundedCornerShape(10.dp)).border(2.dp, if (error) Danger else Gold, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 14.dp),
-                    singleLine = true,
-                    textStyle = TextStyle(color = White, fontSize = 19.sp, textAlign = TextAlign.Center)
+                Text(
+                    text = "•".repeat(pin.length).ifEmpty { "Enter PIN" },
+                    color = if (pin.isEmpty()) Muted else White,
+                    fontSize = 19.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(220.dp).height(52.dp)
+                        .background(Navy, RoundedCornerShape(10.dp))
+                        .border(2.dp, if (error) Danger else Gold, RoundedCornerShape(10.dp))
+                        .padding(vertical = 13.dp)
                 )
+                listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("⌫", "0", "Clear")).forEachIndexed { rowIndex, keys ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        keys.forEachIndexed { columnIndex, key ->
+                            QuestButton(
+                                onClick = {
+                                    pin = when (key) {
+                                        "⌫" -> pin.dropLast(1)
+                                        "Clear" -> ""
+                                        else -> (pin + key).take(8)
+                                    }
+                                    error = false
+                                },
+                                modifier = Modifier.width(86.dp).height(46.dp)
+                                    .then(if (rowIndex == 0 && columnIndex == 0) Modifier.questInitialFocus() else Modifier),
+                                colors = ButtonDefaults.colors(containerColor = Navy, contentColor = White, focusedContainerColor = Gold, focusedContentColor = Navy)
+                            ) { Text(key, fontSize = 16.sp) }
+                        }
+                    }
+                }
                 if (error) Text("Incorrect PIN", color = Danger, fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     PrimaryAction("Unlock") { if (expectedPin.isNotBlank() && pin == expectedPin) onVerified() else error = true }

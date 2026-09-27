@@ -82,7 +82,7 @@ fun SeriesDetailsScreen(
         val season = selectedSeason ?: return@LaunchedEffect
         loadingEpisodes = true
         error = null
-        runCatching { repository.getEpisodes(series.id, season.id) }
+        runCatching { repository.getEpisodes(series.id, season.id, series.cmd) }
             .onSuccess { episodes = it }
             .onFailure { error = it.message ?: "Could not load episodes." }
         loadingEpisodes = false

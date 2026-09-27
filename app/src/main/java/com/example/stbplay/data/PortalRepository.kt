@@ -192,7 +192,7 @@ class PortalRepository {
         }.orEmpty()
     }
 
-    suspend fun getEpisodes(seriesId: String, seasonId: String): List<PortalEpisode> = withContext(Dispatchers.IO) {
+    suspend fun getEpisodes(seriesId: String, seasonId: String, parentCommand: String? = null): List<PortalEpisode> = withContext(Dispatchers.IO) {
         val settings = currentSettings ?: return@withContext emptyList()
         val session = currentSession ?: return@withContext emptyList()
         val params = mapOf(
@@ -204,7 +204,7 @@ class PortalRepository {
             "sortby" to "added"
         )
         val vodResult = fetchWithPageFallback(settings, session, "vod", "get_ordered_list", params) {
-            StalkerParser.parseEpisodes(it, seriesId)
+            StalkerParser.parseEpisodes(it, parentCommand)
         }
         if (vodResult.isNotEmpty()) return@withContext vodResult
 
@@ -216,7 +216,7 @@ class PortalRepository {
             runCatching {
                 StalkerParser.parseEpisodes(
                     stalkerClient.call(settings.url, settings.mac, session, "series", action, extra),
-                    seriesId
+                    parentCommand
                 ).takeIf { it.isNotEmpty() }
             }.getOrNull()
         }.orEmpty()
@@ -276,7 +276,15 @@ class PortalRepository {
     suspend fun getEpisodeQualityOptions(
         series: PortalStream,
         episode: PortalEpisode
-    ): List<PortalQualityOption> = getQualityOptions(series, episode.cmd, episode.series.orEmpty())
+    ): List<PortalQualityOption> {
+        val command = episode.cmd?.takeIf { it.isNotBlank() } ?: return emptyList()
+        return listOf(PortalQualityOption(
+            id = episode.id,
+            label = "Auto",
+            command = command,
+            seriesValue = episode.series.orEmpty()
+        ))
+    }
 
     private suspend fun getQualityOptions(
         stream: PortalStream,

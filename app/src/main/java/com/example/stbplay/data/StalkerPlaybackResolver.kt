@@ -32,11 +32,8 @@ class StalkerPlaybackResolver(
     private val token: String?,
     private val sessionCookie: String = ""
 ) {
-    private val uiUrl = portalUiUrl.trim().let {
-        if (it.endsWith("/")) it else "$it/"
-    }
-
-    private val apiUrl = buildApiUrl(uiUrl)
+    private val uiUrl = PortalUrl.refererUrl(portalUiUrl)
+    private val apiUrl = PortalUrl.apiUrl(portalUiUrl)
 
     private val httpClient = OkHttpClient.Builder()
         .followRedirects(true)
@@ -68,25 +65,15 @@ class StalkerPlaybackResolver(
                 StalkerContentKind.SERIES_EPISODE -> "vod"
             }
 
-            val forcedStorage =
-                if (request.kind == StalkerContentKind.LIVE) {
-                    "0"
-                } else {
-                    ""
-                }
-
             val resolved = requestCreateLink(
                 type = type,
                 command = command,
-                seriesValue = request.seriesValue,
-                forcedStorage = forcedStorage
+                seriesValue = request.seriesValue
             )
 
             val returnedValue = extractReturnedValue(resolved.body)
 
-            val playableUrl =
-                extractPlayableUrl(returnedValue)
-                    ?: extractPlayableUrl(resolved.finalUrl)
+            val playableUrl = extractPlayableUrl(returnedValue)
 
             playableUrl
                 ?: throw IllegalStateException(
@@ -133,22 +120,20 @@ class StalkerPlaybackResolver(
     private fun requestCreateLink(
         type: String,
         command: String,
-        seriesValue: String,
-        forcedStorage: String
+        seriesValue: String
     ): LinkResponse {
-        val requestUrl = apiUrl.toHttpUrl()
+        val requestBuilder = apiUrl.toHttpUrl()
             .newBuilder()
             .addQueryParameter("type", type)
             .addQueryParameter("action", "create_link")
             .addQueryParameter("cmd", command)
-            .addQueryParameter(
-                "series",
-                if (type == "itv") "" else seriesValue
-            )
-            .addQueryParameter(
-                "forced_storage",
-                forcedStorage
-            )
+        if (type == "itv") {
+            requestBuilder.addQueryParameter("series", "")
+            requestBuilder.addQueryParameter("forced_storage", "0")
+        } else if (seriesValue.isNotBlank()) {
+            requestBuilder.addQueryParameter("series", seriesValue)
+        }
+        val requestUrl = requestBuilder
             .addQueryParameter("disable_ad", "0")
             .addQueryParameter("download", "0")
             .addQueryParameter("force_ch_link_check", "0")
@@ -351,26 +336,7 @@ class StalkerPlaybackResolver(
         return url
     }
 
-    private fun buildApiUrl(
-        input: String
-    ): String {
-        val clean = input.trim().trimEnd('/')
-
-        return when {
-            clean.endsWith("/server/load.php") -> clean
-
-            clean.endsWith("/c") ->
-                clean.removeSuffix("/c") +
-                        "/server/load.php"
-
-            clean.endsWith("/portal.php") ->
-                clean.removeSuffix("/portal.php") +
-                        "/server/load.php"
-
-            else ->
-                "$clean/server/load.php"
-        }
-    }
+    // Login, catalogue and playback must use the same canonical portal endpoint.
 
     data class LinkResponse(
         val body: String,

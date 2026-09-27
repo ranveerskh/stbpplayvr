@@ -102,7 +102,10 @@ object StalkerParser {
                     isLocked = item.bool("lock", "censored", "adult", "is_adult", "age_restriction") ||
                         ContentSafety.isRestricted(name, item.text("rating", "rating_imdb", "kinopoisk_rating")),
                     cmd = item.text("cmd", "command", "url"),
-                    series = item.text("series", "series_cmd", "series_command"),
+                    // Stalker catalogue "series" is often a JSON array of episode numbers.
+                    // It must never be sent back as the create_link series parameter.
+                    series = item.text("series_cmd", "series_command")
+                        ?: (item.opt("series") as? String)?.trim()?.takeIf { it.isNotBlank() && it != "0" },
                     description = item.text("description", "plot", "about", "short_description"),
                     year = item.text("year", "release_year")?.toIntOrNull(),
                     searchText = item.searchText(),
@@ -137,18 +140,19 @@ object StalkerParser {
             .toList()
     }
 
-    fun parseEpisodes(response: JSONObject, @Suppress("UNUSED_PARAMETER") seriesId: String? = null): List<PortalEpisode> {
+    fun parseEpisodes(response: JSONObject, parentCommand: String? = null): List<PortalEpisode> {
         return dataArray(response).asSequence()
             .mapNotNull { item ->
                 val id = item.text("id", "episode_id") ?: return@mapNotNull null
                 PortalEpisode(
                     id = id,
                     name = item.text("name", "title", "episode_name") ?: "Episode $id",
-                    cmd = item.text("cmd", "command", "url"),
+                    // Stalker episode rows omit cmd. Playback uses the parent series cmd
+                    // and passes this episode's series_number to create_link.
+                    cmd = item.text("cmd", "command", "url") ?: parentCommand,
                     seasonId = item.text("season_id", "season"),
-                    // Some portals send the actual provider command here. Do not
-                    // substitute a numeric series id: that can open the wrong episode.
-                    series = item.text("series", "series_cmd", "series_command"),
+                    series = item.text("series_number", "series_cmd", "series_command")
+                        ?: item.optJSONArray("series")?.optString(0)?.takeIf { it.isNotBlank() },
                     description = item.text("description", "plot", "about")
                 )
             }
