@@ -478,7 +478,6 @@ class PortalRepository {
         put("sortby", "added")
         put("hd", "0")
         put("not_ended", "0")
-        put("genre", "0")
         put("category", categoryId?.takeIf { it.isNotBlank() && it != "0" } ?: "*")
     }
 
