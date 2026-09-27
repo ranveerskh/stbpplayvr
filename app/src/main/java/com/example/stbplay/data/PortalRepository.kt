@@ -156,6 +156,7 @@ class PortalRepository {
         var page = startPage
         var total: Int? = null
         var hasMore = true
+        var duplicatePages = 0
         val params = vodListParams(categoryId)
 
         for (index in 0 until maxPages) {
@@ -178,9 +179,17 @@ class PortalRepository {
                 .withCategoryLocks(vodCategoriesCache + seriesCategoriesCache)
                 .map { if (categoryLocked) it.copy(isLocked = true) else it }
             if (newItems.isEmpty()) {
-                hasMore = false
-                return@withContext VodCatalogBatch(items, page, total, hasMore)
+                // Some Stalker portals treat p=0 and p=1 as the same first page.
+                // Skip a few duplicate pages so later pages still get a chance to load.
+                duplicatePages++
+                page++
+                if (duplicatePages >= 4) {
+                    hasMore = false
+                    return@withContext VodCatalogBatch(items, page, total, hasMore)
+                }
+                continue
             }
+            duplicatePages = 0
             items += newItems
             page++
             val pageSize = js?.optInt("max_page_items", parsed.size)?.takeIf { it > 0 } ?: parsed.size

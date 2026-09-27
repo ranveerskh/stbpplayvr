@@ -762,7 +762,12 @@ private fun StbPlayRoot(
                         }
                     },
                     onShare = onShare,
-                    searchCatalog = (liveStreams + allVod).map(::toUi)
+                    searchCatalog = when (selectedTab) {
+                        StbPlayTab.LIVE -> filteredLive
+                        StbPlayTab.CONTENT -> filteredVod
+                        StbPlayTab.FAVOURITES -> favoriteStreams
+                        else -> liveStreams + allVod
+                    }.map(::toUi)
                 )
             }
 

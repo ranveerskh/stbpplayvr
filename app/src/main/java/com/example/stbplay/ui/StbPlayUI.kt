@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.items as columnItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -40,6 +41,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +70,7 @@ import com.example.stbplay.data.SubtitlePreference
 import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.domain.model.PortalSettings
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 private val Navy = Color(0xFF070707)
 private val Rail = Color(0xFF111111)
@@ -674,6 +677,15 @@ private fun ContentBrowserScreen(
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit
 ) {
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(gridState, state.items.size, state.hasMore, state.loadingMore) {
+        if (state.items.isNotEmpty() && state.hasMore && !state.loadingMore) {
+            val prefetchIndex = (state.items.size - 12).coerceAtLeast(0)
+            snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+                .first { lastVisible -> lastVisible >= prefetchIndex }
+            onLoadMore()
+        }
+    }
     Row(modifier = Modifier.fillMaxSize().padding(start = 24.dp, end = 30.dp, bottom = 28.dp)) {
         CategorySidebar(state.categories, state.selectedCategory, onCategorySelected)
         Spacer(modifier = Modifier.width(24.dp))
@@ -685,7 +697,12 @@ private fun ContentBrowserScreen(
                         Text("Provider catalogue", color = Muted, fontSize = 13.sp)
                     }
                     Spacer(modifier = Modifier.weight(1f))
-                    Text(state.totalItemsText.ifBlank { "${state.items.size} titles" }, color = Muted, fontSize = 12.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(state.totalItemsText.ifBlank { "${state.items.size} titles" }, color = Muted, fontSize = 12.sp)
+                        if (state.hasMore) QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
+                            Text(if (state.loadingMore) "Loading…" else "Load more")
+                        }
+                    }
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -711,6 +728,7 @@ private fun ContentBrowserScreen(
                 }
                 else -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 166.dp),
+                    state = gridState,
                     modifier = Modifier.fillMaxSize().focusGroup(),
                     contentPadding = PaddingValues(bottom = 30.dp, end = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(17.dp),
@@ -885,12 +903,25 @@ private fun StbPlaySettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text("Settings", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("Your STB Play preferences are stored on this device.", color = Muted, fontSize = 13.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Settings", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                Text("Your STB Play preferences are stored on this device.", color = Muted, fontSize = 13.sp)
+            }
+        }
+        item {
+            SettingsSection("Parental controls") {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Text("Adult and A-rated content stays locked until the PIN is entered. It re-locks when you leave.", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    PrimaryAction("Change PIN", onChangePin)
+                }
+            }
         }
         item { SubscriptionCard(state) }
         item {
             SettingsSection("Content sources") {
+                if (state.profiles.isEmpty()) {
+                    Text("No portals saved yet. Add one to get started.", color = Muted, fontSize = 13.sp)
+                }
                 state.profiles.forEach { profile ->
                     PortalProfileRow(
                         profile = profile,
@@ -933,12 +964,8 @@ private fun StbPlaySettingsScreen(
             }
         }
         item {
-            SettingsSection("History & parental controls") {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    WideAction("Clear watch history", onClearHistory)
-                    PrimaryAction("Change PIN", onChangePin)
-                }
-                Text("Adult and A-rated content stays locked until the parental PIN is entered. It re-locks when you leave.", color = Muted, fontSize = 11.sp)
+            SettingsSection("History") {
+                WideAction("Clear watch history", onClearHistory, Modifier.fillMaxWidth())
             }
         }
         item {
@@ -993,20 +1020,20 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
 
 @Composable
 private fun PortalProfileRow(profile: PortalSettings, active: Boolean, onUse: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(if (active) Gold.copy(alpha = 0.13f) else Navy).padding(13.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(profile.name, color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(if (active) "Active portal" else "Available portal", color = if (active) GoldLight else Muted, fontSize = 11.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(profile.name, color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (active) "Active portal" else "Available portal", color = if (active) GoldLight else Muted, fontSize = 11.sp)
+            }
         }
-        if (!active) WideAction("Use", onUse)
-        Spacer(modifier = Modifier.width(8.dp))
-        WideAction("Edit", onEdit)
-        if (!active) {
-            Spacer(modifier = Modifier.width(8.dp))
-            WideAction("Delete", onDelete)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!active) WideAction("Use", onUse, Modifier.weight(1f))
+            WideAction("Edit", onEdit, Modifier.weight(1f))
+            if (!active) WideAction("Delete", onDelete, Modifier.weight(1f))
         }
     }
 }
@@ -1028,11 +1055,11 @@ private fun PreferenceRow(title: String, value: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun WideAction(title: String, onClick: () -> Unit) {
+private fun WideAction(title: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     QuestSurface(
         onClick = onClick,
-        modifier = Modifier.height(38.dp).onFocusChanged { focused = it.isFocused },
+        modifier = modifier.height(38.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF262626), focusedContainerColor = Gold),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))

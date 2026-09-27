@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -214,6 +215,12 @@ private fun NativePlayerScreen(
             }
     }
 
+    var volumePercent by remember(player) { mutableIntStateOf((player.volume * 100f).toInt().coerceIn(0, 100)) }
+    fun adjustVolume(delta: Int) {
+        volumePercent = (volumePercent + delta).coerceIn(0, 100)
+        player.volume = volumePercent / 100f
+    }
+
     DisposableEffect(player) {
         onDispose {
             runCatching {
@@ -266,6 +273,15 @@ private fun NativePlayerScreen(
             modifier = Modifier.align(Alignment.TopStart).padding(18.dp).questInitialFocus(),
             colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
         ) { Text("← Back") }
+        Row(
+            modifier = Modifier.align(Alignment.TopEnd).padding(18.dp).background(Color(0xCC070707)).padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Volume $volumePercent%", color = Color.White)
+            QuestButton(onClick = { adjustVolume(-10) }) { Text("−") }
+            QuestButton(onClick = { adjustVolume(10) }) { Text("+") }
+        }
         playerError?.let { error ->
             Column(
                 modifier = Modifier.align(Alignment.Center).background(Color(0xEE070707)).padding(30.dp),
