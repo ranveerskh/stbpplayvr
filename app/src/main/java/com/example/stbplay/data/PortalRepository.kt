@@ -16,6 +16,13 @@ import java.time.ZoneId
  * Single source of truth for portal calls. UI code only receives parsed domain
  * models, so a provider response/error can never crash a Compose screen.
  */
+data class VodCatalogBatch(
+    val items: List<PortalStream>,
+    val nextPage: Int,
+    val totalItems: Int?,
+    val hasMore: Boolean
+)
+
 class PortalRepository {
 
     private val stalkerClient = StalkerPortalClient()
@@ -111,14 +118,61 @@ class PortalRepository {
         }.getOrDefault(emptyList()).also { vodCategoriesCache = it }
     }
 
-    suspend fun getVodStreams(categoryId: String? = null): List<PortalStream> = withContext(Dispatchers.IO) {
-        val settings = currentSettings ?: return@withContext emptyList()
-        val session = currentSession ?: return@withContext emptyList()
+    /** Read mixed VOD pages once, then classify each row using is_series. */
+    suspend fun getVodCatalogBatch(
+        categoryId: String? = null,
+        startPage: Int = 0,
+        maxPages: Int = 20
+    ): VodCatalogBatch = withContext(Dispatchers.IO) {
+        val settings = currentSettings ?: return@withContext VodCatalogBatch(emptyList(), startPage, null, false)
+        val session = currentSession ?: return@withContext VodCatalogBatch(emptyList(), startPage, null, false)
+        val items = mutableListOf<PortalStream>()
+        val seen = mutableSetOf<String>()
+        var page = startPage
+        var total: Int? = null
+        var hasMore = true
         val params = vodListParams(categoryId)
-        fetchWithPageFallback(settings, session, "vod", "get_ordered_list", params) {
-            StalkerParser.parseVod(it, streamType = "movie", seriesOnly = false)
-        }.withCategoryLocks(vodCategoriesCache)
+
+        for (index in 0 until maxPages) {
+            val response = try {
+                stalkerClient.call(settings.url, settings.mac, session, "vod", "get_ordered_list", params + ("p" to page.toString()))
+            } catch (error: Exception) {
+                if (items.isEmpty()) throw error
+                break
+            }
+            val js = response.optJSONObject("js")
+            val reportedTotal = js?.optInt("total_items", -1) ?: -1
+            if (reportedTotal >= 0) total = reportedTotal
+            val parsed = StalkerParser.parseVod(response, seriesOnly = null)
+            if (parsed.isEmpty()) {
+                hasMore = false
+                return@withContext VodCatalogBatch(items, page, total, hasMore)
+            }
+            val categoryLocked = (vodCategoriesCache + seriesCategoriesCache).any { it.id == categoryId && it.isLocked }
+            val newItems = parsed.filter { seen.add("${it.streamType}:${it.id}") }
+                .withCategoryLocks(vodCategoriesCache + seriesCategoriesCache)
+                .map { if (categoryLocked) it.copy(isLocked = true) else it }
+            if (newItems.isEmpty()) {
+                hasMore = false
+                return@withContext VodCatalogBatch(items, page, total, hasMore)
+            }
+            items += newItems
+            page++
+            val pageSize = js?.optInt("max_page_items", parsed.size)?.takeIf { it > 0 } ?: parsed.size
+            if (total != null && page * pageSize >= total!!) {
+                hasMore = false
+                return@withContext VodCatalogBatch(items, page, total, hasMore)
+            }
+            if (parsed.size < pageSize) {
+                hasMore = false
+                return@withContext VodCatalogBatch(items, page, total, hasMore)
+            }
+        }
+        VodCatalogBatch(items, page, total, hasMore)
     }
+
+    suspend fun getVodStreams(categoryId: String? = null): List<PortalStream> =
+        getVodCatalogBatch(categoryId).items.filter { it.streamType == "movie" }
 
     suspend fun getSeriesCategories(): List<PortalCategory> = withContext(Dispatchers.IO) {
         val session = currentSession ?: return@withContext emptyList()
@@ -145,23 +199,8 @@ class PortalRepository {
         }.getOrDefault(emptyList()).also { seriesCategoriesCache = it }
     }
 
-    suspend fun getSeriesStreams(categoryId: String? = null): List<PortalStream> = withContext(Dispatchers.IO) {
-        val settings = currentSettings ?: return@withContext emptyList()
-        val session = currentSession ?: return@withContext emptyList()
-        // Series are a VOD family in Stalker. The `series` type is only a
-        // category endpoint on many portals and returns no ordered list.
-        val params = vodListParams(categoryId)
-        val vodSeries = fetchWithPageFallback(settings, session, "vod", "get_ordered_list", params) {
-            StalkerParser.parseVod(it, streamType = "series", seriesOnly = true)
-        }
-        if (vodSeries.isNotEmpty()) return@withContext vodSeries.withCategoryLocks(seriesCategoriesCache.ifEmpty { vodCategoriesCache })
-
-        // Compatibility fallback for middleware versions that really do expose
-        // an ordered series list under the `series` type.
-        fetchWithPageFallback(settings, session, "series", "get_ordered_list", params) {
-            StalkerParser.parseVod(it, streamType = "series", seriesOnly = true)
-        }.withCategoryLocks(seriesCategoriesCache.ifEmpty { vodCategoriesCache })
-    }
+    suspend fun getSeriesStreams(categoryId: String? = null): List<PortalStream> =
+        getVodCatalogBatch(categoryId).items.filter { it.streamType == "series" }
 
     suspend fun getSeasons(seriesId: String): List<PortalSeason> = withContext(Dispatchers.IO) {
         val settings = currentSettings ?: return@withContext emptyList()
@@ -449,7 +488,7 @@ class PortalRepository {
         type: String,
         action: String,
         parameters: Map<String, String>,
-        pageValues: List<String?> = listOf("1", "0"),
+        pageValues: List<String?> = listOf("0", "1"),
         parser: (JSONObject) -> List<T>
     ): List<T> {
         // Captured Stalker clients start at page 1. A few older builds start at

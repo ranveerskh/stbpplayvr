@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
@@ -44,6 +45,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.example.stbplay.ui.QuestButton
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.PortalUrl
@@ -240,11 +242,22 @@ private fun NativePlayerScreen(
                     isFocusable = true
                     isFocusableInTouchMode = true
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    setOnKeyListener { _, keyCode, event ->
+                        if ((keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) && event.action == KeyEvent.ACTION_UP) {
+                            onBack()
+                            true
+                        } else keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE
+                    }
                     post { requestFocus() }
                 }
             },
             update = { it.player = player }
         )
+        QuestButton(
+            onClick = onBack,
+            modifier = Modifier.align(Alignment.TopStart).padding(18.dp).questInitialFocus(),
+            colors = ButtonDefaults.colors(containerColor = Color(0xCC061426), contentColor = Color.White)
+        ) { Text("← Back") }
         playerError?.let { error ->
             Column(
                 modifier = Modifier.align(Alignment.Center).background(Color(0xEE071426)).padding(30.dp),

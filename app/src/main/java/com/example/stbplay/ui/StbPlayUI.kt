@@ -140,6 +140,8 @@ data class StbPlayLibraryState(
     val selectedCategory: Int = 0,
     val items: List<UiMedia> = emptyList(),
     val totalItemsText: String = "",
+    val hasMore: Boolean = false,
+    val loadingMore: Boolean = false,
     val emptyMessage: String = "Try another category or refresh the portal."
 )
 
@@ -173,6 +175,7 @@ fun StbPlayApp(
     contentFilter: ContentKindFilter,
     onTabSelected: (StbPlayTab) -> Unit,
     onContentFilterChanged: (ContentKindFilter) -> Unit,
+    onLoadMoreContent: () -> Unit,
     onCategorySelected: (StbPlayTab, Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit,
@@ -238,6 +241,7 @@ fun StbPlayApp(
                     state = contentState,
                     selectedFilter = contentFilter,
                     onFilterChanged = onContentFilterChanged,
+                    onLoadMore = onLoadMoreContent,
                     onCategorySelected = { onCategorySelected(StbPlayTab.CONTENT, it) },
                     onMediaClick = onMediaClick,
                     onToggleFavorite = onToggleFavorite
@@ -643,6 +647,7 @@ private fun ContentBrowserScreen(
     state: StbPlayLibraryState,
     selectedFilter: ContentKindFilter,
     onFilterChanged: (ContentKindFilter) -> Unit,
+    onLoadMore: () -> Unit,
     onCategorySelected: (Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit
@@ -665,7 +670,15 @@ private fun ContentBrowserScreen(
             Spacer(modifier = Modifier.height(17.dp))
             when {
                 state.loading -> LoadingContent("Loading provider catalogue…")
-                state.items.isEmpty() -> EmptyState("No titles in this category", state.emptyMessage)
+                state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("No titles loaded for this filter", color = White, fontSize = 20.sp)
+                        Text(state.emptyMessage, color = Muted, fontSize = 13.sp)
+                        if (state.hasMore) QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
+                            Text(if (state.loadingMore) "Loading…" else "Load more titles")
+                        }
+                    }
+                }
                 else -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 166.dp),
                     modifier = Modifier.fillMaxSize().focusGroup(),
@@ -673,8 +686,15 @@ private fun ContentBrowserScreen(
                     horizontalArrangement = Arrangement.spacedBy(17.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    gridItems(state.items, key = { it.id }) { media ->
+                    gridItems(state.items, key = { "${it.streamType}:${it.id}" }) { media ->
                         MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) })
+                    }
+                    if (state.hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
+                                Text(if (state.loadingMore) "Loading…" else "Load more titles")
+                            }
+                        }
                     }
                 }
             }

@@ -97,7 +97,7 @@ object StalkerParser {
                         "thumbnail"
                     ),
                     categoryId = item.text("category_id", "category", "genre_id"),
-                    streamType = streamType,
+                    streamType = if (seriesOnly == null) (if (isSeries) "series" else "movie") else streamType,
                     number = item.text("number", "position")?.toIntOrNull(),
                     isLocked = item.bool("lock", "censored", "adult", "is_adult", "age_restriction") ||
                         ContentSafety.isRestricted(name, item.text("rating", "rating_imdb", "kinopoisk_rating")),
@@ -125,6 +125,7 @@ object StalkerParser {
     fun parseSeasons(response: JSONObject): List<PortalSeason> {
         return dataArray(response).asSequence()
             .mapNotNull { item ->
+                if (item.has("is_season") && !item.bool("is_season")) return@mapNotNull null
                 val id = item.text("id", "season_id") ?: return@mapNotNull null
                 val number = item.text("number", "season_number")?.toIntOrNull()
                     ?: item.optInt("season", 0).takeIf { it > 0 }
@@ -143,6 +144,7 @@ object StalkerParser {
     fun parseEpisodes(response: JSONObject, parentCommand: String? = null): List<PortalEpisode> {
         return dataArray(response).asSequence()
             .mapNotNull { item ->
+                if (item.has("is_episode") && !item.bool("is_episode")) return@mapNotNull null
                 val id = item.text("id", "episode_id") ?: return@mapNotNull null
                 PortalEpisode(
                     id = id,
@@ -223,6 +225,7 @@ object StalkerParser {
         return when (seriesValue) {
             is Boolean -> seriesValue
             is Number -> seriesValue.toInt() != 0
+            is JSONArray -> seriesValue.length() > 0
             else -> seriesValue.toString().trim().lowercase().let { value ->
                 value in setOf("1", "true", "yes", "series", "tvshow") ||
                     (value.isNotBlank() && value !in setOf("0", "false", "no", "none"))

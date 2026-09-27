@@ -75,6 +75,15 @@ private data class QualityContext(
 
 private data class PendingCategory(val tab: StbPlayTab, val index: Int, val title: String)
 
+private data class VodCatalogState(
+    val items: List<PortalStream> = emptyList(),
+    val nextPage: Int = 0,
+    val totalItems: Int? = null,
+    val hasMore: Boolean = true,
+    val loading: Boolean = false,
+    val error: String? = null
+)
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var settingsManager: SettingsManager
@@ -266,6 +275,8 @@ private fun StbPlayRoot(
     var liveStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var movieStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var seriesStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
+    var vodCatalogs by remember { mutableStateOf<Map<String, VodCatalogState>>(emptyMap()) }
+    var catalogGeneration by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var liveCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
     var movieCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
     var seriesCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
@@ -295,6 +306,8 @@ private fun StbPlayRoot(
     fun startConnection(input: PortalSettings) {
         if (connecting || input.url.isBlank() || input.mac.isBlank()) return
         connecting = true
+        catalogGeneration++
+        vodCatalogs = emptyMap()
         screen = AppScreen.LOADING
         connectionError = null
         loadingStage = "Authenticating portal…"
@@ -318,12 +331,18 @@ private fun StbPlayRoot(
                 loadingProgress = 0.52f
                 movieCategories = portalRepository.getVodCategories()
                 seriesCategories = portalRepository.getSeriesCategories()
-                loadingStage = "Loading movie catalogue…"
+                loadingStage = "Loading Movies & Series…"
                 loadingProgress = 0.67f
-                movieStreams = portalRepository.getVodStreams()
-                loadingStage = "Loading series catalogue…"
+                val firstBatch = portalRepository.getVodCatalogBatch()
+                movieStreams = firstBatch.items.filter { it.streamType == "movie" }
+                seriesStreams = firstBatch.items.filter { it.streamType == "series" }
+                vodCatalogs = mapOf("all" to VodCatalogState(
+                    items = firstBatch.items,
+                    nextPage = firstBatch.nextPage,
+                    totalItems = firstBatch.totalItems,
+                    hasMore = firstBatch.hasMore
+                ))
                 loadingProgress = 0.84f
-                seriesStreams = portalRepository.getSeriesStreams()
 
                 liveCategoryIndex = 0
                 contentCategoryIndex = 0
@@ -390,11 +409,6 @@ private fun StbPlayRoot(
         }
     }
 
-    fun requestMedia(media: UiMedia) {
-        val stream = allStreamFor(media) ?: return
-        if (stream.isLocked) pendingLockedMedia = stream else openMedia(stream, media.progress)
-    }
-
     fun startQualityChoice(context: QualityContext) {
         qualityContext = context
         qualityOptions = emptyList()
@@ -430,6 +444,22 @@ private fun StbPlayRoot(
     val uiLiveCategories = remember(liveCategories) {
         listOf(UiCategory("all", "All")) + liveCategories.map { UiCategory(it.id, it.name, it.isLocked) }
     }
+    fun requestMedia(media: UiMedia) {
+        val stream = allStreamFor(media) ?: return
+        val categoryIndex = if (selectedTab == StbPlayTab.LIVE) liveCategoryIndex else contentCategoryIndex
+        val category = when (selectedTab) {
+            StbPlayTab.LIVE -> uiLiveCategories.getOrNull(categoryIndex)
+            StbPlayTab.CONTENT -> contentCategories.getOrNull(categoryIndex)
+            else -> null
+        }
+        val categoryUnlocked = category?.isLocked == true &&
+            unlockedAdultCategoryKey == "${selectedTab.name}:$categoryIndex" &&
+            stream.categoryId == category?.id &&
+            ((selectedTab == StbPlayTab.LIVE && stream.streamType == "live") ||
+                (selectedTab == StbPlayTab.CONTENT && stream.streamType != "live"))
+        if (stream.isLocked && !categoryUnlocked) pendingLockedMedia = stream else openMedia(stream, media.progress)
+    }
+
     fun filterByCategory(items: List<PortalStream>, categories: List<UiCategory>, selectedIndex: Int): List<PortalStream> {
         val category = categories.getOrNull(selectedIndex) ?: categories.firstOrNull()
         return if (category == null || category.id == "all") items else items.filter { it.categoryId == category.id }
@@ -441,9 +471,10 @@ private fun StbPlayRoot(
     val allVod = remember(movieStreams, seriesStreams) {
         (movieStreams + seriesStreams).distinctBy { "${it.streamType}:${it.id}" }
     }
-    val categoryVod = remember(allVod, contentCategories, contentCategoryIndex) {
-        filterByCategory(allVod, contentCategories, contentCategoryIndex)
-    }
+    val selectedContentCategory = contentCategories.getOrNull(contentCategoryIndex)
+    val selectedVodKey = selectedContentCategory?.id ?: "all"
+    val selectedVodCatalog = vodCatalogs[selectedVodKey]
+    val categoryVod = selectedVodCatalog?.items.orEmpty()
     val filteredVod = remember(categoryVod, contentFilter, catalogueLanguage) {
         categoryVod.filter { stream ->
             val kindMatches = when (contentFilter) {
@@ -505,10 +536,15 @@ private fun StbPlayRoot(
         totalItemsText = "${filteredLive.size} channels"
     )
     val contentState = StbPlayLibraryState(
+        loading = selectedVodCatalog?.loading == true && categoryVod.isEmpty(),
         categories = contentCategories,
         selectedCategory = contentCategoryIndex.coerceIn(0, (contentCategories.size - 1).coerceAtLeast(0)),
         items = filteredVod.map(::toUi),
-        totalItemsText = "${filteredVod.size} titles"
+        totalItemsText = selectedVodCatalog?.totalItems?.let { "${categoryVod.size} of $it loaded" }
+            ?: "${categoryVod.size} titles loaded",
+        hasMore = selectedVodCatalog?.hasMore == true,
+        loadingMore = selectedVodCatalog?.loading == true,
+        emptyMessage = selectedVodCatalog?.error ?: "Try another category or load more titles."
     )
     val favouritesState = StbPlayLibraryState(items = favoriteStreams.map(::toUi))
     val settingsState = StbPlaySettingsState(
@@ -530,6 +566,33 @@ private fun StbPlayRoot(
         updateAvailableVersion = updateInfo?.version
     )
 
+    fun loadVodCategory(categoryId: String?) {
+        val key = categoryId ?: "all"
+        val previous = vodCatalogs[key] ?: VodCatalogState()
+        if (previous.loading || !previous.hasMore) return
+        val generation = catalogGeneration
+        vodCatalogs = vodCatalogs + (key to previous.copy(loading = true, error = null))
+        scope.launch {
+            runCatching {
+                portalRepository.getVodCatalogBatch(categoryId, previous.nextPage, if (previous.nextPage == 0) 20 else 5)
+            }.onSuccess { batch ->
+                if (generation != catalogGeneration) return@onSuccess
+                val latest = vodCatalogs[key] ?: previous
+                val merged = (latest.items + batch.items).distinctBy { "${it.streamType}:${it.id}" }
+                vodCatalogs = vodCatalogs + (key to latest.copy(
+                    items = merged, nextPage = batch.nextPage, totalItems = batch.totalItems ?: latest.totalItems,
+                    hasMore = batch.hasMore, loading = false
+                ))
+                movieStreams = (movieStreams + batch.items.filter { it.streamType == "movie" }).distinctBy { it.id }
+                seriesStreams = (seriesStreams + batch.items.filter { it.streamType == "series" }).distinctBy { it.id }
+            }.onFailure { error ->
+                if (generation == catalogGeneration) {
+                    vodCatalogs = vodCatalogs + (key to previous.copy(loading = false, error = error.message ?: "Could not load this category."))
+                }
+            }
+        }
+    }
+
     fun requestCategory(tab: StbPlayTab, index: Int) {
         val category = when (tab) {
             StbPlayTab.LIVE -> uiLiveCategories.getOrNull(index)
@@ -543,7 +606,10 @@ private fun StbPlayRoot(
             if (category?.isLocked != true) unlockedAdultCategoryKey = null
             when (tab) {
                 StbPlayTab.LIVE -> liveCategoryIndex = index
-                StbPlayTab.CONTENT -> contentCategoryIndex = index
+                StbPlayTab.CONTENT -> {
+                    contentCategoryIndex = index
+                    category?.id?.takeIf { it != "all" && it !in vodCatalogs }?.let { loadVodCategory(it) }
+                }
                 else -> Unit
             }
         }
@@ -567,8 +633,10 @@ private fun StbPlayRoot(
                 !disclaimerAcknowledged -> FirstStartDisclaimer {
                     scope.launch { settingsManager.acknowledgeDisclaimer() }
                 }
-                playRequest != null -> PlaybackRoute(
-                    request = playRequest!!,
+                playRequest != null -> {
+                    val currentRequest = playRequest!!
+                    PlaybackRoute(
+                    request = currentRequest,
                     portalUiUrl = storedSettings.url,
                     macAddress = storedSettings.mac,
                     token = portalRepository.getHandshakeToken(),
@@ -576,10 +644,11 @@ private fun StbPlayRoot(
                     playerPreference = playerPreference,
                     subtitlePreference = subtitlePreference,
                     onProgress = { position, duration ->
-                        if (playRequest?.kind != StalkerContentKind.LIVE) scope.launch { settingsManager.saveProgress(playRequest!!.contentId, position, duration) }
+                        if (currentRequest.kind != StalkerContentKind.LIVE) scope.launch { settingsManager.saveProgress(currentRequest.contentId, position, duration) }
                     },
                     onBack = { playRequest = null }
-                )
+                    )
+                }
                 qualityContext != null -> QualitySelectionScreen(
                     title = qualityContext!!.title,
                     options = qualityOptions,
@@ -641,6 +710,7 @@ private fun StbPlayRoot(
                         selectedTab = tab
                     },
                     onContentFilterChanged = { contentFilter = it },
+                    onLoadMoreContent = { loadVodCategory(selectedContentCategory?.id?.takeUnless { it == "all" }) },
                     onCategorySelected = ::requestCategory,
                     onMediaClick = ::requestMedia,
                     onToggleFavorite = ::setFavorite,
@@ -648,6 +718,7 @@ private fun StbPlayRoot(
                     onRefresh = { startConnection(storedSettings) },
                     onClearCache = {
                         liveStreams = emptyList(); movieStreams = emptyList(); seriesStreams = emptyList()
+                        vodCatalogs = emptyMap()
                         startConnection(storedSettings)
                     },
                     onClearHistory = { scope.launch { settingsManager.clearWatchHistory() } },
@@ -709,7 +780,10 @@ private fun StbPlayRoot(
                         unlockedAdultCategoryKey = "${pending.tab.name}:${pending.index}"
                         when (pending.tab) {
                             StbPlayTab.LIVE -> liveCategoryIndex = pending.index
-                            StbPlayTab.CONTENT -> contentCategoryIndex = pending.index
+                            StbPlayTab.CONTENT -> {
+                                contentCategoryIndex = pending.index
+                                contentCategories.getOrNull(pending.index)?.id?.let { if (it !in vodCatalogs) loadVodCategory(it) }
+                            }
                             else -> Unit
                         }
                         pendingCategory = null
