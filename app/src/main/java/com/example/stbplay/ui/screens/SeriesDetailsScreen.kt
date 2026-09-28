@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -32,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.tv.material3.Border
 import com.example.stbplay.ui.QuestButton
 import androidx.tv.material3.ButtonDefaults
@@ -66,9 +69,13 @@ fun SeriesDetailsScreen(
     var episodes by remember(series.id) { mutableStateOf<List<PortalEpisode>>(emptyList()) }
     var loadingSeasons by remember(series.id) { mutableStateOf(true) }
     var loadingEpisodes by remember(series.id) { mutableStateOf(false) }
+    var directEpisodeFallback by remember(series.id) { mutableStateOf(false) }
     var error by remember(series.id) { mutableStateOf<String?>(null) }
 
     BackHandler(onBack = onBack)
+    val context = LocalContext.current
+    val compact = LocalConfiguration.current.screenWidthDp < 900 &&
+        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
 
     val artworkUrl = remember(series.id, series.iconUrl, repository) {
         repository.resolveArtworkUrl(series.iconUrl)
@@ -81,18 +88,97 @@ fun SeriesDetailsScreen(
         loadingSeasons = true
         error = null
         runCatching { repository.getSeasons(series.id) }
-            .onSuccess { list -> seasons = list; selectedSeason = list.firstOrNull() }
+            .onSuccess { list ->
+                if (list.isNotEmpty()) {
+                    seasons = list
+                    selectedSeason = list.firstOrNull()
+                } else {
+                    val directEpisodes = runCatching { repository.getEpisodes(series.id, "0", series.cmd) }.getOrDefault(emptyList())
+                    if (directEpisodes.isNotEmpty()) {
+                        directEpisodeFallback = true
+                        seasons = listOf(PortalSeason("direct", "Episodes", 1))
+                        selectedSeason = seasons.first()
+                        episodes = directEpisodes
+                    } else {
+                        seasons = emptyList()
+                        error = "This portal did not return seasons or episodes for this series."
+                    }
+                }
+            }
             .onFailure { error = it.message ?: "Could not load seasons." }
         loadingSeasons = false
     }
     LaunchedEffect(series.id, selectedSeason?.id) {
         val season = selectedSeason ?: return@LaunchedEffect
+        if (directEpisodeFallback && season.id == "direct") return@LaunchedEffect
         loadingEpisodes = true
         error = null
         runCatching { repository.getEpisodes(series.id, season.id, series.cmd) }
             .onSuccess { episodes = it }
             .onFailure { error = it.message ?: "Could not load episodes." }
         loadingEpisodes = false
+    }
+
+    if (compact) {
+        Column(Modifier.fillMaxSize().background(SeriesNavy).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(92.dp).height(126.dp).background(SeriesPanel), contentAlignment = Alignment.Center) {
+                    ArtworkImage(
+                        imageUrl = artworkUrl,
+                        title = series.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        requestHeaders = artworkHeaders,
+                        fallbackTextSize = 30.sp,
+                        fallbackColor = SeriesGold
+                    )
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("SERIES", color = SeriesGoldLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(series.name, color = SeriesWhite, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    series.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 11.sp, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                QuestButton(onClick = onToggleFavorite, modifier = Modifier.weight(1f), colors = ButtonDefaults.colors(containerColor = SeriesPanel, contentColor = SeriesWhite)) {
+                    Text(if (isFavorite) "Remove favourite" else "Add to favourites", maxLines = 1)
+                }
+                QuestButton(onClick = onBack, modifier = Modifier.width(88.dp), colors = ButtonDefaults.colors(containerColor = SeriesPanel, contentColor = SeriesWhite)) { Text("Back") }
+            }
+            Text(if (directEpisodeFallback) "Episodes" else "Seasons", color = SeriesGoldLight, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            when {
+                loadingSeasons -> Text("Loading seasons…", color = SeriesMuted, fontSize = 13.sp)
+                !error.isNullOrBlank() -> Text(error!!, color = Color(0xFFFFA4A4), fontSize = 13.sp)
+                seasons.isEmpty() -> Text("No episodes are available for this series.", color = SeriesMuted, fontSize = 13.sp)
+                else -> LazyRow(Modifier.fillMaxWidth().height(42.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(seasons, key = { it.id }) { season ->
+                        val selected = selectedSeason?.id == season.id
+                        QuestSurface(
+                            onClick = { selectedSeason = season },
+                            modifier = Modifier.height(42.dp),
+                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                            colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) SeriesGold else SeriesPanel, focusedContainerColor = SeriesGold),
+                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGoldLight)))
+                        ) {
+                            Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                                Text(if (season.id == "direct") "Episodes" else "Season ${season.number}", color = if (selected) SeriesNavy else SeriesWhite, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        }
+                    }
+                }
+            }
+            Text("Episode list", color = SeriesWhite, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            when {
+                loadingEpisodes -> Text("Loading episodes…", color = SeriesMuted, fontSize = 13.sp)
+                episodes.isEmpty() -> Text("No episodes were returned for this season.", color = SeriesMuted, fontSize = 13.sp)
+                else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(episodes, key = { it.id }) { episode ->
+                        EpisodeRow(episode, initialFocus = episode.id == episodes.firstOrNull()?.id) { onEpisodeClick(episode) }
+                    }
+                }
+            }
+        }
+        return
     }
 
     Row(Modifier.fillMaxSize().background(SeriesNavy).padding(40.dp)) {
@@ -136,7 +222,7 @@ fun SeriesDetailsScreen(
                                 border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGoldLight)))
                             ) {
                                 Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                                    Text("Season ${season.number}", color = if (selected) SeriesNavy else SeriesWhite, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                Text(if (season.id == "direct") "Episodes" else "Season ${season.number}", color = if (selected) SeriesNavy else SeriesWhite, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
                                 }
                             }
                         }

@@ -32,6 +32,7 @@ import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.PortalRepository
 import com.example.stbplay.data.CatalogCacheStore
 import com.example.stbplay.data.CatalogSnapshot
+import com.example.stbplay.data.CachedVodCatalog
 import com.example.stbplay.data.SettingsManager
 import com.example.stbplay.data.StalkerContentKind
 import com.example.stbplay.data.StalkerPlayRequest
@@ -64,6 +65,9 @@ import com.example.stbplay.ui.screens.SeriesDetailsScreen
 import com.example.stbplay.ui.screens.SetupScreen
 import com.example.stbplay.ui.theme.STBPlayTheme
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.text.DateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -283,6 +287,7 @@ private fun StbPlayRoot(
     var movieStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var seriesStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var vodCatalogs by remember { mutableStateOf<Map<String, VodCatalogState>>(emptyMap()) }
+    var categoryPreloadJob by remember { mutableStateOf<Job?>(null) }
     var catalogGeneration by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var liveCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
     var movieCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
@@ -310,8 +315,50 @@ private fun StbPlayRoot(
 
     fun portalKey(settings: PortalSettings) = "${settings.id}|${settings.url.trim()}|${settings.mac.trim()}"
 
+    fun catalogSnapshot() = CatalogSnapshot(
+        liveStreams = liveStreams,
+        movieStreams = movieStreams,
+        seriesStreams = seriesStreams,
+        liveCategories = liveCategories,
+        movieCategories = movieCategories,
+        seriesCategories = seriesCategories,
+        vodCatalogs = vodCatalogs.mapValues { (_, value) ->
+            CachedVodCatalog(value.items, value.nextPage, value.totalItems, value.hasMore)
+        }
+    )
+
+    fun startCategoryPreload(settings: PortalSettings) {
+        if (categoryPreloadJob?.isActive == true) return
+        categoryPreloadJob = scope.launch {
+            val categories = (movieCategories + seriesCategories)
+                .distinctBy { it.id }
+                .filterNot { it.isLocked }
+            for (category in categories) {
+                if (!isActive) break
+                val cached = vodCatalogs[category.id]
+                if (!cached?.items.isNullOrEmpty() || cached?.hasMore == false) continue
+                runCatching { portalRepository.getVodCatalogBatch(category.id, cached?.nextPage ?: 0, maxPages = 1) }
+                    .onSuccess { batch ->
+                        val previous = vodCatalogs[category.id] ?: VodCatalogState()
+                        val merged = (previous.items + batch.items).distinctBy { "${it.streamType}:${it.id}" }
+                        vodCatalogs = vodCatalogs + (category.id to VodCatalogState(
+                            items = merged,
+                            nextPage = batch.nextPage,
+                            totalItems = batch.totalItems ?: previous.totalItems,
+                            hasMore = batch.hasMore
+                        ))
+                        movieStreams = (movieStreams + batch.items.filter { it.streamType == "movie" }).distinctBy { it.id }
+                        seriesStreams = (seriesStreams + batch.items.filter { it.streamType == "series" }).distinctBy { it.id }
+                    }
+                catalogCache.write(portalKey(settings), catalogSnapshot())
+                delay(450)
+            }
+        }
+    }
+
     fun startConnection(input: PortalSettings) {
         if (connecting || input.url.isBlank() || input.mac.isBlank()) return
+        categoryPreloadJob?.cancel()
         val refreshingVisibleCatalogue = screen == AppScreen.APP && (liveStreams.isNotEmpty() || movieStreams.isNotEmpty() || seriesStreams.isNotEmpty())
         if (!refreshingVisibleCatalogue) scope.launch { contentGridState.scrollToItem(0) }
         connecting = true
@@ -336,7 +383,9 @@ private fun StbPlayRoot(
                         liveCategories = cached.liveCategories
                         movieCategories = cached.movieCategories
                         seriesCategories = cached.seriesCategories
-                        vodCatalogs = mapOf("all" to VodCatalogState(cached.allVodItems, cached.nextVodPage, cached.vodTotalItems, cached.vodHasMore))
+                        vodCatalogs = cached.vodCatalogs.mapValues { (_, value) ->
+                            VodCatalogState(value.items, value.nextPage, value.totalItems, value.hasMore)
+                        }
                         screen = AppScreen.APP
                         loadingStage = "Updating catalogue in background…"
                     }
@@ -358,27 +407,17 @@ private fun StbPlayRoot(
                 seriesCategories = portalRepository.getSeriesCategories()
                 loadingStage = "Loading Movies & Series…"
                 loadingProgress = 0.67f
-                val firstBatch = portalRepository.getVodCatalogBatch()
+                val firstBatch = portalRepository.getVodCatalogBatch(maxPages = 1)
+                val categoryCatalogs = vodCatalogs.filterKeys { it != "all" }
                 movieStreams = firstBatch.items.filter { it.streamType == "movie" }
                 seriesStreams = firstBatch.items.filter { it.streamType == "series" }
-                vodCatalogs = mapOf("all" to VodCatalogState(
+                vodCatalogs = categoryCatalogs + ("all" to VodCatalogState(
                     items = firstBatch.items,
                     nextPage = firstBatch.nextPage,
                     totalItems = firstBatch.totalItems,
                     hasMore = firstBatch.hasMore
                 ))
-                catalogCache.write(portalKey(input), CatalogSnapshot(
-                    liveStreams = liveStreams,
-                    movieStreams = movieStreams,
-                    seriesStreams = seriesStreams,
-                    liveCategories = liveCategories,
-                    movieCategories = movieCategories,
-                    seriesCategories = seriesCategories,
-                    allVodItems = firstBatch.items,
-                    nextVodPage = firstBatch.nextPage,
-                    vodTotalItems = firstBatch.totalItems ?: firstBatch.items.size,
-                    vodHasMore = firstBatch.hasMore
-                ))
+                catalogCache.write(portalKey(input), catalogSnapshot())
                 loadingProgress = 0.84f
 
                 liveCategoryIndex = 0
@@ -387,6 +426,7 @@ private fun StbPlayRoot(
                 loadingProgress = 1f
                 settingsManager.markRefreshNow()
                 screen = AppScreen.APP
+                startCategoryPreload(input)
             } catch (error: Throwable) {
                 connectionError = error.message ?: "Could not load this portal."
                 if (refreshingVisibleCatalogue) screen = AppScreen.APP
@@ -484,6 +524,7 @@ private fun StbPlayRoot(
     }
     fun requestMedia(media: UiMedia) {
         val stream = allStreamFor(media) ?: return
+        categoryPreloadJob?.cancel()
         val categoryIndex = if (selectedTab == StbPlayTab.LIVE) liveCategoryIndex else contentCategoryIndex
         val category = when (selectedTab) {
             StbPlayTab.LIVE -> uiLiveCategories.getOrNull(categoryIndex)
@@ -614,7 +655,7 @@ private fun StbPlayRoot(
         vodCatalogs = vodCatalogs + (key to previous.copy(loading = true, error = null))
         scope.launch {
             runCatching {
-                portalRepository.getVodCatalogBatch(categoryId, previous.nextPage, if (previous.nextPage == 0) 20 else 5)
+                portalRepository.getVodCatalogBatch(categoryId, previous.nextPage, if (previous.nextPage == 0) 1 else 3)
             }.onSuccess { batch ->
                 if (generation != catalogGeneration) return@onSuccess
                 val latest = vodCatalogs[key] ?: previous
@@ -625,6 +666,8 @@ private fun StbPlayRoot(
                 ))
                 movieStreams = (movieStreams + batch.items.filter { it.streamType == "movie" }).distinctBy { it.id }
                 seriesStreams = (seriesStreams + batch.items.filter { it.streamType == "series" }).distinctBy { it.id }
+                scope.launch { catalogCache.write(portalKey(storedSettings), catalogSnapshot()) }
+                scope.launch { delay(700); startCategoryPreload(storedSettings) }
             }.onFailure { error ->
                 if (generation == catalogGeneration) {
                     vodCatalogs = vodCatalogs + (key to previous.copy(loading = false, error = error.message ?: "Could not load this category."))
@@ -647,6 +690,7 @@ private fun StbPlayRoot(
             when (tab) {
                 StbPlayTab.LIVE -> liveCategoryIndex = index
                 StbPlayTab.CONTENT -> {
+                    categoryPreloadJob?.cancel()
                     contentCategoryIndex = index
                     category?.id?.takeIf { it != "all" && it !in vodCatalogs }?.let { loadVodCategory(it) }
                 }
@@ -686,7 +730,7 @@ private fun StbPlayRoot(
                     onProgress = { position, duration ->
                         if (currentRequest.kind != StalkerContentKind.LIVE) scope.launch { settingsManager.saveProgress(currentRequest.contentId, position, duration) }
                     },
-                    onBack = { playRequest = null }
+                    onBack = { playRequest = null; startCategoryPreload(storedSettings) }
                     )
                 }
                 qualityContext != null -> QualitySelectionScreen(
@@ -705,7 +749,7 @@ private fun StbPlayRoot(
                         onPlay = { startQualityChoice(QualityContext(movie.name, movie)) },
                         onResume = { startQualityChoice(QualityContext(movie.name, movie, resumeFraction = media.progress)) },
                         onToggleFavorite = { setFavorite(media) },
-                        onBack = { selectedMovie = null }
+                        onBack = { selectedMovie = null; startCategoryPreload(storedSettings) }
                     )
                 }
                 selectedSeries != null -> {
@@ -716,7 +760,7 @@ private fun StbPlayRoot(
                         isFavorite = series.id in favoriteIds,
                         onToggleFavorite = { setFavorite(toUi(series)) },
                         onEpisodeClick = { episode -> startQualityChoice(QualityContext(episode.name, series, episode)) },
-                        onBack = { selectedSeries = null }
+                        onBack = { selectedSeries = null; startCategoryPreload(storedSettings) }
                     )
                 }
                 screen == AppScreen.SETUP -> SetupScreen(
@@ -758,6 +802,7 @@ private fun StbPlayRoot(
                     onRemoveHistory = { media -> scope.launch { settingsManager.removeFromHistory(media.id) } },
                     onRefresh = { startConnection(storedSettings) },
                     onClearCache = {
+                        categoryPreloadJob?.cancel()
                         liveStreams = emptyList(); movieStreams = emptyList(); seriesStreams = emptyList()
                         vodCatalogs = emptyMap()
                         scope.launch {

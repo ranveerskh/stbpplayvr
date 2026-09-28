@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -27,6 +29,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import com.example.stbplay.ui.QuestButton
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -53,6 +57,46 @@ fun MovieDetailsScreen(
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
+    val context = LocalContext.current
+    val compact = LocalConfiguration.current.screenWidthDp < 900 &&
+        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    if (compact) {
+        Column(
+            Modifier.fillMaxSize().background(DetailNavy).verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ArtworkImage(
+                imageUrl = item.imageUrl,
+                title = item.title,
+                modifier = Modifier.fillMaxWidth().height(210.dp),
+                contentScale = ContentScale.Fit,
+                requestHeaders = item.imageHeaders,
+                fallbackTextSize = 52.sp,
+                fallbackColor = DetailGold
+            )
+            Text(item.badge ?: "MOVIE", color = DetailGoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(item.title, color = DetailWhite, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            val meta = listOfNotNull(item.year?.toString(), item.language, item.genre, item.rating?.takeIf { it.isNotBlank() }).joinToString("  ·  ")
+            if (meta.isNotBlank()) Text(meta, color = DetailMuted, fontSize = 13.sp)
+            item.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = DetailWhite.copy(alpha = 0.9f), fontSize = 14.sp) }
+            item.cast?.takeIf { it.isNotBlank() }?.let { Text("Cast: $it", color = DetailMuted, fontSize = 12.sp) }
+            QuestButton(
+                onClick = onPlay,
+                modifier = Modifier.fillMaxWidth().questInitialFocus(),
+                colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)
+            ) { Text("Play", fontWeight = FontWeight.Bold) }
+            if (item.progress > 0f) QuestButton(onClick = onResume, modifier = Modifier.fillMaxWidth()) {
+                Text("Resume ${(item.progress * 100).toInt()}%")
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                QuestButton(onClick = onToggleFavorite, modifier = Modifier.weight(1f), colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) {
+                    Text(if (item.isFavorite) "Remove favourite" else "Add to favourites", maxLines = 1)
+                }
+                QuestButton(onClick = onBack, modifier = Modifier.widthIn(min = 88.dp), colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) { Text("Back") }
+            }
+        }
+        return
+    }
     Box(Modifier.fillMaxSize().background(DetailNavy)) {
         ArtworkImage(
             imageUrl = item.imageUrl,

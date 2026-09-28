@@ -17,10 +17,14 @@ data class CatalogSnapshot(
     val liveCategories: List<PortalCategory>,
     val movieCategories: List<PortalCategory>,
     val seriesCategories: List<PortalCategory>,
-    val allVodItems: List<PortalStream>,
-    val nextVodPage: Int,
-    val vodTotalItems: Int,
-    val vodHasMore: Boolean
+    val vodCatalogs: Map<String, CachedVodCatalog>
+)
+
+data class CachedVodCatalog(
+    val items: List<PortalStream>,
+    val nextPage: Int,
+    val totalItems: Int?,
+    val hasMore: Boolean
 )
 
 class CatalogCacheStore(context: Context) {
