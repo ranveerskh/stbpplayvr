@@ -12,12 +12,12 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +37,7 @@ import com.example.stbplay.data.CatalogCacheStore
 import com.example.stbplay.data.CatalogSnapshot
 import com.example.stbplay.data.CachedVodCatalog
 import com.example.stbplay.data.SettingsManager
+import com.example.stbplay.data.LauncherIconManager
 import com.example.stbplay.data.StalkerContentKind
 import com.example.stbplay.data.StalkerPlayRequest
 import com.example.stbplay.data.ThemePreference
@@ -212,14 +213,9 @@ class MainActivity : ComponentActivity() {
         registerUpdateReceiver()
 
         setContent {
-            val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.DARK)
-            STBPlayTheme(
-                darkTheme = when (themePreference) {
-                    ThemePreference.DARK -> true
-                    ThemePreference.LIGHT -> false
-                    ThemePreference.SYSTEM -> isSystemInDarkTheme()
-                }
-            ) {
+            val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
+            LaunchedEffect(themePreference) { LauncherIconManager.apply(applicationContext, themePreference) }
+            STBPlayTheme(preference = themePreference) {
                 StbPlayRoot(settingsManager, updateManager, ::queueUpdateDownload, ::shareApp)
             }
         }
@@ -276,7 +272,7 @@ private fun StbPlayRoot(
     val progressById by settingsManager.vodProgress.collectAsState(initial = emptyMap())
     val playerPreference by settingsManager.playerPreference.collectAsState(initial = PlayerPreference.AUTO)
     val subtitlePreference by settingsManager.subtitlePreference.collectAsState(initial = com.example.stbplay.data.SubtitlePreference.AUTO)
-    val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.DARK)
+    val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
     val catalogueLanguage by settingsManager.catalogueLanguage.collectAsState(initial = "All")
     val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = true)
     val disclaimerAcknowledged by settingsManager.disclaimerAcknowledged.collectAsState(initial = false)
@@ -390,12 +386,19 @@ private fun StbPlayRoot(
     fun startConnection(input: PortalSettings) {
         if (connecting || input.url.isBlank() || input.mac.isBlank()) return
         categoryPreloadJob?.cancel()
-        val refreshingVisibleCatalogue = screen == AppScreen.APP && (liveStreams.isNotEmpty() || movieStreams.isNotEmpty() || seriesStreams.isNotEmpty())
+        val refreshingVisibleCatalogue = screen == AppScreen.APP && autoConnectKey == portalKey(input) &&
+            (liveStreams.isNotEmpty() || movieStreams.isNotEmpty() || seriesStreams.isNotEmpty())
         if (!refreshingVisibleCatalogue) scope.launch { contentGridState.scrollToItem(0) }
         connecting = true
         catalogGeneration++
         if (!refreshingVisibleCatalogue) {
             vodCatalogs = emptyMap()
+            liveStreams = emptyList()
+            movieStreams = emptyList()
+            seriesStreams = emptyList()
+            liveCategories = emptyList()
+            movieCategories = emptyList()
+            seriesCategories = emptyList()
             screen = AppScreen.LOADING
         }
         connectionError = null
@@ -440,8 +443,10 @@ private fun StbPlayRoot(
                 loadingProgress = 0.67f
                 val firstBatch = portalRepository.getVodCatalogBatch(maxPages = 1)
                 val categoryCatalogs = vodCatalogs.filterKeys { it != "all" }
-                movieStreams = firstBatch.items.filter { it.streamType == "movie" }
-                seriesStreams = firstBatch.items.filter { it.streamType == "series" }
+                movieStreams = (movieStreams + firstBatch.items.filter { it.streamType == "movie" })
+                    .distinctBy { it.id }
+                seriesStreams = (seriesStreams + firstBatch.items.filter { it.streamType == "series" })
+                    .distinctBy { it.id }
                 vodCatalogs = categoryCatalogs + ("all" to VodCatalogState(
                     items = firstBatch.items,
                     nextPage = firstBatch.nextPage,
@@ -479,6 +484,8 @@ private fun StbPlayRoot(
 
     fun allStreamFor(media: UiMedia): PortalStream? = (liveStreams + movieStreams + seriesStreams + remoteSearchStreams)
         .firstOrNull { it.id == media.id && it.streamType == media.streamType }
+        ?: vodCatalogs.values.asSequence().flatMap { it.items.asSequence() }
+            .firstOrNull { it.id == media.id && it.streamType == media.streamType }
 
     fun setFavorite(media: UiMedia) {
         if (media.isLocked) return

@@ -8,6 +8,7 @@ import kotlinx.coroutines.CancellationException
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
@@ -76,6 +77,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -96,6 +98,8 @@ import androidx.media3.common.util.UnstableApi
 import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.SubtitlePreference
 import com.example.stbplay.data.ThemePreference
+import com.example.stbplay.R
+import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.domain.model.PortalSettings
 import kotlinx.coroutines.Dispatchers
@@ -106,16 +110,18 @@ import kotlinx.coroutines.withContext
 import java.text.Normalizer
 import java.util.Locale
 
-private val Navy = Color(0xFF070707)
-private val Rail = Color(0xFF111111)
-private val Panel = Color(0xFF181818)
-private val PanelSoft = Color(0xFF222222)
-private val Gold = Color(0xFFDDB32F)
-private val GoldLight = Color(0xFFFFD966)
-private val White = Color(0xFFF4F6FA)
-private val Muted = Color(0xFF9AA8B8)
-private val Danger = Color(0xFFFFA4A4)
-private val Good = Color(0xFF87E7B0)
+private val Navy: Color @Composable get() = LocalStbPalette.current.background
+private val Rail: Color @Composable get() = LocalStbPalette.current.rail
+private val Panel: Color @Composable get() = LocalStbPalette.current.panel
+private val PanelSoft: Color @Composable get() = LocalStbPalette.current.panelSoft
+private val Gold: Color @Composable get() = LocalStbPalette.current.accent
+private val GoldLight: Color @Composable get() = LocalStbPalette.current.accentLight
+private val White: Color @Composable get() = LocalStbPalette.current.text
+private val Muted: Color @Composable get() = LocalStbPalette.current.muted
+private val OnAccent: Color @Composable get() = LocalStbPalette.current.onAccent
+private val Danger: Color @Composable get() = LocalStbPalette.current.danger
+private val Good: Color @Composable get() = LocalStbPalette.current.good
+private val PosterWhite = Color.White
 
 @Composable
 private fun isCompactAndroidLayout(): Boolean {
@@ -199,7 +205,7 @@ data class StbPlaySettingsState(
     val movieCount: Int = 0,
     val seriesCount: Int = 0,
     val playerPreference: PlayerPreference = PlayerPreference.AUTO,
-    val themePreference: ThemePreference = ThemePreference.DARK,
+    val themePreference: ThemePreference = ThemePreference.BLUE,
     val subtitlePreference: SubtitlePreference = SubtitlePreference.AUTO,
     val catalogueLanguage: String = "All",
     val analyticsEnabled: Boolean = true,
@@ -487,7 +493,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, select
                         imageVector = icon,
                         contentDescription = label,
                         tint = when {
-                            focused -> Navy
+                            focused -> OnAccent
                             selected -> GoldLight
                             else -> White
                         },
@@ -496,7 +502,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, select
                 } else {
                     Text(
                         label,
-                        color = if (focused) Navy else White,
+                        color = if (focused) OnAccent else White,
                         fontSize = 13.sp,
                         fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
                         maxLines = 1,
@@ -576,7 +582,7 @@ private fun HeaderAction(label: String, onClick: () -> Unit, modifier: Modifier 
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) {
         Box(Modifier.fillMaxSize().padding(horizontal = 15.dp), contentAlignment = Alignment.Center) {
-            Text(label, color = if (focused) Navy else White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(label, color = if (focused) OnAccent else White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -663,15 +669,15 @@ private fun RotatingHero(
                 modifier = Modifier.align(Alignment.BottomStart).padding(if (isCompactAndroidLayout()) 16.dp else 28.dp).widthIn(max = 590.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(item.badge ?: item.streamType.uppercase(), color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text(item.title, color = White, fontSize = if (isCompactAndroidLayout()) 22.sp else 30.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.badge ?: item.streamType.uppercase(), color = Color(0xFFF6D896), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(item.title, color = PosterWhite, fontSize = if (isCompactAndroidLayout()) 22.sp else 30.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 item.description?.takeIf { it.isNotBlank() }?.let {
                     Text(it, color = Color(0xFFD3DBE6), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     QuestButton(
                         onClick = { onMediaClick(item) },
-                        colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)
+                        colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)
                     ) { Text("Play now", fontWeight = FontWeight.Bold) }
                     HeaderAction(
                         if (item.isFavorite) "Saved" else "Add to favourites",
@@ -864,8 +870,8 @@ private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(category.title, color = if (focused) Navy else White, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (category.isLocked) Text("PIN", color = if (focused) Navy else GoldLight, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text(category.title, color = if (focused) OnAccent else White, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (category.isLocked) Text("PIN", color = if (focused) OnAccent else GoldLight, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -1079,7 +1085,7 @@ private fun FilterChip(filter: ContentKindFilter, selected: Boolean, onClick: ()
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) {
         Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-            Text(label, color = if (selected || focused) Navy else White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+            Text(label, color = if (selected || focused) OnAccent else White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
         }
     }
 }
@@ -1152,7 +1158,7 @@ private fun MediaCard(
                     Brush.verticalGradient(listOf(Color.Transparent, Color(0xF8070707)))
                 )
             )
-            item.badge?.let { Text(it, color = GoldLight, fontSize = if (compactGrid) 9.sp else 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopStart).padding(if (compactGrid) 6.dp else 9.dp)) }
+            item.badge?.let { Text(it, color = Color(0xFFF6D896), fontSize = if (compactGrid) 9.sp else 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopStart).padding(if (compactGrid) 6.dp else 9.dp)) }
             if (item.isLocked) StatusPill("PIN", GoldLight, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
             FavoriteButton(
                 item.isFavorite,
@@ -1175,7 +1181,7 @@ private fun MediaCard(
                     }
                 }
             }
-            Text(item.title, color = White, fontSize = if (compactGrid) 11.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(if (compactGrid) 7.dp else 11.dp))
+            Text(item.title, color = PosterWhite, fontSize = if (compactGrid) 11.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(if (compactGrid) 7.dp else 11.dp))
             if (item.progress > 0f) ProgressBar(item.progress, Modifier.align(Alignment.BottomCenter))
         }
     }
@@ -1272,7 +1278,25 @@ private fun StbPlaySettingsScreen(
         }
         item {
             SettingsSection("Appearance & language") {
-                PreferenceRow("App theme", state.themePreference.displayName()) { onThemePreferenceChanged(state.themePreference.next()) }
+                Text("App theme & launcher icon", color = White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ThemePreference.entries.forEach { theme ->
+                        val selected = state.themePreference == theme
+                        QuestSurface(
+                            onClick = { onThemePreferenceChanged(theme) },
+                            modifier = Modifier.weight(1f).heightIn(min = 94.dp)
+                                .border(if (selected) 2.dp else 0.dp, Gold, RoundedCornerShape(10.dp)),
+                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                            colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) Gold.copy(alpha = 0.18f) else Navy, focusedContainerColor = Gold.copy(alpha = 0.28f)),
+                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Image(painterResource(theme.iconResource()), contentDescription = "${theme.displayName()} icon", modifier = Modifier.size(49.dp))
+                                Text(theme.shortName(), color = White, fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
                 PreferenceRow("Catalogue language", state.catalogueLanguage) {
                     onCatalogueLanguageChanged(nextLanguage(state.catalogueLanguage))
                 }
@@ -1386,14 +1410,14 @@ private fun WideAction(title: String, onClick: () -> Unit, modifier: Modifier = 
         onClick = onClick,
         modifier = modifier.height(38.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF262626), focusedContainerColor = Gold),
+        colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = Gold),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
-    ) { Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.Center) { Text(title, color = if (focused) Navy else White, fontSize = 12.sp) } }
+    ) { Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.Center) { Text(title, color = if (focused) OnAccent else White, fontSize = 12.sp) } }
 }
 
 @Composable
 private fun PrimaryAction(title: String, onClick: () -> Unit) {
-    QuestButton(onClick = onClick, colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)) {
+    QuestButton(onClick = onClick, colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)) {
         Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -1522,7 +1546,7 @@ private fun StbPlaySearchScreen(
                     border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(1.dp, GoldLight)))
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = if (clearFocused) Navy else White, modifier = Modifier.size(19.dp))
+                        Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = if (clearFocused) OnAccent else White, modifier = Modifier.size(19.dp))
                     }
                 }
             }
@@ -1602,7 +1626,7 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
                 QuestButton(
                     onClick = onAccept,
                     modifier = Modifier.questInitialFocus(),
-                    colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)
+                    colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)
                 ) { Text("I have read and understand", fontWeight = FontWeight.Bold) }
             }
         }
@@ -1647,7 +1671,7 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
                                 },
                                 modifier = Modifier.width(86.dp).height(46.dp)
                                     .then(if (rowIndex == 0 && columnIndex == 0) Modifier.questInitialFocus() else Modifier),
-                                colors = ButtonDefaults.colors(containerColor = Navy, contentColor = White, focusedContainerColor = Gold, focusedContentColor = Navy)
+                                colors = ButtonDefaults.colors(containerColor = Navy, contentColor = White, focusedContainerColor = Gold, focusedContentColor = OnAccent)
                             ) { Text(key, fontSize = 16.sp) }
                         }
                     }
@@ -1755,15 +1779,27 @@ private fun PlayerPreference.displayName(): String = when (this) {
 }
 
 private fun ThemePreference.next(): ThemePreference = when (this) {
-    ThemePreference.DARK -> ThemePreference.LIGHT
-    ThemePreference.LIGHT -> ThemePreference.SYSTEM
-    ThemePreference.SYSTEM -> ThemePreference.DARK
+    ThemePreference.BLUE -> ThemePreference.LIGHT
+    ThemePreference.LIGHT -> ThemePreference.BLACK
+    ThemePreference.BLACK -> ThemePreference.BLUE
 }
 
 private fun ThemePreference.displayName(): String = when (this) {
-    ThemePreference.DARK -> "Dark navy"
-    ThemePreference.LIGHT -> "Light"
-    ThemePreference.SYSTEM -> "Device setting"
+    ThemePreference.BLUE -> "Blue & gold"
+    ThemePreference.LIGHT -> "Ivory & gold"
+    ThemePreference.BLACK -> "Black & silver"
+}
+
+private fun ThemePreference.shortName(): String = when (this) {
+    ThemePreference.BLUE -> "Blue"
+    ThemePreference.LIGHT -> "Ivory"
+    ThemePreference.BLACK -> "Black"
+}
+
+private fun ThemePreference.iconResource(): Int = when (this) {
+    ThemePreference.BLUE -> R.drawable.icon_blue
+    ThemePreference.LIGHT -> R.drawable.icon_light
+    ThemePreference.BLACK -> R.drawable.icon_black
 }
 
 private fun SubtitlePreference.next(): SubtitlePreference = when (this) {

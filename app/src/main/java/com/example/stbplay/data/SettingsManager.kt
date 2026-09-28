@@ -16,7 +16,7 @@ import org.json.JSONObject
 private val Context.dataStore by preferencesDataStore(name = "stb_play_settings")
 
 enum class PlayerPreference { AUTO, INTERNAL, VLC }
-enum class ThemePreference { DARK, LIGHT, SYSTEM }
+enum class ThemePreference { BLUE, LIGHT, BLACK }
 enum class SubtitlePreference { AUTO, OFF, ENGLISH, HINDI, PUNJABI }
 
 data class WatchProgress(
@@ -88,8 +88,11 @@ class SettingsManager(private val context: Context) {
     }
 
     val themePreference: Flow<ThemePreference> = context.dataStore.data.map {
-        runCatching { ThemePreference.valueOf(it[keyTheme] ?: ThemePreference.DARK.name) }
-            .getOrDefault(ThemePreference.DARK)
+        when (it[keyTheme]) {
+            "DARK", "SYSTEM", ThemePreference.BLACK.name -> ThemePreference.BLACK
+            ThemePreference.LIGHT.name -> ThemePreference.LIGHT
+            else -> ThemePreference.BLUE
+        }
     }
 
     val subtitlePreference: Flow<SubtitlePreference> = context.dataStore.data.map {

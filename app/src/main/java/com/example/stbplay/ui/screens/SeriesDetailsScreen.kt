@@ -49,13 +49,16 @@ import com.example.stbplay.data.model.PortalEpisode
 import com.example.stbplay.data.model.PortalSeason
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.ui.questInitialFocus
+import com.example.stbplay.ui.theme.LocalStbPalette
 
-private val SeriesNavy = Color(0xFF070707)
-private val SeriesPanel = Color(0xFF181818)
-private val SeriesGold = Color(0xFFDDB32F)
-private val SeriesGoldLight = Color(0xFFFFD966)
-private val SeriesWhite = Color(0xFFF4F6FA)
-private val SeriesMuted = Color(0xFF9AA8B8)
+private val SeriesNavy: Color @Composable get() = LocalStbPalette.current.background
+private val SeriesPanel: Color @Composable get() = LocalStbPalette.current.panel
+private val SeriesGold: Color @Composable get() = LocalStbPalette.current.accent
+private val SeriesGoldLight: Color @Composable get() = LocalStbPalette.current.accentLight
+private val SeriesWhite: Color @Composable get() = LocalStbPalette.current.text
+private val SeriesMuted: Color @Composable get() = LocalStbPalette.current.muted
+private val SeriesOnAccent: Color @Composable get() = LocalStbPalette.current.onAccent
+private val SeriesPanelSoft: Color @Composable get() = LocalStbPalette.current.panelSoft
 
 @Composable
 fun SeriesDetailsScreen(
@@ -163,7 +166,7 @@ fun SeriesDetailsScreen(
                             border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGoldLight)))
                         ) {
                             Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                                Text(if (season.id == "direct") "Episodes" else "Season ${season.number}", color = if (selected) SeriesNavy else SeriesWhite, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                Text(if (season.id == "direct") "Episodes" else "Season ${season.number}", color = if (selected) SeriesOnAccent else SeriesWhite, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
                             }
                         }
                     }
@@ -203,10 +206,10 @@ fun SeriesDetailsScreen(
             series.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis) }
             Spacer(Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuestButton(onClick = onToggleFavorite, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = SeriesWhite)) {
+                QuestButton(onClick = onToggleFavorite, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.colors(containerColor = SeriesPanelSoft, contentColor = SeriesWhite)) {
                     Text(if (isFavorite) "Remove" else "Favourite", maxLines = 1)
                 }
-                QuestButton(onClick = onBack, modifier = Modifier.width(80.dp).height(48.dp), colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = SeriesWhite)) { Text("Back") }
+                QuestButton(onClick = onBack, modifier = Modifier.width(80.dp).height(48.dp), colors = ButtonDefaults.colors(containerColor = SeriesPanelSoft, contentColor = SeriesWhite)) { Text("Back") }
             }
         }
         Spacer(Modifier.width(42.dp))
@@ -229,7 +232,7 @@ fun SeriesDetailsScreen(
                                 border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGoldLight)))
                             ) {
                                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text(if (season.id == "direct") "Episodes" else "Season ${season.number}", color = if (selected) SeriesNavy else SeriesWhite, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                    Text(if (season.id == "direct") "Episodes" else "Season ${season.number}", color = if (selected) SeriesOnAccent else SeriesWhite, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
                                 }
                             }
                         }

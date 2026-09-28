@@ -40,13 +40,15 @@ import com.example.stbplay.ui.ArtworkImage
 import com.example.stbplay.data.model.PortalQualityOption
 import com.example.stbplay.ui.UiMedia
 import com.example.stbplay.ui.questInitialFocus
+import com.example.stbplay.ui.theme.LocalStbPalette
 
-private val DetailNavy = Color(0xFF070707)
-private val DetailPanel = Color(0xFF181818)
-private val DetailGold = Color(0xFFDDB32F)
-private val DetailGoldLight = Color(0xFFFFD966)
-private val DetailWhite = Color(0xFFF4F6FA)
-private val DetailMuted = Color(0xFF9AA8B8)
+private val DetailNavy: Color @Composable get() = LocalStbPalette.current.background
+private val DetailPanel: Color @Composable get() = LocalStbPalette.current.panelSoft
+private val DetailGold: Color @Composable get() = LocalStbPalette.current.accent
+private val DetailGoldLight: Color @Composable get() = LocalStbPalette.current.accentLight
+private val DetailWhite: Color @Composable get() = LocalStbPalette.current.text
+private val DetailMuted: Color @Composable get() = LocalStbPalette.current.muted
+private val DetailOnAccent: Color @Composable get() = LocalStbPalette.current.onAccent
 
 @Composable
 fun MovieDetailsScreen(
@@ -83,16 +85,16 @@ fun MovieDetailsScreen(
             QuestButton(
                 onClick = onPlay,
                 modifier = Modifier.fillMaxWidth().questInitialFocus(),
-                colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)
+                colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailOnAccent, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailOnAccent)
             ) { Text("Play", fontWeight = FontWeight.Bold) }
             if (item.progress > 0f) QuestButton(onClick = onResume, modifier = Modifier.fillMaxWidth()) {
                 Text("Resume ${(item.progress * 100).toInt()}%")
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuestButton(onClick = onToggleFavorite, modifier = Modifier.weight(1f), colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) {
+                QuestButton(onClick = onToggleFavorite, modifier = Modifier.weight(1f), colors = ButtonDefaults.colors(containerColor = DetailPanel, contentColor = DetailWhite)) {
                     Text(if (item.isFavorite) "Remove favourite" else "Add to favourites", maxLines = 1)
                 }
-                QuestButton(onClick = onBack, modifier = Modifier.widthIn(min = 88.dp), colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) { Text("Back") }
+                QuestButton(onClick = onBack, modifier = Modifier.widthIn(min = 88.dp), colors = ButtonDefaults.colors(containerColor = DetailPanel, contentColor = DetailWhite)) { Text("Back") }
             }
         }
         return
@@ -133,18 +135,18 @@ fun MovieDetailsScreen(
                 item.cast?.takeIf { it.isNotBlank() }?.let { Text("Cast: $it", color = DetailMuted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 Spacer(Modifier.height(7.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    QuestButton(onClick = onPlay, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)) {
+                    QuestButton(onClick = onPlay, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailOnAccent, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailOnAccent)) {
                         Text("Play", fontWeight = FontWeight.Bold)
                     }
                     if (item.progress > 0f) {
-                        QuestButton(onClick = onResume, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) {
+                        QuestButton(onClick = onResume, colors = ButtonDefaults.colors(containerColor = DetailPanel, contentColor = DetailWhite)) {
                             Text("Resume ${(item.progress * 100).toInt()}%")
                         }
                     }
-                    QuestButton(onClick = onToggleFavorite, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) {
+                    QuestButton(onClick = onToggleFavorite, colors = ButtonDefaults.colors(containerColor = DetailPanel, contentColor = DetailWhite)) {
                         Text(if (item.isFavorite) "Remove favourite" else "Add to favourites")
                     }
-                    QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) { Text("Back") }
+                    QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = DetailPanel, contentColor = DetailWhite)) { Text("Back") }
                 }
             }
         }
@@ -178,11 +180,11 @@ fun QualitySelectionScreen(
                         QuestButton(
                             onClick = { onOptionClick(option) },
                             modifier = Modifier.then(if (index == 0) Modifier.questInitialFocus() else Modifier).fillMaxWidth(),
-                            colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailNavy, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailNavy)
+                            colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailOnAccent, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailOnAccent)
                         ) { Text(option.label, fontWeight = FontWeight.Bold) }
                     }
                 }
-                QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = DetailWhite)) { Text("Back") }
+                QuestButton(onClick = onBack, colors = ButtonDefaults.colors(containerColor = DetailPanel, contentColor = DetailWhite)) { Text("Back") }
             }
         }
     }

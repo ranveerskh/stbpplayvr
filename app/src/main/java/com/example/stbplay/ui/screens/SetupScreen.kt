@@ -42,14 +42,16 @@ import androidx.tv.material3.Text
 import com.example.stbplay.domain.model.PortalSettings
 import com.example.stbplay.domain.model.generateStbPlayMac
 import com.example.stbplay.ui.questInitialFocus
+import com.example.stbplay.ui.theme.LocalStbPalette
 
-private val SetupNavy = Color(0xFF070707)
-private val SetupPanel = Color(0xFF181818)
-private val SetupGold = Color(0xFFDDB32F)
-private val SetupGoldLight = Color(0xFFFFD966)
-private val SetupText = Color(0xFFF4F6FA)
-private val SetupMuted = Color(0xFF9AA8B8)
-private val SetupError = Color(0xFFFFA4A4)
+private val SetupNavy: Color @Composable get() = LocalStbPalette.current.background
+private val SetupPanel: Color @Composable get() = LocalStbPalette.current.panel
+private val SetupGold: Color @Composable get() = LocalStbPalette.current.accent
+private val SetupGoldLight: Color @Composable get() = LocalStbPalette.current.accentLight
+private val SetupText: Color @Composable get() = LocalStbPalette.current.text
+private val SetupMuted: Color @Composable get() = LocalStbPalette.current.muted
+private val SetupError: Color @Composable get() = LocalStbPalette.current.danger
+private val SetupOnAccent: Color @Composable get() = LocalStbPalette.current.onAccent
 
 /** First-time portal setup and the reusable Add/Edit Portal form. */
 @Composable
@@ -130,9 +132,9 @@ fun SetupScreen(
                     modifier = if (phoneLayout) Modifier.fillMaxWidth() else Modifier.width(250.dp),
                     colors = ButtonDefaults.colors(
                         containerColor = SetupGold,
-                        contentColor = SetupNavy,
+                        contentColor = SetupOnAccent,
                         focusedContainerColor = SetupGoldLight,
-                        focusedContentColor = SetupNavy
+                        focusedContentColor = SetupOnAccent
                     )
                 ) { Text("Save & Connect", fontWeight = FontWeight.Bold) }
 
@@ -141,7 +143,7 @@ fun SetupScreen(
                         onClick = cancel,
                         modifier = actionModifier,
                         colors = ButtonDefaults.colors(
-                            containerColor = Color(0xFF262626),
+                            containerColor = LocalStbPalette.current.panelSoft,
                             contentColor = SetupText
                         )
                     ) { Text("Cancel") }
