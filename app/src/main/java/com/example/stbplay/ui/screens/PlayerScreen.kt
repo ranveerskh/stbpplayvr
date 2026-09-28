@@ -40,6 +40,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.MediaRouteButton
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -155,6 +157,8 @@ private fun NativePlayerScreen(
     val startedCallback by rememberUpdatedState(onPlaybackStarted)
     val failureCallback by rememberUpdatedState(onPlaybackFailure)
 
+    val compactLayout = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 900 &&
+        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
     val player = remember(playbackUrl, portalUiUrl, token, sessionCookie, subtitlePreference, resumeFraction) {
         val headers = mutableMapOf(
             "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 MAG254",
@@ -215,11 +219,15 @@ private fun NativePlayerScreen(
                 exoPlayer.playWhenReady = true
             }
     }
+    val castPlayer = remember(player, compactLayout) {
+        if (compactLayout) CastPlayer.Builder(context).setLocalPlayer(player).build() else null
+    }
+    val activePlayer: Player = castPlayer ?: player
 
-    var volumePercent by remember(player) { mutableIntStateOf((player.volume * 100f).toInt().coerceIn(0, 100)) }
+    var volumePercent by remember(activePlayer) { mutableIntStateOf((activePlayer.volume * 100f).toInt().coerceIn(0, 100)) }
     fun adjustVolume(delta: Int) {
         volumePercent = (volumePercent + delta).coerceIn(0, 100)
-        player.volume = volumePercent / 100f
+        activePlayer.volume = volumePercent / 100f
     }
     var playerControlsVisible by remember(playbackUrl) { mutableStateOf(false) }
     var controlsInteraction by remember(playbackUrl) { mutableIntStateOf(0) }
@@ -234,18 +242,19 @@ private fun NativePlayerScreen(
         }
     }
 
-    DisposableEffect(player) {
+    DisposableEffect(player, castPlayer) {
         onDispose {
             runCatching {
-                if (player.duration > 0L && player.currentPosition > 0L) progressCallback(player.currentPosition, player.duration)
+                if (activePlayer.duration > 0L && activePlayer.currentPosition > 0L) progressCallback(activePlayer.currentPosition, activePlayer.duration)
             }
+            castPlayer?.release()
             player.release()
         }
     }
-    LaunchedEffect(player) {
+    LaunchedEffect(activePlayer) {
         while (true) {
             delay(5_000)
-            if (player.duration > 0L && player.currentPosition > 0L) progressCallback(player.currentPosition, player.duration)
+            if (activePlayer.duration > 0L && activePlayer.currentPosition > 0L) progressCallback(activePlayer.currentPosition, activePlayer.duration)
         }
     }
     LaunchedEffect(playerError, playerPreference, decoderError) {
@@ -263,7 +272,7 @@ private fun NativePlayerScreen(
             modifier = Modifier.fillMaxSize(),
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
-                    this.player = player
+                    this.player = activePlayer
                     useController = true
                     controllerShowTimeoutMs = 3_000
                     keepScreenOn = true
@@ -294,7 +303,7 @@ private fun NativePlayerScreen(
                     post { requestFocus() }
                 }
             },
-            update = { it.player = player }
+            update = { it.player = activePlayer }
         )
         if (playerControlsVisible && playerError == null) {
             QuestButton(
@@ -311,6 +320,9 @@ private fun NativePlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (compactLayout) {
+                    MediaRouteButton(modifier = Modifier.padding(end = 4.dp))
+                }
                 Text("Volume $volumePercent%", color = Color.White)
                 QuestButton(onClick = { adjustVolume(-10); revealPlayerControls() }) { Text("−") }
                 QuestButton(onClick = { adjustVolume(10); revealPlayerControls() }) { Text("+") }

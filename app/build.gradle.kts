@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.stbplay"
         minSdk = 26
         targetSdk = 35
-        versionCode = 24
-        versionName = "1.8.24"
+        versionCode = 25
+        versionName = "1.8.25"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -59,6 +59,7 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.session)
+    implementation(libs.androidx.media3.cast)
     
     // Persistence & Networking
     implementation(libs.androidx.datastore.preferences)
