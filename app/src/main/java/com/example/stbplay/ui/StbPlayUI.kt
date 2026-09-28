@@ -32,7 +32,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items as columnItems
+import androidx.compose.foundation.lazy.itemsIndexed as indexedColumnItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -50,7 +52,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -789,8 +791,7 @@ private fun CategorySidebar(categories: List<UiCategory>, selected: Int, onSelec
     ) {
         Text("Categories", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            columnItems(categories) { category ->
-                val index = categories.indexOf(category)
+            indexedColumnItems(categories, key = { _, category -> category.id }) { index, category ->
                 CategorySidebarItem(category, index == selected) { onSelected(index) }
             }
         }
@@ -814,17 +815,33 @@ private fun CompactCategorySelector(categories: List<UiCategory>, selected: Int,
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = "Choose category", tint = GoldLight)
             }
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.fillMaxWidth(0.9f).heightIn(max = 420.dp).background(Panel)) {
-            categories.forEachIndexed { index, category ->
-                QuestSurface(
-                    onClick = { expanded = false; onSelected(index) },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
-                    colors = ClickableSurfaceDefaults.colors(containerColor = if (index == selected) Gold.copy(alpha = 0.2f) else Panel, focusedContainerColor = Gold)
+        if (expanded) Dialog(onDismissRequest = { expanded = false }) {
+            BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier.fillMaxWidth().height((maxHeight * 0.75f).coerceAtMost(520.dp))
+                        .clip(RoundedCornerShape(14.dp)).background(Panel).padding(12.dp)
                 ) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(category.title, color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                        if (category.isLocked) Text("PIN", color = GoldLight, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("Categories", color = GoldLight, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(10.dp))
+                    LazyColumn(state = rememberLazyListState(initialFirstVisibleItemIndex = selected),
+                        verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                        indexedColumnItems(categories, key = { _, category -> category.id }) { index, category ->
+                            QuestSurface(
+                                onClick = { expanded = false; onSelected(index) },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                    .then(if (index == selected) Modifier.questInitialFocus() else Modifier),
+                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
+                                colors = ClickableSurfaceDefaults.colors(
+                                    containerColor = if (index == selected) Gold.copy(alpha = 0.2f) else Panel,
+                                    focusedContainerColor = Gold)
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Text(category.title, color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                    if (category.isLocked) Text("PIN", color = GoldLight, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
                 }
             }

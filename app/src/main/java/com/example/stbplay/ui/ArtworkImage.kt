@@ -14,8 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
-import coil.compose.SubcomposeAsyncImageContent
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
 
 /**
@@ -38,7 +37,7 @@ fun ArtworkImage(
         imageUrl?.trim()?.takeIf { it.isNotBlank() }?.let { url ->
             ImageRequest.Builder(context)
                 .data(url)
-                .crossfade(true)
+                .crossfade(false)
                 .apply {
                     requestHeaders.forEach { (name, value) -> addHeader(name, value) }
                 }
@@ -51,19 +50,15 @@ fun ArtworkImage(
         return
     }
 
-    SubcomposeAsyncImage(
-        model = request,
-        contentDescription = title.takeIf { it.isNotBlank() },
-        modifier = modifier,
-        contentScale = contentScale,
-        loading = {
-            ArtworkFallback(Modifier.fillMaxSize(), fallbackText, fallbackTextSize, fallbackColor)
-        },
-        error = {
-            ArtworkFallback(Modifier.fillMaxSize(), fallbackText, fallbackTextSize, fallbackColor)
-        },
-        success = { SubcomposeAsyncImageContent() }
-    )
+    Box(modifier) {
+        ArtworkFallback(Modifier.fillMaxSize(), fallbackText, fallbackTextSize, fallbackColor)
+        AsyncImage(
+            model = request,
+            contentDescription = title.takeIf { it.isNotBlank() },
+            modifier = Modifier.fillMaxSize(),
+            contentScale = contentScale
+        )
+    }
 }
 
 @Composable

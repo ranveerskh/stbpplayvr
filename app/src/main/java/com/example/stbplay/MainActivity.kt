@@ -346,32 +346,44 @@ private fun StbPlayRoot(
         if (categoryPreloadJob?.isActive == true) return
         categoryPreloadJob = scope.launch {
             delay(400)
+            val generation = catalogGeneration
             val categories = (movieCategories + seriesCategories)
                 .distinctBy { it.id }
                 .filterNot { it.isLocked }
-            var completed = 0
+            val pending = mutableMapOf<String, VodCatalogState>()
+            val pendingStreams = mutableListOf<PortalStream>()
+            suspend fun flush() {
+                if (pending.isEmpty() || !isActive || generation != catalogGeneration) return
+                vodCatalogs = vodCatalogs + pending.filterKeys { key -> vodCatalogs[key]?.items.isNullOrEmpty() }
+                val movies = pendingStreams.filter { it.streamType == "movie" }
+                val series = pendingStreams.filter { it.streamType == "series" }
+                if (movies.isNotEmpty()) movieStreams = (movieStreams + movies).distinctBy { it.id }
+                if (series.isNotEmpty()) seriesStreams = (seriesStreams + series).distinctBy { it.id }
+                pending.clear()
+                pendingStreams.clear()
+                catalogCache.write(portalKey(settings), catalogSnapshot())
+            }
             for (category in categories) {
-                if (!isActive) break
+                if (!isActive || generation != catalogGeneration) break
                 val cached = vodCatalogs[category.id]
                 if (!cached?.items.isNullOrEmpty() || cached?.hasMore == false) continue
                 runCatching { portalRepository.getVodCatalogBatch(category.id, cached?.nextPage ?: 0, maxPages = 1) }
                     .onSuccess { batch ->
+                        if (!isActive || generation != catalogGeneration) return@onSuccess
                         val previous = vodCatalogs[category.id] ?: VodCatalogState()
                         val merged = (previous.items + batch.items).distinctBy { "${it.streamType}:${it.id}" }
-                        vodCatalogs = vodCatalogs + (category.id to VodCatalogState(
+                        pending[category.id] = VodCatalogState(
                             items = merged,
                             nextPage = batch.nextPage,
                             totalItems = batch.totalItems ?: previous.totalItems,
                             hasMore = batch.hasMore
-                        ))
-                        movieStreams = (movieStreams + batch.items.filter { it.streamType == "movie" }).distinctBy { it.id }
-                        seriesStreams = (seriesStreams + batch.items.filter { it.streamType == "series" }).distinctBy { it.id }
+                        )
+                        pendingStreams += batch.items
                     }
-                completed++
-                if (completed % 5 == 0) catalogCache.write(portalKey(settings), catalogSnapshot())
-                delay(250)
+                if (pending.size >= 5) flush()
+                delay(400)
             }
-            catalogCache.write(portalKey(settings), catalogSnapshot())
+            flush()
         }
     }
 
@@ -595,6 +607,15 @@ private fun StbPlayRoot(
         imageHeaders = portalRepository.artworkRequestHeaders(stream.iconUrl)
     )
 
+    // Preloading VOD changes catalogue state in the background. Keep the visible
+    // screen's mapped rows stable so those updates do not rebuild every channel.
+    val liveUiItems = remember(filteredLive, progressById, favoriteIds, catalogGeneration, selectedTab) {
+        if (selectedTab == StbPlayTab.LIVE) filteredLive.map(::toUi) else emptyList()
+    }
+    val contentUiItems = remember(filteredVod, progressById, favoriteIds, catalogGeneration, selectedTab) {
+        if (selectedTab == StbPlayTab.CONTENT) filteredVod.map(::toUi) else emptyList()
+    }
+
     val safeLive = remember(liveStreams) { liveStreams.filterNot { it.isLocked } }
     val safeVod = remember(allVod) { allVod.filterNot { it.isLocked } }
     val favoriteStreams = remember(liveStreams, allVod, favoriteIds) {
@@ -634,7 +655,7 @@ private fun StbPlayRoot(
         loading = loadingLiveCategoryId == uiLiveCategories.getOrNull(liveCategoryIndex)?.id,
         categories = uiLiveCategories,
         selectedCategory = liveCategoryIndex.coerceIn(0, (uiLiveCategories.size - 1).coerceAtLeast(0)),
-        items = filteredLive.map(::toUi),
+        items = liveUiItems,
         totalItemsText = "${filteredLive.size} channels",
         emptyMessage = liveCategoryError ?: "No channels in this category."
     )
@@ -642,7 +663,7 @@ private fun StbPlayRoot(
         loading = selectedVodCatalog?.loading == true && categoryVod.isEmpty(),
         categories = contentCategories,
         selectedCategory = contentCategoryIndex.coerceIn(0, (contentCategories.size - 1).coerceAtLeast(0)),
-        items = filteredVod.map(::toUi),
+        items = contentUiItems,
         totalItemsText = selectedVodCatalog?.totalItems?.let { "${categoryVod.size} of $it loaded" }
             ?: "${categoryVod.size} titles loaded",
         hasMore = selectedVodCatalog?.hasMore == true,
