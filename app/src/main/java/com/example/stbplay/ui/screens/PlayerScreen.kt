@@ -187,6 +187,8 @@ private fun NativePlayerScreen(
 
     val compactLayout = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 900 &&
         !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    val preferTextureSurface = compactLayout ||
+        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
     val player = remember(playbackUrl, portalUiUrl, token, sessionCookie, subtitlePreference, resumeFraction) {
         val headers = mutableMapOf(
             "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 MAG254",
@@ -302,12 +304,12 @@ private fun NativePlayerScreen(
     }
     LaunchedEffect(player, didStart, renderedFirstFrame, useAlternateSurface) {
         if (!didStart || renderedFirstFrame || playerError != null) return@LaunchedEffect
-        delay(8_000)
+        delay(4_000)
         if (renderedFirstFrame || playerError != null || !player.isPlaying) return@LaunchedEffect
         if (!useAlternateSurface) {
             useAlternateSurface = true
         } else {
-            val message = "Video did not appear on this device. Try VLC in Playback settings."
+            val message = "Video did not appear on this device. Try VLC below."
             if (playerPreference == PlayerPreference.AUTO && !autoVlcTried) {
                 autoVlcTried = true
                 if (launchVlc(context, playbackUrl, title)) {
@@ -324,7 +326,7 @@ private fun NativePlayerScreen(
         key(useAlternateSurface) { AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { viewContext ->
-                (if (compactLayout != useAlternateSurface) {
+                (if (preferTextureSurface != useAlternateSurface) {
                     LayoutInflater.from(viewContext).inflate(com.example.stbplay.R.layout.player_view_phone, null) as PlayerView
                 } else PlayerView(viewContext)).apply {
                     this.player = activePlayer
@@ -422,6 +424,18 @@ private fun NativePlayerScreen(
                 QuestButton(onClick = { adjustVolume(10); revealPlayerControls() },
                     modifier = if (compactLayout) Modifier.size(44.dp) else Modifier) { Text("+") }
             }
+            QuestButton(
+                onClick = {
+                    if (launchVlc(context, playbackUrl, title)) {
+                        activePlayer.pause()
+                        playerControlsVisible = false
+                    } else {
+                        playerError = "VLC is not installed. Install VLC or try a different player in Settings."
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomStart).padding(if (compactLayout) 12.dp else 18.dp),
+                colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
+            ) { Text("Try VLC") }
         }
         if (episodePickerVisible) {
             Column(
@@ -450,6 +464,10 @@ private fun NativePlayerScreen(
             ) {
                 Text(error, color = Color.White)
                 if (playerPreference == PlayerPreference.AUTO && autoVlcTried) Text("VLC handoff attempted.", color = Color.LightGray)
+                QuestButton(onClick = {
+                    if (launchVlc(context, playbackUrl, title)) activePlayer.pause()
+                    else playerError = "VLC is not installed on this device."
+                }) { Text("Try VLC") }
                 QuestButton(onClick = onBack, modifier = Modifier.questInitialFocus()) { Text("Back") }
             }
         }

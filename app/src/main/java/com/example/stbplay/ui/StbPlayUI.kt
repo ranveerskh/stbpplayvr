@@ -128,6 +128,11 @@ private fun isCompactAndroidLayout(): Boolean {
         !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
 }
 
+@Composable
+private fun isTelevisionLayout(): Boolean = LocalContext.current.packageManager.hasSystemFeature(
+    android.content.pm.PackageManager.FEATURE_LEANBACK
+)
+
 /** Gives a newly opened TV screen a focused control for Quest/gamepad input. */
 @Composable
 fun Modifier.questInitialFocus(): Modifier {
@@ -252,7 +257,8 @@ fun StbPlayApp(
     searchMedia: (PortalStream) -> UiMedia
 ) {
     var searchOpen by remember { mutableStateOf(false) }
-    var railCollapsed by remember { mutableStateOf(false) }
+    val tvLayout = isTelevisionLayout()
+    var railCollapsed by remember(tvLayout) { mutableStateOf(tvLayout) }
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val compactLayout = configuration.screenWidthDp < 900 &&
@@ -341,6 +347,7 @@ fun StbPlayApp(
             StbPlayNavigationRail(
                 selectedTab = selectedTab,
                 collapsed = railCollapsed || selectedTab == StbPlayTab.CONTENT,
+                compactTv = tvLayout,
                 onToggle = { if (selectedTab != StbPlayTab.CONTENT) railCollapsed = !railCollapsed },
                 onTabSelected = onTabSelected
             )
@@ -348,7 +355,8 @@ fun StbPlayApp(
                 StbPlayHeader(
                     selectedTab = selectedTab,
                     onSearchClick = { searchOpen = true; onSearchVisibilityChanged(true) },
-                    onSettingsClick = { onTabSelected(StbPlayTab.SETTINGS) }
+                    onSettingsClick = { onTabSelected(StbPlayTab.SETTINGS) },
+                    denseTv = tvLayout
                 )
                 Box(Modifier.weight(1f).fillMaxWidth()) { pageContent() }
             }
@@ -394,6 +402,7 @@ private fun PhoneBottomNavigation(selectedTab: StbPlayTab, onTabSelected: (StbPl
 private fun StbPlayNavigationRail(
     selectedTab: StbPlayTab,
     collapsed: Boolean,
+    compactTv: Boolean,
     onToggle: () -> Unit,
     onTabSelected: (StbPlayTab) -> Unit
 ) {
@@ -406,17 +415,17 @@ private fun StbPlayNavigationRail(
     )
     Column(
         modifier = Modifier
-            .width(if (collapsed) 78.dp else 198.dp)
+            .width(if (collapsed) (if (compactTv) 62.dp else 78.dp) else (if (compactTv) 160.dp else 198.dp))
             .fillMaxHeight()
             .background(Rail)
-            .animateContentSize()
+            .then(if (compactTv) Modifier else Modifier.animateContentSize())
             .zIndex(2f)
-            .padding(horizontal = 12.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = if (compactTv) 6.dp else 12.dp, vertical = if (compactTv) 10.dp else 22.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compactTv) 3.dp else 8.dp)
     ) {
         QuestSurface(
             onClick = onToggle,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().height(if (compactTv) 42.dp else 48.dp),
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
             colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Gold)
         ) {
@@ -443,6 +452,7 @@ private fun StbPlayNavigationRail(
                 label = title,
                 icon = icon,
                 collapsed = collapsed,
+                compactTv = compactTv,
                 selected = selectedTab == tab,
                 onClick = { onTabSelected(tab) }
             )
@@ -455,7 +465,7 @@ private fun StbPlayNavigationRail(
 }
 
 @Composable
-private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, selected: Boolean, onClick: () -> Unit) {
+private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compactTv: Boolean, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     var showFocusLabel by remember { mutableStateOf(false) }
     val initialFocus = if (selected) Modifier.questInitialFocus() else Modifier
@@ -465,7 +475,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, select
             showFocusLabel = false
         }
     }
-    Box(Modifier.fillMaxWidth().height(48.dp)) {
+    Box(Modifier.fillMaxWidth().height(if (compactTv) 42.dp else 48.dp)) {
         QuestSurface(
             onClick = onClick,
             modifier = Modifier.then(initialFocus).fillMaxSize().onFocusChanged {
@@ -533,10 +543,12 @@ private fun StbPlayHeader(
     selectedTab: StbPlayTab,
     onSearchClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    compact: Boolean = false
+    compact: Boolean = false,
+    denseTv: Boolean = false
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(if (compact) 60.dp else 76.dp).padding(horizontal = if (compact) 14.dp else 30.dp),
+        modifier = Modifier.fillMaxWidth().height(if (compact) 60.dp else if (denseTv) 58.dp else 76.dp)
+            .padding(horizontal = if (compact) 14.dp else if (denseTv) 16.dp else 30.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
@@ -549,13 +561,13 @@ private fun StbPlayHeader(
                     StbPlayTab.SETTINGS -> "Settings"
                 },
                 color = White,
-                fontSize = if (compact) 18.sp else 22.sp,
+                fontSize = if (compact || denseTv) 18.sp else 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text("STB PLAY", color = GoldLight, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(modifier = Modifier.weight(1f))
-        HeaderAction(if (compact) "⌕" else "Search", onSearchClick, modifier = Modifier.width(if (compact) 44.dp else 120.dp))
+        HeaderAction(if (compact) "⌕" else "Search", onSearchClick, modifier = Modifier.width(if (compact) 44.dp else if (denseTv) 92.dp else 120.dp))
         Spacer(modifier = Modifier.width(if (compact) 6.dp else 10.dp))
         if (compact) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -565,7 +577,7 @@ private fun StbPlayHeader(
                 Text("Cast", color = White, fontSize = 12.sp)
             }
         }
-        if (!compact) HeaderAction("Settings", onSettingsClick, modifier = Modifier.width(120.dp))
+        if (!compact) HeaderAction("Settings", onSettingsClick, modifier = Modifier.width(if (denseTv) 92.dp else 120.dp))
     }
 }
 
@@ -597,10 +609,11 @@ private fun StbPlayHomeScreen(
         return
     }
     val compact = isCompactAndroidLayout()
+    val denseTv = isTelevisionLayout()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = if (compact) 14.dp else 30.dp, end = if (compact) 14.dp else 30.dp, bottom = 42.dp),
-        verticalArrangement = Arrangement.spacedBy(if (compact) 16.dp else 25.dp)
+        contentPadding = PaddingValues(start = if (compact || denseTv) 14.dp else 30.dp, end = if (compact || denseTv) 14.dp else 30.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact || denseTv) 14.dp else 25.dp)
     ) {
         item {
             if (state.heroes.isEmpty()) EmptyState("No content found", "Connect a portal with an active catalogue to start watching.")
@@ -621,6 +634,7 @@ private fun RotatingHero(
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit
 ) {
+    val denseTv = isTelevisionLayout()
     var index by remember(heroes.map { it.id }) { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(heroes.map { it.id }, focused) {
@@ -636,7 +650,7 @@ private fun RotatingHero(
         onClick = { onMediaClick(item) },
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (isCompactAndroidLayout()) 250.dp else 330.dp)
+            .height(if (isCompactAndroidLayout()) 250.dp else if (denseTv) 220.dp else 330.dp)
             .onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
@@ -662,13 +676,13 @@ private fun RotatingHero(
                 )
             )
             Column(
-                modifier = Modifier.align(Alignment.BottomStart).padding(if (isCompactAndroidLayout()) 16.dp else 28.dp).widthIn(max = 590.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.align(Alignment.BottomStart).padding(if (isCompactAndroidLayout() || denseTv) 16.dp else 28.dp).widthIn(max = 590.dp),
+                verticalArrangement = Arrangement.spacedBy(if (denseTv) 5.dp else 8.dp)
             ) {
                 Text(item.badge ?: item.streamType.uppercase(), color = Color(0xFFF6D896), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text(item.title, color = PosterWhite, fontSize = if (isCompactAndroidLayout()) 22.sp else 30.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.title, color = PosterWhite, fontSize = if (isCompactAndroidLayout() || denseTv) 22.sp else 30.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 item.description?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, color = Color(0xFFD3DBE6), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(it, color = Color(0xFFD3DBE6), fontSize = 13.sp, maxLines = if (denseTv) 1 else 2, overflow = TextOverflow.Ellipsis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     QuestButton(
@@ -695,17 +709,18 @@ private fun MediaRow(
     onToggleFavorite: (UiMedia) -> Unit,
     onRemoveHistory: (UiMedia) -> Unit
 ) {
+    val denseTv = isTelevisionLayout()
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(row.title, color = White, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+            Text(row.title, color = White, fontSize = if (denseTv) 18.sp else 21.sp, fontWeight = FontWeight.SemiBold)
             row.subtitle?.let { Text(it, color = Muted, fontSize = 12.sp) }
         }
         LazyRow(
             modifier = Modifier.focusGroup(),
-            horizontalArrangement = Arrangement.spacedBy(15.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (denseTv) 10.dp else 15.dp),
             contentPadding = PaddingValues(end = 22.dp)
         ) {
             columnItems(row.items, key = { it.id }) { media ->
@@ -747,25 +762,26 @@ private fun LiveTvScreen(
         }
         return
     }
-    Row(modifier = Modifier.fillMaxSize().padding(start = 24.dp, end = 30.dp, bottom = 28.dp)) {
+    val denseTv = isTelevisionLayout()
+    Row(modifier = Modifier.fillMaxSize().padding(start = if (denseTv) 14.dp else 24.dp, end = if (denseTv) 16.dp else 30.dp, bottom = if (denseTv) 14.dp else 28.dp)) {
         CategorySidebar(state.categories, state.selectedCategory, onCategorySelected)
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(if (denseTv) 12.dp else 24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text("Live TV", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    Text("Live TV", color = White, fontSize = if (denseTv) 23.sp else 30.sp, fontWeight = FontWeight.Bold)
                     Text("Choose a channel from your provider", color = Muted, fontSize = 13.sp)
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 Text(state.totalItemsText.ifBlank { "${state.items.size} channels" }, color = Muted, fontSize = 12.sp)
             }
-            Spacer(modifier = Modifier.height(17.dp))
+            Spacer(modifier = Modifier.height(if (denseTv) 10.dp else 17.dp))
             when {
                 state.loading -> LoadingContent("Loading channels…")
                 state.items.isEmpty() -> EmptyState("No channels in this category", state.emptyMessage)
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize().focusGroup(),
-                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (denseTv) 5.dp else 9.dp),
                     contentPadding = PaddingValues(bottom = 30.dp)
                 ) {
                     columnItems(state.items, key = { it.id }) { channel ->
@@ -784,15 +800,16 @@ private fun LiveTvScreen(
 
 @Composable
 private fun CategorySidebar(categories: List<UiCategory>, selected: Int, onSelected: (Int) -> Unit) {
+    val denseTv = isTelevisionLayout()
     Column(
-        modifier = Modifier.width(210.dp).fillMaxHeight()
+        modifier = Modifier.width(if (denseTv) 170.dp else 210.dp).fillMaxHeight()
             .clip(RoundedCornerShape(15.dp))
             .background(Panel)
             .border(1.dp, Color(0xFF292929), RoundedCornerShape(15.dp))
-            .padding(12.dp)
+            .padding(if (denseTv) 7.dp else 12.dp)
     ) {
         Text("Categories", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(if (denseTv) 2.dp else 6.dp)) {
             indexedColumnItems(categories, key = { _, category -> category.id }) { index, category ->
                 CategorySidebarItem(category, index == selected) { onSelected(index) }
             }
@@ -853,11 +870,12 @@ private fun CompactCategorySelector(categories: List<UiCategory>, selected: Int,
 
 @Composable
 private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick: () -> Unit) {
+    val denseTv = isTelevisionLayout()
     var focused by remember { mutableStateOf(false) }
     QuestSurface(
         onClick = onClick,
         modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier)
-            .fillMaxWidth().height(58.dp).onFocusChanged { focused = it.isFocused },
+            .fillMaxWidth().height(if (denseTv) 46.dp else 58.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Gold.copy(alpha = 0.2f) else Color.Transparent,
@@ -866,7 +884,7 @@ private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(category.title, color = if (focused) OnAccent else White, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(category.title, color = if (focused) OnAccent else White, fontSize = if (denseTv) 11.sp else 12.sp, lineHeight = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (category.isLocked) Text("PIN", color = if (focused) OnAccent else GoldLight, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
@@ -928,6 +946,7 @@ private fun ContentBrowserScreen(
         ContentBrowserCompact(state, gridState, selectedFilter, onFilterChanged, onLoadMore, onCategorySelected, onMediaClick, onToggleFavorite)
         return
     }
+    val denseTv = isTelevisionLayout()
     val gridScope = rememberCoroutineScope()
     LaunchedEffect(gridState, state.items.size, state.hasMore, state.loadingMore) {
         if (state.items.isNotEmpty() && state.hasMore && !state.loadingMore) {
@@ -937,19 +956,19 @@ private fun ContentBrowserScreen(
             onLoadMore()
         }
     }
-    Row(modifier = Modifier.fillMaxSize().padding(start = 24.dp, end = 30.dp, bottom = 28.dp)) {
+    Row(modifier = Modifier.fillMaxSize().padding(start = if (denseTv) 14.dp else 24.dp, end = if (denseTv) 16.dp else 30.dp, bottom = if (denseTv) 14.dp else 28.dp)) {
         CategorySidebar(state.categories, state.selectedCategory) { index ->
             gridScope.launch { gridState.animateScrollToItem(0) }
             onCategorySelected(index)
         }
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(if (denseTv) 12.dp else 24.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(if (denseTv) 5.dp else 11.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column {
-                        Text("Movies & Series", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                         Text(state.categories.getOrNull(state.selectedCategory)?.title?.takeUnless { it == "All" }
-                            ?: "Provider catalogue", color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            ?: "All titles", color = White, fontSize = if (denseTv) 22.sp else 30.sp,
+                            fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(modifier = Modifier.weight(1f))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -972,7 +991,7 @@ private fun ContentBrowserScreen(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(17.dp))
+            Spacer(modifier = Modifier.height(if (denseTv) 9.dp else 17.dp))
             when {
                 state.loading -> LoadingContent("Loading provider catalogue…")
                 state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -985,14 +1004,15 @@ private fun ContentBrowserScreen(
                     }
                 }
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val columns = (maxWidth / 130.dp).toInt().coerceIn(4, 6)
+                    val columns = (maxWidth / (if (denseTv) 115.dp else 130.dp)).toInt()
+                        .coerceIn(if (denseTv) 5 else 4, if (denseTv) 7 else 6)
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(columns),
                         state = gridState,
                         modifier = Modifier.fillMaxSize().focusGroup(),
-                        contentPadding = PaddingValues(bottom = 30.dp, end = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        contentPadding = PaddingValues(bottom = if (denseTv) 16.dp else 30.dp, end = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(if (denseTv) 8.dp else 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(if (denseTv) 10.dp else 16.dp)
                     ) {
                         gridItems(state.items, key = { "${it.streamType}:${it.id}" }) { media ->
                             MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
@@ -1122,8 +1142,9 @@ private fun MediaCard(
     onRemoveHistory: (() -> Unit)? = null,
     compactGrid: Boolean = false
 ) {
-    val width = if (item.portrait) 166.dp else 235.dp
-    val height = if (item.portrait) 235.dp else 138.dp
+    val denseTv = isTelevisionLayout()
+    val width = if (item.portrait) (if (denseTv) 142.dp else 166.dp) else (if (denseTv) 205.dp else 235.dp)
+    val height = if (item.portrait) (if (denseTv) 202.dp else 235.dp) else (if (denseTv) 120.dp else 138.dp)
     val cardModifier = if (compactGrid) {
         Modifier.fillMaxWidth().aspectRatio(width.value / height.value)
     } else {
