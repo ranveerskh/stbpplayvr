@@ -772,7 +772,7 @@ private fun CategorySidebar(categories: List<UiCategory>, selected: Int, onSelec
 
 @Composable
 private fun CompactCategorySelector(categories: List<UiCategory>, selected: Int, onSelected: (Int) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp), contentPadding = PaddingValues(vertical = 3.dp, end = 6.dp)) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp), contentPadding = PaddingValues(start = 0.dp, top = 3.dp, end = 6.dp, bottom = 3.dp)) {
         columnItems(categories) { category ->
             val index = categories.indexOf(category)
             var focused by remember { mutableStateOf(false) }
