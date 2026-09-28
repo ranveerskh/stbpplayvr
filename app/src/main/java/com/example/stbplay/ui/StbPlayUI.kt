@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,13 +32,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as columnItems
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
@@ -50,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -70,6 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.tv.material3.Border
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -83,6 +87,7 @@ import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.domain.model.PortalSettings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.text.Normalizer
 import java.util.Locale
 
@@ -190,6 +195,7 @@ fun StbPlayApp(
     settingsState: StbPlaySettingsState,
     selectedTab: StbPlayTab,
     contentFilter: ContentKindFilter,
+    contentGridState: LazyGridState,
     onTabSelected: (StbPlayTab) -> Unit,
     onContentFilterChanged: (ContentKindFilter) -> Unit,
     onLoadMoreContent: () -> Unit,
@@ -260,6 +266,7 @@ fun StbPlayApp(
                 )
                 StbPlayTab.CONTENT -> ContentBrowserScreen(
                     state = contentState,
+                    gridState = contentGridState,
                     selectedFilter = contentFilter,
                     onFilterChanged = onContentFilterChanged,
                     onLoadMore = onLoadMoreContent,
@@ -316,6 +323,7 @@ private fun StbPlayNavigationRail(
             .fillMaxHeight()
             .background(Rail)
             .animateContentSize()
+            .zIndex(2f)
             .padding(horizontal = 12.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -362,44 +370,72 @@ private fun StbPlayNavigationRail(
 @Composable
 private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    var showFocusLabel by remember { mutableStateOf(false) }
     val initialFocus = if (selected) Modifier.questInitialFocus() else Modifier
-    QuestSurface(
-        onClick = onClick,
-        modifier = Modifier.then(initialFocus).fillMaxWidth().height(48.dp).onFocusChanged { focused = it.isFocused },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (selected) Gold.copy(alpha = 0.18f) else Color.Transparent,
-            focusedContainerColor = Gold
-        ),
-        border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(BorderStroke(2.dp, GoldLight))
-        )
-    ) {
-        Box(
-            Modifier.fillMaxSize().padding(horizontal = if (collapsed) 0.dp else 12.dp),
-            contentAlignment = if (collapsed) Alignment.Center else Alignment.CenterStart
+    LaunchedEffect(collapsed, showFocusLabel) {
+        if (collapsed && showFocusLabel) {
+            delay(1400)
+            showFocusLabel = false
+        }
+    }
+    Box(Modifier.fillMaxWidth().height(48.dp)) {
+        QuestSurface(
+            onClick = onClick,
+            modifier = Modifier.then(initialFocus).fillMaxSize().onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused && collapsed) showFocusLabel = true
+                if (!it.isFocused) showFocusLabel = false
+            },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = if (selected) Gold.copy(alpha = 0.18f) else Color.Transparent,
+                focusedContainerColor = Gold
+            ),
+            border = ClickableSurfaceDefaults.border(
+                focusedBorder = Border(BorderStroke(2.dp, GoldLight))
+            )
         ) {
-            if (collapsed) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = when {
-                        focused -> Navy
-                        selected -> GoldLight
-                        else -> White
-                    },
-                    modifier = Modifier.size(23.dp)
-                )
-            } else {
-                Text(
-                    label,
-                    color = if (focused) Navy else White,
-                    fontSize = 13.sp,
-                    fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Box(
+                Modifier.fillMaxSize().padding(horizontal = if (collapsed) 0.dp else 12.dp),
+                contentAlignment = if (collapsed) Alignment.Center else Alignment.CenterStart
+            ) {
+                if (collapsed) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = when {
+                            focused -> Navy
+                            selected -> GoldLight
+                            else -> White
+                        },
+                        modifier = Modifier.size(23.dp)
+                    )
+                } else {
+                    Text(
+                        label,
+                        color = if (focused) Navy else White,
+                        fontSize = 13.sp,
+                        fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
+        }
+        if (collapsed && showFocusLabel) {
+            Text(
+                label,
+                color = White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = 68.dp)
+                    .zIndex(3f)
+                    .background(PanelSoft, RoundedCornerShape(8.dp))
+                    .border(1.dp, Gold.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            )
         }
     }
 }
@@ -430,18 +466,18 @@ private fun StbPlayHeader(
             Text("STB PLAY", color = GoldLight, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(modifier = Modifier.weight(1f))
-        HeaderAction("Search", onSearchClick)
+        HeaderAction("Search", onSearchClick, modifier = Modifier.width(120.dp))
         Spacer(modifier = Modifier.width(10.dp))
-        HeaderAction("Settings", onSettingsClick)
+        HeaderAction("Settings", onSettingsClick, modifier = Modifier.width(120.dp))
     }
 }
 
 @Composable
-private fun HeaderAction(label: String, onClick: () -> Unit) {
+private fun HeaderAction(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     QuestSurface(
         onClick = onClick,
-        modifier = Modifier.height(40.dp).onFocusChanged { focused = it.isFocused },
+        modifier = modifier.height(40.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Gold),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
@@ -711,6 +747,7 @@ private fun LiveChannelRow(
 @Composable
 private fun ContentBrowserScreen(
     state: StbPlayLibraryState,
+    gridState: LazyGridState,
     selectedFilter: ContentKindFilter,
     onFilterChanged: (ContentKindFilter) -> Unit,
     onLoadMore: () -> Unit,
@@ -718,7 +755,7 @@ private fun ContentBrowserScreen(
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit
 ) {
-    val gridState = rememberLazyGridState()
+    val gridScope = rememberCoroutineScope()
     LaunchedEffect(gridState, state.items.size, state.hasMore, state.loadingMore) {
         if (state.items.isNotEmpty() && state.hasMore && !state.loadingMore) {
             val prefetchIndex = (state.items.size - 12).coerceAtLeast(0)
@@ -728,7 +765,10 @@ private fun ContentBrowserScreen(
         }
     }
     Row(modifier = Modifier.fillMaxSize().padding(start = 24.dp, end = 30.dp, bottom = 28.dp)) {
-        CategorySidebar(state.categories, state.selectedCategory, onCategorySelected)
+        CategorySidebar(state.categories, state.selectedCategory) { index ->
+            gridScope.launch { gridState.animateScrollToItem(0) }
+            onCategorySelected(index)
+        }
         Spacer(modifier = Modifier.width(24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
@@ -751,7 +791,10 @@ private fun ContentBrowserScreen(
                 ) {
                     Spacer(modifier = Modifier.weight(1f))
                     ContentKindFilter.entries.forEach { filter ->
-                        FilterChip(filter, filter == selectedFilter) { onFilterChanged(filter) }
+                        FilterChip(filter, filter == selectedFilter) {
+                            gridScope.launch { gridState.animateScrollToItem(0) }
+                            onFilterChanged(filter)
+                        }
                     }
                 }
             }
@@ -1145,14 +1188,24 @@ private fun StbPlaySearchScreen(
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { requester.requestFocus() }
     val results = remember(query, catalog) {
-        if (query.trim().length < 3) emptyList()
-        else catalog.filter { it.matchesCatalogQuery(query) }.distinctBy { "${it.streamType}:${it.id}" }
+        if (query.trim().length < 2) emptyList()
+        else catalog.distinctBy { "${it.streamType}:${it.id}" }
+            .mapIndexedNotNull { index, media ->
+                media.catalogMatchRank(query)?.let { rank -> Triple(rank, index, media) }
+            }
+            .sortedWith(compareBy<Triple<Int, Int, UiMedia>> { it.first }.thenBy { it.second })
+            .map { it.third }
     }
     val scopeTitle = when (scope) {
         StbPlayTab.LIVE -> "Live TV"
         StbPlayTab.CONTENT -> "Movies & Series"
         StbPlayTab.FAVOURITES -> "Favourites"
         else -> "All content"
+    }
+    val resultType = when (scope) {
+        StbPlayTab.LIVE -> "channels"
+        StbPlayTab.FAVOURITES -> "saved items"
+        else -> "titles"
     }
     Column(modifier = Modifier.fillMaxSize().background(Navy).padding(36.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1163,27 +1216,51 @@ private fun StbPlaySearchScreen(
             Spacer(modifier = Modifier.weight(1f))
             HeaderAction("Back", onBack)
         }
-        BasicTextField(
-            value = query,
-            onValueChange = { query = it.take(80) },
-            modifier = Modifier.fillMaxWidth().height(58.dp).focusRequester(requester).background(Panel, RoundedCornerShape(12.dp)).border(2.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(12.dp)).padding(horizontal = 18.dp, vertical = 16.dp),
-            singleLine = true,
-            textStyle = TextStyle(color = White, fontSize = 18.sp),
-            decorationBox = { inner ->
-                if (query.isBlank()) Text("Type at least 3 characters…", color = Muted, fontSize = 17.sp)
-                inner()
+        Row(
+            modifier = Modifier.fillMaxWidth().height(58.dp)
+                .background(Panel, RoundedCornerShape(12.dp))
+                .border(2.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(12.dp)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BasicTextField(
+                value = query,
+                onValueChange = { query = it.take(80) },
+                modifier = Modifier.weight(1f).fillMaxHeight().focusRequester(requester)
+                    .padding(horizontal = 18.dp, vertical = 17.dp),
+                singleLine = true,
+                textStyle = TextStyle(color = White, fontSize = 18.sp),
+                decorationBox = { inner ->
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                        if (query.isBlank()) Text("Type at least 2 characters…", color = Muted, fontSize = 17.sp)
+                        inner()
+                    }
+                }
+            )
+            if (query.isNotBlank()) {
+                var clearFocused by remember { mutableStateOf(false) }
+                QuestSurface(
+                    onClick = { query = "" },
+                    modifier = Modifier.padding(end = 8.dp).size(40.dp).onFocusChanged { clearFocused = it.isFocused },
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
+                    colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = Gold),
+                    border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(1.dp, GoldLight)))
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = if (clearFocused) Navy else White, modifier = Modifier.size(19.dp))
+                    }
+                }
             }
-        )
-        if (query.trim().length >= 3 && scope == StbPlayTab.CONTENT) {
+        }
+        if (query.trim().length >= 2) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("${catalog.size} loaded titles · ${results.size} matches", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                if (hasMore) WideAction(if (loadingMore) "Loading more titles…" else "Load more titles", onLoadMore, Modifier.width(210.dp))
+                Text("${results.size} matching $resultType · ${catalog.size} loaded", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                if (hasMore && scope == StbPlayTab.CONTENT) WideAction(if (loadingMore) "Loading more titles…" else "Load more titles", onLoadMore, Modifier.width(210.dp))
             }
         }
         when {
-            query.trim().length < 3 -> Text("Search title, original title, genre, language, cast, or year.", color = Muted, fontSize = 14.sp)
+            query.trim().length < 2 -> Text("Enter 2 or more characters to search. Title matches appear first.", color = Muted, fontSize = 14.sp)
             results.isEmpty() -> EmptyState(
-                "No matches in loaded titles",
+                "No matching $resultType",
                 if (scope == StbPlayTab.CONTENT && hasMore) "Load more titles above to continue the search."
                 else "Try a shorter part of the channel or title name."
             )
@@ -1205,12 +1282,27 @@ private fun StbPlaySearchScreen(
     }
 }
 
-private fun UiMedia.matchesCatalogQuery(rawQuery: String): Boolean {
-    val queryTokens = normalizeSearchText(rawQuery).split(' ').filter { it.isNotBlank() }
-    if (queryTokens.isEmpty()) return false
-    val searchableText = listOfNotNull(title, subtitle, description, searchText, language, genre, rating, cast, year?.toString())
+private fun UiMedia.catalogMatchRank(rawQuery: String): Int? {
+    val query = normalizeSearchText(rawQuery)
+    val tokens = query.split(' ').filter { it.isNotBlank() }
+    if (tokens.isEmpty()) return null
+
+    val titleText = normalizeSearchText(title)
+    val alternateTitle = normalizeSearchText(subtitle.orEmpty())
+    when {
+        titleText == query -> return 0
+        titleText.startsWith(query) -> return 1
+        titleText.contains(query) -> return 2
+        tokens.all(titleText::contains) -> return 3
+        alternateTitle == query -> return 4
+        alternateTitle.startsWith(query) -> return 5
+        alternateTitle.contains(query) -> return 6
+        tokens.all(alternateTitle::contains) -> return 7
+    }
+
+    val metadata = listOfNotNull(description, searchText, language, genre, rating, cast, year?.toString())
         .joinToString(" ") { normalizeSearchText(it) }
-    return queryTokens.all { searchableText.contains(it) }
+    return if (tokens.all(metadata::contains)) 8 else null
 }
 
 private fun normalizeSearchText(value: String): String = Normalizer

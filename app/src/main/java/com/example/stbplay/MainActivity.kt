@@ -16,6 +16,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -252,6 +253,7 @@ private fun StbPlayRoot(
     onShare: () -> Unit
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val contentGridState = rememberLazyGridState()
     val storedSettings by settingsManager.portalSettings.collectAsState(initial = PortalSettings())
     val profiles by settingsManager.portalProfiles.collectAsState(initial = emptyList())
     val favoriteIds by settingsManager.favoriteIds.collectAsState(initial = emptySet())
@@ -305,6 +307,7 @@ private fun StbPlayRoot(
 
     fun startConnection(input: PortalSettings) {
         if (connecting || input.url.isBlank() || input.mac.isBlank()) return
+        scope.launch { contentGridState.scrollToItem(0) }
         connecting = true
         catalogGeneration++
         vodCatalogs = emptyMap()
@@ -707,6 +710,7 @@ private fun StbPlayRoot(
                     settingsState = settingsState,
                     selectedTab = selectedTab,
                     contentFilter = contentFilter,
+                    contentGridState = contentGridState,
                     onTabSelected = { tab ->
                         if (tab != selectedTab) unlockedAdultCategoryKey = null
                         selectedTab = tab
