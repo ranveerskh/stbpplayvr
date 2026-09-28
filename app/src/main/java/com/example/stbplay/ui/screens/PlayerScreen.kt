@@ -29,6 +29,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -220,6 +221,18 @@ private fun NativePlayerScreen(
         volumePercent = (volumePercent + delta).coerceIn(0, 100)
         player.volume = volumePercent / 100f
     }
+    var playerControlsVisible by remember(playbackUrl) { mutableStateOf(false) }
+    var controlsInteraction by remember(playbackUrl) { mutableIntStateOf(0) }
+    fun revealPlayerControls() {
+        playerControlsVisible = true
+        controlsInteraction++
+    }
+    LaunchedEffect(controlsInteraction, playerControlsVisible) {
+        if (playerControlsVisible) {
+            delay(3_000)
+            playerControlsVisible = false
+        }
+    }
 
     DisposableEffect(player) {
         onDispose {
@@ -261,26 +274,47 @@ private fun NativePlayerScreen(
                         if ((keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) && event.action == KeyEvent.ACTION_UP) {
                             onBack()
                             true
-                        } else keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE
+                        } else if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) {
+                            true
+                        } else {
+                            if (event.action == KeyEvent.ACTION_DOWN) {
+                                revealPlayerControls()
+                                showController()
+                            }
+                            false
+                        }
+                    }
+                    setOnTouchListener { _, event ->
+                        if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+                            revealPlayerControls()
+                            showController()
+                        }
+                        false
                     }
                     post { requestFocus() }
                 }
             },
             update = { it.player = player }
         )
-        QuestButton(
-            onClick = onBack,
-            modifier = Modifier.align(Alignment.TopStart).padding(18.dp).questInitialFocus(),
-            colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
-        ) { Text("← Back") }
-        Row(
-            modifier = Modifier.align(Alignment.TopEnd).padding(18.dp).background(Color(0xCC070707)).padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text("Volume $volumePercent%", color = Color.White)
-            QuestButton(onClick = { adjustVolume(-10) }) { Text("−") }
-            QuestButton(onClick = { adjustVolume(10) }) { Text("+") }
+        if (playerControlsVisible && playerError == null) {
+            QuestButton(
+                onClick = { revealPlayerControls(); onBack() },
+                modifier = Modifier.align(Alignment.TopStart).padding(18.dp)
+                    .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
+                    .questInitialFocus(),
+                colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
+            ) { Text("← Back") }
+            Row(
+                modifier = Modifier.align(Alignment.TopEnd).padding(18.dp)
+                    .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
+                    .background(Color(0xCC070707)).padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Volume $volumePercent%", color = Color.White)
+                QuestButton(onClick = { adjustVolume(-10); revealPlayerControls() }) { Text("−") }
+                QuestButton(onClick = { adjustVolume(10); revealPlayerControls() }) { Text("+") }
+            }
         }
         playerError?.let { error ->
             Column(

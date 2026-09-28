@@ -3,12 +3,14 @@
 package com.example.stbplay.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -34,6 +36,14 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,12 +61,14 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ButtonDefaults
@@ -71,6 +83,8 @@ import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.domain.model.PortalSettings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import java.text.Normalizer
+import java.util.Locale
 
 private val Navy = Color(0xFF070707)
 private val Rail = Color(0xFF111111)
@@ -207,6 +221,10 @@ fun StbPlayApp(
     if (searchOpen) {
         StbPlaySearchScreen(
             catalog = searchCatalog,
+            scope = selectedTab,
+            hasMore = selectedTab == StbPlayTab.CONTENT && contentState.hasMore,
+            loadingMore = contentState.loadingMore,
+            onLoadMore = onLoadMoreContent,
             onMediaClick = { media -> searchOpen = false; onMediaClick(media) },
             onToggleFavorite = onToggleFavorite,
             onBack = { searchOpen = false }
@@ -217,8 +235,8 @@ fun StbPlayApp(
     Row(modifier = Modifier.fillMaxSize().background(Navy)) {
         StbPlayNavigationRail(
             selectedTab = selectedTab,
-            collapsed = railCollapsed,
-            onToggle = { railCollapsed = !railCollapsed },
+            collapsed = railCollapsed || selectedTab == StbPlayTab.CONTENT,
+            onToggle = { if (selectedTab != StbPlayTab.CONTENT) railCollapsed = !railCollapsed },
             onTabSelected = onTabSelected
         )
         Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -286,17 +304,18 @@ private fun StbPlayNavigationRail(
     onTabSelected: (StbPlayTab) -> Unit
 ) {
     val tabs = listOf(
-        StbPlayTab.HOME to "Home",
-        StbPlayTab.LIVE to "Live TV",
-        StbPlayTab.CONTENT to "Movies & Series",
-        StbPlayTab.FAVOURITES to "Favourites",
-        StbPlayTab.SETTINGS to "Settings"
+        Triple(StbPlayTab.HOME, "Home", Icons.Filled.Home),
+        Triple(StbPlayTab.LIVE, "Live TV", Icons.Filled.LiveTv),
+        Triple(StbPlayTab.CONTENT, "Movies & Series", Icons.Filled.Movie),
+        Triple(StbPlayTab.FAVOURITES, "Favourites", Icons.Filled.Favorite),
+        Triple(StbPlayTab.SETTINGS, "Settings", Icons.Filled.Settings)
     )
     Column(
         modifier = Modifier
             .width(if (collapsed) 78.dp else 198.dp)
             .fillMaxHeight()
             .background(Rail)
+            .animateContentSize()
             .padding(horizontal = 12.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -306,11 +325,15 @@ private fun StbPlayNavigationRail(
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
             colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Gold)
         ) {
-            Row(
+            Box(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+                contentAlignment = if (collapsed) Alignment.Center else Alignment.CenterStart
             ) {
-                Text(if (collapsed) "STB" else "STB PLAY", color = if (collapsed) GoldLight else Gold, fontSize = if (collapsed) 12.sp else 18.sp, fontWeight = FontWeight.ExtraBold)
+                if (collapsed) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "STB PLAY", tint = GoldLight, modifier = Modifier.size(26.dp))
+                } else {
+                    Text("STB PLAY", color = Gold, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                }
             }
         }
         Text(
@@ -320,9 +343,11 @@ private fun StbPlayNavigationRail(
             modifier = Modifier.padding(horizontal = 10.dp)
         )
         Spacer(modifier = Modifier.height(16.dp))
-        tabs.forEach { (tab, title) ->
+        tabs.forEach { (tab, title, icon) ->
             NavItem(
-                label = if (collapsed) title.take(1) else title,
+                label = title,
+                icon = icon,
+                collapsed = collapsed,
                 selected = selectedTab == tab,
                 onClick = { onTabSelected(tab) }
             )
@@ -335,7 +360,7 @@ private fun StbPlayNavigationRail(
 }
 
 @Composable
-private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val initialFocus = if (selected) Modifier.questInitialFocus() else Modifier
     QuestSurface(
@@ -350,15 +375,31 @@ private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit) {
             focusedBorder = Border(BorderStroke(2.dp, GoldLight))
         )
     ) {
-        Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
-            Text(
-                label,
-                color = if (focused) Navy else White,
-                fontSize = 13.sp,
-                fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        Box(
+            Modifier.fillMaxSize().padding(horizontal = if (collapsed) 0.dp else 12.dp),
+            contentAlignment = if (collapsed) Alignment.Center else Alignment.CenterStart
+        ) {
+            if (collapsed) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = when {
+                        focused -> Navy
+                        selected -> GoldLight
+                        else -> White
+                    },
+                    modifier = Modifier.size(23.dp)
+                )
+            } else {
+                Text(
+                    label,
+                    color = if (focused) Navy else White,
+                    fontSize = 13.sp,
+                    fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -611,7 +652,7 @@ private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick
     QuestSurface(
         onClick = onClick,
         modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier)
-            .fillMaxWidth().heightIn(min = 42.dp).onFocusChanged { focused = it.isFocused },
+            .fillMaxWidth().height(58.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Gold.copy(alpha = 0.2f) else Color.Transparent,
@@ -620,7 +661,7 @@ private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(category.title, color = if (focused) Navy else White, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(category.title, color = if (focused) Navy else White, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (category.isLocked) Text("PIN", color = if (focused) Navy else GoldLight, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
@@ -726,21 +767,24 @@ private fun ContentBrowserScreen(
                         }
                     }
                 }
-                else -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 166.dp),
-                    state = gridState,
-                    modifier = Modifier.fillMaxSize().focusGroup(),
-                    contentPadding = PaddingValues(bottom = 30.dp, end = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(17.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    gridItems(state.items, key = { "${it.streamType}:${it.id}" }) { media ->
-                        MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) })
-                    }
-                    if (state.hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
-                                Text(if (state.loadingMore) "Loading…" else "Load more titles")
+                else -> BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val columns = (maxWidth / 130.dp).toInt().coerceIn(4, 6)
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
+                        state = gridState,
+                        modifier = Modifier.fillMaxSize().focusGroup(),
+                        contentPadding = PaddingValues(bottom = 30.dp, end = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        gridItems(state.items, key = { "${it.streamType}:${it.id}" }) { media ->
+                            MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
+                        }
+                        if (state.hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
+                                    Text(if (state.loadingMore) "Loading…" else "Load more titles")
+                                }
                             }
                         }
                     }
@@ -804,15 +848,21 @@ private fun MediaCard(
     item: UiMedia,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onRemoveHistory: (() -> Unit)? = null
+    onRemoveHistory: (() -> Unit)? = null,
+    compactGrid: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (focused) 1.055f else 1f, label = "cardScale")
     val width = if (item.portrait) 166.dp else 235.dp
     val height = if (item.portrait) 235.dp else 138.dp
+    val cardModifier = if (compactGrid) {
+        Modifier.fillMaxWidth().aspectRatio(width.value / height.value)
+    } else {
+        Modifier.width(width).height(height)
+    }
     QuestSurface(
         onClick = onClick,
-        modifier = Modifier.width(width).height(height).graphicsLayer(scaleX = scale, scaleY = scale).onFocusChanged { focused = it.isFocused },
+        modifier = cardModifier.graphicsLayer(scaleX = scale, scaleY = scale).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
@@ -828,13 +878,19 @@ private fun MediaCard(
                 fallbackColor = Gold
             )
             Box(
-                Modifier.fillMaxWidth().height(82.dp).align(Alignment.BottomCenter).background(
+                (if (compactGrid) Modifier.fillMaxWidth().fillMaxHeight(0.4f) else Modifier.fillMaxWidth().height(82.dp))
+                    .align(Alignment.BottomCenter).background(
                     Brush.verticalGradient(listOf(Color.Transparent, Color(0xF8070707)))
                 )
             )
-            item.badge?.let { Text(it, color = GoldLight, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopStart).padding(9.dp)) }
+            item.badge?.let { Text(it, color = GoldLight, fontSize = if (compactGrid) 9.sp else 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopStart).padding(if (compactGrid) 6.dp else 9.dp)) }
             if (item.isLocked) StatusPill("PIN", GoldLight, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
-            FavoriteButton(item.isFavorite, onToggleFavorite, Modifier.align(Alignment.TopEnd).padding(6.dp))
+            FavoriteButton(
+                item.isFavorite,
+                onToggleFavorite,
+                Modifier.align(Alignment.TopEnd).padding(if (compactGrid) 4.dp else 6.dp),
+                if (compactGrid) 28.dp else 34.dp
+            )
             onRemoveHistory?.let { remove ->
                 QuestSurface(
                     onClick = remove,
@@ -850,17 +906,17 @@ private fun MediaCard(
                     }
                 }
             }
-            Text(item.title, color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(11.dp))
+            Text(item.title, color = White, fontSize = if (compactGrid) 11.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(if (compactGrid) 7.dp else 11.dp))
             if (item.progress > 0f) ProgressBar(item.progress, Modifier.align(Alignment.BottomCenter))
         }
     }
 }
 
 @Composable
-private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, buttonSize: Dp = 34.dp) {
     QuestSurface(
         onClick = onClick,
-        modifier = modifier.size(34.dp),
+        modifier = modifier.size(buttonSize),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(17.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xCC070707), focusedContainerColor = Gold)
     ) {
@@ -1076,6 +1132,10 @@ private fun PrimaryAction(title: String, onClick: () -> Unit) {
 @Composable
 private fun StbPlaySearchScreen(
     catalog: List<UiMedia>,
+    scope: StbPlayTab,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+    onLoadMore: () -> Unit,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit,
     onBack: () -> Unit
@@ -1086,13 +1146,19 @@ private fun StbPlaySearchScreen(
     LaunchedEffect(Unit) { requester.requestFocus() }
     val results = remember(query, catalog) {
         if (query.trim().length < 3) emptyList()
-        else catalog.filter { it.matchesStrictQuery(query) }.distinctBy { "${it.streamType}:${it.id}" }
+        else catalog.filter { it.matchesCatalogQuery(query) }.distinctBy { "${it.streamType}:${it.id}" }
     }
-    Column(modifier = Modifier.fillMaxSize().background(Navy).padding(36.dp), verticalArrangement = Arrangement.spacedBy(19.dp)) {
+    val scopeTitle = when (scope) {
+        StbPlayTab.LIVE -> "Live TV"
+        StbPlayTab.CONTENT -> "Movies & Series"
+        StbPlayTab.FAVOURITES -> "Favourites"
+        else -> "All content"
+    }
+    Column(modifier = Modifier.fillMaxSize().background(Navy).padding(36.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text("Search catalogue", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                Text("Strict title and metadata search", color = Muted, fontSize = 13.sp)
+                Text("Search $scopeTitle", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                Text("Results stay within this section", color = Muted, fontSize = 13.sp)
             }
             Spacer(modifier = Modifier.weight(1f))
             HeaderAction("Back", onBack)
@@ -1108,35 +1174,51 @@ private fun StbPlaySearchScreen(
                 inner()
             }
         )
+        if (query.trim().length >= 3 && scope == StbPlayTab.CONTENT) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("${catalog.size} loaded titles · ${results.size} matches", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                if (hasMore) WideAction(if (loadingMore) "Loading more titles…" else "Load more titles", onLoadMore, Modifier.width(210.dp))
+            }
+        }
         when {
             query.trim().length < 3 -> Text("Search title, original title, genre, language, cast, or year.", color = Muted, fontSize = 14.sp)
-            results.isEmpty() -> EmptyState("No exact matches", "Try a complete word or another title.")
-            else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 166.dp),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 30.dp),
-                horizontalArrangement = Arrangement.spacedBy(17.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-                gridItems(results, key = { "${it.streamType}:${it.id}" }) { media ->
-                    MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) })
+            results.isEmpty() -> EmptyState(
+                "No matches in loaded titles",
+                if (scope == StbPlayTab.CONTENT && hasMore) "Load more titles above to continue the search."
+                else "Try a shorter part of the channel or title name."
+            )
+            else -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val columns = (maxWidth / 130.dp).toInt().coerceIn(4, 6)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 30.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    gridItems(results, key = { "${it.streamType}:${it.id}" }) { media ->
+                        MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
+                    }
                 }
             }
         }
     }
 }
 
-private fun UiMedia.matchesStrictQuery(rawQuery: String): Boolean {
-    val query = rawQuery.trim().lowercase().replace(Regex("\\s+"), " ")
-    if (query.length < 3) return false
-    val words = listOf(title, subtitle, description, searchText, language, genre, rating, cast, year?.toString())
-        .filterNotNull()
-        .joinToString(" ")
-        .lowercase()
-        .replace(Regex("[^a-z0-9]+"), " ")
-    val normalizedQuery = query.replace(Regex("[^a-z0-9]+"), " ").trim()
-    return Regex("(?:^| )${Regex.escape(normalizedQuery)}(?= |$)").containsMatchIn(words)
+private fun UiMedia.matchesCatalogQuery(rawQuery: String): Boolean {
+    val queryTokens = normalizeSearchText(rawQuery).split(' ').filter { it.isNotBlank() }
+    if (queryTokens.isEmpty()) return false
+    val searchableText = listOfNotNull(title, subtitle, description, searchText, language, genre, rating, cast, year?.toString())
+        .joinToString(" ") { normalizeSearchText(it) }
+    return queryTokens.all { searchableText.contains(it) }
 }
+
+private fun normalizeSearchText(value: String): String = Normalizer
+    .normalize(value, Normalizer.Form.NFKC)
+    .lowercase(Locale.ROOT)
+    .replace(Regex("[^\\p{L}\\p{N}\\p{M}]+"), " ")
+    .trim()
+    .replace(Regex("\\s+"), " ")
 
 @Composable
 fun FirstStartDisclaimer(onAccept: () -> Unit) {

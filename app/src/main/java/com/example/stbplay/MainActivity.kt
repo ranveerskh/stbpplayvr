@@ -763,10 +763,26 @@ private fun StbPlayRoot(
                     },
                     onShare = onShare,
                     searchCatalog = when (selectedTab) {
-                        StbPlayTab.LIVE -> filteredLive
-                        StbPlayTab.CONTENT -> filteredVod
+                        StbPlayTab.LIVE -> liveStreams
+                        StbPlayTab.CONTENT -> {
+                            // Search everything already loaded from every VOD page/category,
+                            // not just the currently selected category's visible page.
+                            val loadedVod = (allVod + vodCatalogs.values.flatMap { it.items })
+                                .distinctBy { "${it.streamType}:${it.id}" }
+                            loadedVod.filter { stream ->
+                                val kindMatches = when (contentFilter) {
+                                    ContentKindFilter.ALL -> true
+                                    ContentKindFilter.MOVIES -> stream.streamType == "movie"
+                                    ContentKindFilter.SERIES -> stream.streamType == "series"
+                                }
+                                val languageMatches = catalogueLanguage == "All" ||
+                                    stream.language?.contains(catalogueLanguage, ignoreCase = true) == true ||
+                                    stream.searchText?.contains(catalogueLanguage, ignoreCase = true) == true
+                                kindMatches && languageMatches
+                            }
+                        }
                         StbPlayTab.FAVOURITES -> favoriteStreams
-                        else -> liveStreams + allVod
+                        else -> safeLive + safeVod
                     }.map(::toUi)
                 )
             }
