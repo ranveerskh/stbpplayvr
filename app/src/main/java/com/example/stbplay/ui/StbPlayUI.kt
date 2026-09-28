@@ -1407,6 +1407,7 @@ private fun StbPlaySearchScreen(
     var searchError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(query) { remotePage = 1; remoteHasMore = false; results = emptyList(); searchError = null }
     LaunchedEffect(catalog) {
+        if (scope == StbPlayTab.CONTENT) { indexed = emptyList(); return@LaunchedEffect }
         indexed = withContext(Dispatchers.Default) {
             catalog.distinctBy { "${it.streamType}:${it.id}" }.mapIndexed { index, media ->
                 IndexedMedia(index, media, normalizeSearchText(media.name),
@@ -1426,9 +1427,17 @@ private fun StbPlaySearchScreen(
                 .onSuccess { batch ->
                     val merged = if (remotePage == 1) batch.items else (results + batch.items)
                         .distinctBy { "${it.streamType}:${it.id}" }
-                    results = merged
+                    val terms = normalized.split(' ').filter(String::isNotBlank)
+                    results = withContext(Dispatchers.Default) {
+                        merged.mapIndexed { index, media ->
+                            val indexedMedia = IndexedMedia(index, media, normalizeSearchText(media.name),
+                                normalizeSearchText(media.originalTitle.orEmpty()), "")
+                            Triple(indexedMedia.matchRank(normalized, terms) ?: 9, index, media)
+                        }.sortedWith(compareBy<Triple<Int, Int, PortalStream>> { it.first }.thenBy { it.second })
+                            .map { it.third }
+                    }
                     remoteHasMore = batch.hasMore
-                    onSearchResults(merged)
+                    onSearchResults(results)
                     searchError = null
                 }
                 .onFailure {

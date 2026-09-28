@@ -228,15 +228,16 @@ class PortalRepository {
         val session = currentSession ?: return@withContext VodCatalogBatch(emptyList(), page, null, false)
         if (query.trim().length < 2) return@withContext VodCatalogBatch(emptyList(), page, null, false)
         val response = stalkerClient.call(settings.url, settings.mac, session, "vod", "get_ordered_list",
-            vodListParams(null) + mapOf("search" to query.trim(), "p" to page.toString(), "abc" to "*"))
+            (vodListParams(null) - "row") + mapOf("search" to query.trim(), "p" to page.toString(), "abc" to "*"))
         val js = response.optJSONObject("js")
-        val items = StalkerParser.parseVod(response, seriesOnly = null)
+        val rawItems = StalkerParser.parseVod(response, seriesOnly = null)
+        val items = rawItems
             .withCategoryLocks(vodCategoriesCache + seriesCategoriesCache)
             .filterNot { it.isLocked }
         val total = js?.optInt("total_items", -1)?.takeIf { it >= 0 }
-        val pageSize = js?.optInt("max_page_items", items.size)?.takeIf { it > 0 } ?: items.size
+        val pageSize = js?.optInt("max_page_items", rawItems.size)?.takeIf { it > 0 } ?: rawItems.size
         VodCatalogBatch(items, page + 1, total,
-            items.isNotEmpty() && (total == null || page * pageSize < total))
+            rawItems.isNotEmpty() && (total == null || page * pageSize < total))
     }
 
     suspend fun getSeriesCategories(): List<PortalCategory> = withContext(Dispatchers.IO) {

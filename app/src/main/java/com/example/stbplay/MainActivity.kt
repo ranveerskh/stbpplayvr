@@ -946,7 +946,17 @@ private fun StbPlayRoot(
                         StbPlayTab.FAVOURITES -> favoriteStreams
                         else -> safeLive + safeVod
                     },
-                    searchRemote = { query, page -> portalRepository.searchVod(query, page) },
+                    searchRemote = { query, page ->
+                        portalRepository.searchVod(query, page).let { batch ->
+                            batch.copy(items = batch.items.filter { stream ->
+                                when (contentFilter) {
+                                    ContentKindFilter.ALL -> true
+                                    ContentKindFilter.MOVIES -> stream.streamType == "movie"
+                                    ContentKindFilter.SERIES -> stream.streamType == "series"
+                                }
+                            })
+                        }
+                    },
                     onSearchResults = { remoteSearchStreams = it },
                     searchMedia = ::toUi
                 )
