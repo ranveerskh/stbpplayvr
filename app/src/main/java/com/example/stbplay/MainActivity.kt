@@ -30,7 +30,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.media3.cast.Cast
 import androidx.media3.common.util.UnstableApi
-import androidx.annotation.OptIn
+import androidx.annotation.OptIn as AndroidXOptIn
 import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.PortalRepository
 import com.example.stbplay.data.CatalogCacheStore
@@ -201,7 +201,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @OptIn(UnstableApi::class)
+    @AndroidXOptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) {
