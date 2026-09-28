@@ -688,7 +688,7 @@ private fun StbPlayRoot(
             }
         } else null
         activity?.channelStepHandler = handler
-        onDispose { if (activity?.channelStepHandler === handler) activity.channelStepHandler = null }
+        onDispose { activity?.let { if (it.channelStepHandler === handler) it.channelStepHandler = null } }
     }
     val allVod = remember(movieStreams, seriesStreams) {
         (movieStreams + seriesStreams).distinctBy { "${it.streamType}:${it.id}" }
