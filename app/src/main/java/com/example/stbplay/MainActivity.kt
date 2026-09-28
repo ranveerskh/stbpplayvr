@@ -24,11 +24,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.PortalRepository
+import com.example.stbplay.data.CatalogCacheStore
+import com.example.stbplay.data.CatalogSnapshot
 import com.example.stbplay.data.SettingsManager
 import com.example.stbplay.data.StalkerContentKind
 import com.example.stbplay.data.StalkerPlayRequest
@@ -253,6 +256,8 @@ private fun StbPlayRoot(
     onShare: () -> Unit
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val appContext = LocalContext.current.applicationContext
+    val catalogCache = remember(appContext) { CatalogCacheStore(appContext) }
     val contentGridState = rememberLazyGridState()
     val storedSettings by settingsManager.portalSettings.collectAsState(initial = PortalSettings())
     val profiles by settingsManager.portalProfiles.collectAsState(initial = emptyList())
@@ -307,11 +312,14 @@ private fun StbPlayRoot(
 
     fun startConnection(input: PortalSettings) {
         if (connecting || input.url.isBlank() || input.mac.isBlank()) return
-        scope.launch { contentGridState.scrollToItem(0) }
+        val refreshingVisibleCatalogue = screen == AppScreen.APP && (liveStreams.isNotEmpty() || movieStreams.isNotEmpty() || seriesStreams.isNotEmpty())
+        if (!refreshingVisibleCatalogue) scope.launch { contentGridState.scrollToItem(0) }
         connecting = true
         catalogGeneration++
-        vodCatalogs = emptyMap()
-        screen = AppScreen.LOADING
+        if (!refreshingVisibleCatalogue) {
+            vodCatalogs = emptyMap()
+            screen = AppScreen.LOADING
+        }
         connectionError = null
         loadingStage = "Authenticating portal…"
         loadingProgress = 0.08f
@@ -319,6 +327,20 @@ private fun StbPlayRoot(
 
         scope.launch {
             try {
+                if (!refreshingVisibleCatalogue) {
+                    val cached = catalogCache.read(portalKey(input))
+                    if (cached != null) {
+                        liveStreams = cached.liveStreams
+                        movieStreams = cached.movieStreams
+                        seriesStreams = cached.seriesStreams
+                        liveCategories = cached.liveCategories
+                        movieCategories = cached.movieCategories
+                        seriesCategories = cached.seriesCategories
+                        vodCatalogs = mapOf("all" to VodCatalogState(cached.allVodItems, cached.nextVodPage, cached.vodTotalItems, cached.vodHasMore))
+                        screen = AppScreen.APP
+                        loadingStage = "Updating catalogue in background…"
+                    }
+                }
                 val login = portalRepository.initialize(input)
                 if (!login.success) throw IllegalStateException(login.errorMessage ?: "Portal authentication failed.")
                 subscription = portalRepository.getSubscription()
@@ -345,6 +367,18 @@ private fun StbPlayRoot(
                     totalItems = firstBatch.totalItems,
                     hasMore = firstBatch.hasMore
                 ))
+                catalogCache.write(portalKey(input), CatalogSnapshot(
+                    liveStreams = liveStreams,
+                    movieStreams = movieStreams,
+                    seriesStreams = seriesStreams,
+                    liveCategories = liveCategories,
+                    movieCategories = movieCategories,
+                    seriesCategories = seriesCategories,
+                    allVodItems = firstBatch.items,
+                    nextVodPage = firstBatch.nextPage,
+                    vodTotalItems = firstBatch.totalItems ?: firstBatch.items.size,
+                    vodHasMore = firstBatch.hasMore
+                ))
                 loadingProgress = 0.84f
 
                 liveCategoryIndex = 0
@@ -355,6 +389,7 @@ private fun StbPlayRoot(
                 screen = AppScreen.APP
             } catch (error: Throwable) {
                 connectionError = error.message ?: "Could not load this portal."
+                if (refreshingVisibleCatalogue) screen = AppScreen.APP
             } finally {
                 connecting = false
             }
@@ -725,7 +760,10 @@ private fun StbPlayRoot(
                     onClearCache = {
                         liveStreams = emptyList(); movieStreams = emptyList(); seriesStreams = emptyList()
                         vodCatalogs = emptyMap()
-                        startConnection(storedSettings)
+                        scope.launch {
+                            catalogCache.clear(portalKey(storedSettings))
+                            startConnection(storedSettings)
+                        }
                     },
                     onClearHistory = { scope.launch { settingsManager.clearWatchHistory() } },
                     onAddPortal = { editingPortal = PortalSettings(pin = storedSettings.pin); screen = AppScreen.SETUP },

@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +35,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalConfiguration
 import com.example.stbplay.ui.QuestButton
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
@@ -59,16 +63,20 @@ fun SetupScreen(
     var mac by remember(initialSettings.id) { mutableStateOf(initialSettings.mac.ifBlank { generateStbPlayMac() }) }
     var pin by remember(initialSettings.id) { mutableStateOf(initialSettings.pin) }
     var error by remember(initialSettings.id) { mutableStateOf<String?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val phoneLayout = LocalConfiguration.current.screenWidthDp < 900 &&
+        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
 
     Box(modifier = Modifier.fillMaxSize().background(SetupNavy)) {
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
+                .fillMaxWidth()
                 .widthIn(max = 800.dp)
-                .padding(42.dp),
+                .then(if (phoneLayout) Modifier.imePadding().verticalScroll(rememberScrollState()).padding(18.dp) else Modifier.padding(42.dp)),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("STB PLAY", color = SetupGold, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold)
+            Text("STB PLAY", color = SetupGold, fontSize = if (phoneLayout) 32.sp else 46.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(modifier = Modifier.height(7.dp))
             Text(
                 if (initialSettings.id.isBlank()) "Portal Setup" else "Edit Portal",
@@ -76,12 +84,12 @@ fun SetupScreen(
                 fontSize = 24.sp,
                 fontWeight = FontWeight.SemiBold
             )
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(if (phoneLayout) 18.dp else 30.dp))
 
-            SetupField("Nickname", name, "My IPTV Portal") { name = it }
-            SetupField("Portal URL", url, "http://your-portal.example", initialFocus = true) { url = it }
-            SetupField("MAC Address", mac, "02:00:00:00:00:00") { mac = it.uppercase() }
-            SetupField("Parental PIN", pin, "4 to 8 digits", KeyboardType.NumberPassword) {
+            SetupField("Nickname", name, "My IPTV Portal", compact = phoneLayout) { name = it }
+            SetupField("Portal URL", url, "http://your-portal.example", initialFocus = true, compact = phoneLayout) { url = it }
+            SetupField("MAC Address", mac, "02:00:00:00:00:00", compact = phoneLayout) { mac = it.uppercase() }
+            SetupField("Parental PIN", pin, "4 to 8 digits", KeyboardType.NumberPassword, compact = phoneLayout) {
                 pin = it.filter(Char::isDigit).take(8)
             }
 
@@ -91,7 +99,8 @@ fun SetupScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val actionModifier = if (phoneLayout) Modifier.fillMaxWidth() else Modifier
+            val actionContent: @Composable () -> Unit = {
                 QuestButton(
                     onClick = {
                         val normalUrl = url.trim().trimEnd('/')
@@ -118,7 +127,7 @@ fun SetupScreen(
                             )
                         }
                     },
-                    modifier = Modifier.width(250.dp),
+                    modifier = if (phoneLayout) Modifier.fillMaxWidth() else Modifier.width(250.dp),
                     colors = ButtonDefaults.colors(
                         containerColor = SetupGold,
                         contentColor = SetupNavy,
@@ -130,6 +139,7 @@ fun SetupScreen(
                 onCancel?.let { cancel ->
                     QuestButton(
                         onClick = cancel,
+                        modifier = actionModifier,
                         colors = ButtonDefaults.colors(
                             containerColor = Color(0xFF262626),
                             contentColor = SetupText
@@ -137,6 +147,8 @@ fun SetupScreen(
                     ) { Text("Cancel") }
                 }
             }
+            if (phoneLayout) Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { actionContent() }
+            else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { actionContent() }
 
             Spacer(modifier = Modifier.height(19.dp))
             Text(
@@ -157,20 +169,17 @@ private fun SetupField(
     placeholder: String,
     keyboardType: KeyboardType = KeyboardType.Text,
     initialFocus: Boolean = false,
+    compact: Boolean = false,
     onValueChange: (String) -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, color = SetupText, fontSize = 15.sp, modifier = Modifier.width(190.dp))
+    val field: @Composable (Modifier) -> Unit = { widthModifier ->
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier
                 .then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
-                .weight(1f)
+                .then(widthModifier)
                 .height(52.dp)
                 .onFocusChanged { focused = it.isFocused }
                 .background(SetupPanel, androidx.compose.foundation.shape.RoundedCornerShape(11.dp))
@@ -188,5 +197,12 @@ private fun SetupField(
                 inner()
             }
         )
+    }
+    if (compact) Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(label, color = SetupText, fontSize = 14.sp)
+        field(Modifier.fillMaxWidth())
+    } else Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = SetupText, fontSize = 15.sp, modifier = Modifier.width(190.dp))
+        field(Modifier.weight(1f))
     }
 }

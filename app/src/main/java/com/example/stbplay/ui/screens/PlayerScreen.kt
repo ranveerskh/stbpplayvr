@@ -44,9 +44,11 @@ import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.MediaRouteButton
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
+import android.view.LayoutInflater
 import com.example.stbplay.ui.QuestButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.tv.material3.ButtonDefaults
@@ -179,7 +181,8 @@ private fun NativePlayerScreen(
                 setParameters(buildUponParameters().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true))
             }
         }
-        ExoPlayer.Builder(context)
+        val renderersFactory = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
+        ExoPlayer.Builder(context, renderersFactory)
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build()
@@ -271,7 +274,9 @@ private fun NativePlayerScreen(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { viewContext ->
-                PlayerView(viewContext).apply {
+                (if (compactLayout) {
+                    LayoutInflater.from(viewContext).inflate(com.example.stbplay.R.layout.player_view_phone, null) as PlayerView
+                } else PlayerView(viewContext)).apply {
                     this.player = activePlayer
                     useController = true
                     controllerShowTimeoutMs = 3_000

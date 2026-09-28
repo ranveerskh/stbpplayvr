@@ -45,7 +45,9 @@ import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -772,19 +774,33 @@ private fun CategorySidebar(categories: List<UiCategory>, selected: Int, onSelec
 
 @Composable
 private fun CompactCategorySelector(categories: List<UiCategory>, selected: Int, onSelected: (Int) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp), contentPadding = PaddingValues(start = 0.dp, top = 3.dp, end = 6.dp, bottom = 3.dp)) {
-        columnItems(categories) { category ->
-            val index = categories.indexOf(category)
-            var focused by remember { mutableStateOf(false) }
-            QuestSurface(
-                onClick = { onSelected(index) },
-                modifier = Modifier.widthIn(min = 104.dp, max = 190.dp).height(54.dp).onFocusChanged { focused = it.isFocused },
-                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
-                colors = ClickableSurfaceDefaults.colors(containerColor = if (index == selected) Gold else Panel, focusedContainerColor = Gold)
-            ) {
-                Row(Modifier.fillMaxSize().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(category.title, color = if (focused || index == selected) Navy else White, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    if (category.isLocked) Text("PIN", color = if (focused || index == selected) Navy else GoldLight, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    var expanded by remember { mutableStateOf(false) }
+    val selectedCategory = categories.getOrNull(selected)
+    Box(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        QuestSurface(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
+            colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Gold)
+        ) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(selectedCategory?.title ?: "All categories", color = White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text("${categories.size}", color = Muted, fontSize = 11.sp)
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Choose category", tint = GoldLight)
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.fillMaxWidth(0.9f).heightIn(max = 420.dp).background(Panel)) {
+            categories.forEachIndexed { index, category ->
+                QuestSurface(
+                    onClick = { expanded = false; onSelected(index) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
+                    colors = ClickableSurfaceDefaults.colors(containerColor = if (index == selected) Gold.copy(alpha = 0.2f) else Panel, focusedContainerColor = Gold)
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(category.title, color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        if (category.isLocked) Text("PIN", color = GoldLight, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
