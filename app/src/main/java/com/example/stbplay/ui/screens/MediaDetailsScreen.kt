@@ -168,7 +168,7 @@ fun QualitySelectionScreen(
             colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = DetailPanel)
         ) {
             Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Choose quality", color = DetailGoldLight, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Play", color = DetailGoldLight, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Text(title, color = DetailWhite, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 when {
                     isLoading -> Text("Reading the provider's playback options…", color = DetailMuted, fontSize = 13.sp)

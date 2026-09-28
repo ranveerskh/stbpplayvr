@@ -290,17 +290,46 @@ private fun NativePlayerScreen(
                     isFocusableInTouchMode = true
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     setOnKeyListener { _, keyCode, event ->
-                        if ((keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) && event.action == KeyEvent.ACTION_UP) {
-                            onBack()
-                            true
-                        } else if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) {
-                            true
-                        } else {
-                            if (event.action == KeyEvent.ACTION_DOWN) {
+                        when (keyCode) {
+                            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                                if (event.action == KeyEvent.ACTION_UP) onBack()
+                                true
+                            }
+                            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY,
+                            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                                if (event.action == KeyEvent.ACTION_UP) {
+                                    when (keyCode) {
+                                        KeyEvent.KEYCODE_MEDIA_PLAY -> activePlayer.play()
+                                        KeyEvent.KEYCODE_MEDIA_PAUSE -> activePlayer.pause()
+                                        else -> if (activePlayer.isPlaying) activePlayer.pause() else activePlayer.play()
+                                    }
+                                    revealPlayerControls()
+                                    showController()
+                                }
+                                true
+                            }
+                            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND,
+                            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
                                 revealPlayerControls()
                                 showController()
+                                if (activePlayer.isCurrentMediaItemSeekable) {
+                                    if (event.action == KeyEvent.ACTION_UP) {
+                                        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_MEDIA_REWIND) {
+                                            if (activePlayer.isCommandAvailable(Player.COMMAND_SEEK_BACK)) activePlayer.seekBack()
+                                        } else if (activePlayer.isCommandAvailable(Player.COMMAND_SEEK_FORWARD)) {
+                                            activePlayer.seekForward()
+                                        }
+                                    }
+                                    true
+                                } else false
                             }
-                            false
+                            else -> {
+                                if (event.action == KeyEvent.ACTION_DOWN) {
+                                    revealPlayerControls()
+                                    showController()
+                                }
+                                false
+                            }
                         }
                     }
                     setOnTouchListener { _, event ->
