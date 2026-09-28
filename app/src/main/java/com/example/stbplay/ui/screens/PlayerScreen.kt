@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +81,10 @@ fun PlaybackRoute(
     onProgress: (positionMs: Long, durationMs: Long) -> Unit = { _, _ -> },
     onPlaybackStarted: () -> Unit = {},
     onPlaybackFailure: (String) -> Unit = {},
+    episodeTitles: List<String> = emptyList(),
+    currentEpisodeIndex: Int = -1,
+    onEpisodeSelected: (Int) -> Unit = {},
+    onPlaybackEnded: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -133,6 +139,10 @@ fun PlaybackRoute(
             onProgress = onProgress,
             onPlaybackStarted = onPlaybackStarted,
             onPlaybackFailure = onPlaybackFailure,
+            episodeTitles = episodeTitles,
+            currentEpisodeIndex = currentEpisodeIndex,
+            onEpisodeSelected = onEpisodeSelected,
+            onPlaybackEnded = onPlaybackEnded,
             onBack = onBack
         )
     }
@@ -152,6 +162,10 @@ private fun NativePlayerScreen(
     onProgress: (positionMs: Long, durationMs: Long) -> Unit,
     onPlaybackStarted: () -> Unit,
     onPlaybackFailure: (String) -> Unit,
+    episodeTitles: List<String>,
+    currentEpisodeIndex: Int,
+    onEpisodeSelected: (Int) -> Unit,
+    onPlaybackEnded: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -163,6 +177,8 @@ private fun NativePlayerScreen(
     val progressCallback by rememberUpdatedState(onProgress)
     val startedCallback by rememberUpdatedState(onPlaybackStarted)
     val failureCallback by rememberUpdatedState(onPlaybackFailure)
+    val endedCallback by rememberUpdatedState(onPlaybackEnded)
+    var episodePickerVisible by remember(playbackUrl) { mutableStateOf(false) }
 
     val compactLayout = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 900 &&
         !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
@@ -194,6 +210,7 @@ private fun NativePlayerScreen(
             .also { exoPlayer ->
                 exoPlayer.addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_ENDED) endedCallback()
                         if (playbackState == Player.STATE_READY) {
                             if (!didRestore && resumeFraction > 0f && exoPlayer.duration > 0L) {
                                 didRestore = true
@@ -353,6 +370,10 @@ private fun NativePlayerScreen(
                     .questInitialFocus(),
                 colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
             ) { Text("← Back") }
+            if (episodeTitles.isNotEmpty()) QuestButton(
+                onClick = { episodePickerVisible = true; revealPlayerControls() },
+                modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)
+            ) { Text("Episodes") }
             Row(
                 modifier = Modifier.align(if (compactLayout) Alignment.BottomCenter else Alignment.TopEnd)
                     .padding(if (compactLayout) 12.dp else 18.dp)
@@ -372,6 +393,25 @@ private fun NativePlayerScreen(
                     modifier = if (compactLayout) Modifier.size(44.dp) else Modifier) { Text("−") }
                 QuestButton(onClick = { adjustVolume(10); revealPlayerControls() },
                     modifier = if (compactLayout) Modifier.size(44.dp) else Modifier) { Text("+") }
+            }
+        }
+        if (episodePickerVisible) {
+            Column(
+                modifier = Modifier.align(Alignment.Center).width(320.dp).heightIn(max = 470.dp)
+                    .background(Color(0xF5111111), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Episodes", color = Color.White)
+                LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    itemsIndexed(episodeTitles) { index, name ->
+                        QuestButton(onClick = { episodePickerVisible = false; onEpisodeSelected(index) },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text("${index + 1}. $name${if (index == currentEpisodeIndex) " • Playing" else ""}")
+                        }
+                    }
+                }
+                QuestButton(onClick = { episodePickerVisible = false }) { Text("Close") }
             }
         }
         playerError?.let { error ->

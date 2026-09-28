@@ -222,6 +222,23 @@ class PortalRepository {
     suspend fun getVodStreams(categoryId: String? = null): List<PortalStream> =
         getVodCatalogBatch(categoryId).items.filter { it.streamType == "movie" }
 
+    /** Portal-side title search: results can be found without downloading the full VOD catalogue. */
+    suspend fun searchVod(query: String, page: Int = 1): VodCatalogBatch = withContext(Dispatchers.IO) {
+        val settings = currentSettings ?: return@withContext VodCatalogBatch(emptyList(), page, null, false)
+        val session = currentSession ?: return@withContext VodCatalogBatch(emptyList(), page, null, false)
+        if (query.trim().length < 2) return@withContext VodCatalogBatch(emptyList(), page, null, false)
+        val response = stalkerClient.call(settings.url, settings.mac, session, "vod", "get_ordered_list",
+            vodListParams(null) + mapOf("search" to query.trim(), "p" to page.toString(), "abc" to "*"))
+        val js = response.optJSONObject("js")
+        val items = StalkerParser.parseVod(response, seriesOnly = null)
+            .withCategoryLocks(vodCategoriesCache + seriesCategoriesCache)
+            .filterNot { it.isLocked }
+        val total = js?.optInt("total_items", -1)?.takeIf { it >= 0 }
+        val pageSize = js?.optInt("max_page_items", items.size)?.takeIf { it > 0 } ?: items.size
+        VodCatalogBatch(items, page + 1, total,
+            items.isNotEmpty() && (total == null || page * pageSize < total))
+    }
+
     suspend fun getSeriesCategories(): List<PortalCategory> = withContext(Dispatchers.IO) {
         val session = currentSession ?: return@withContext emptyList()
         val settings = currentSettings ?: return@withContext emptyList()

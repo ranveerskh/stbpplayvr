@@ -293,6 +293,7 @@ private fun StbPlayRoot(
     var liveStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var movieStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var seriesStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
+    var remoteSearchStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var vodCatalogs by remember { mutableStateOf<Map<String, VodCatalogState>>(emptyMap()) }
     var categoryPreloadJob by remember { mutableStateOf<Job?>(null) }
     var searchVisible by remember { mutableStateOf(false) }
@@ -315,6 +316,9 @@ private fun StbPlayRoot(
     var qualityLoading by remember { mutableStateOf(false) }
     var qualityError by remember { mutableStateOf<String?>(null) }
     var playRequest by remember { mutableStateOf<StalkerPlayRequest?>(null) }
+    var playingSeries by remember { mutableStateOf<PortalStream?>(null) }
+    var playingEpisodes by remember { mutableStateOf<List<PortalEpisode>>(emptyList()) }
+    var playingEpisodeIndex by remember { androidx.compose.runtime.mutableIntStateOf(-1) }
     var pendingLockedMedia by remember { mutableStateOf<PortalStream?>(null) }
     var pendingCategory by remember { mutableStateOf<PendingCategory?>(null) }
     var unlockedAdultCategoryKey by remember { mutableStateOf<String?>(null) }
@@ -341,10 +345,11 @@ private fun StbPlayRoot(
         if (searchVisible) return
         if (categoryPreloadJob?.isActive == true) return
         categoryPreloadJob = scope.launch {
-            delay(2_000)
+            delay(400)
             val categories = (movieCategories + seriesCategories)
                 .distinctBy { it.id }
                 .filterNot { it.isLocked }
+            var completed = 0
             for (category in categories) {
                 if (!isActive) break
                 val cached = vodCatalogs[category.id]
@@ -362,9 +367,11 @@ private fun StbPlayRoot(
                         movieStreams = (movieStreams + batch.items.filter { it.streamType == "movie" }).distinctBy { it.id }
                         seriesStreams = (seriesStreams + batch.items.filter { it.streamType == "series" }).distinctBy { it.id }
                     }
-                catalogCache.write(portalKey(settings), catalogSnapshot())
-                delay(1_200)
+                completed++
+                if (completed % 5 == 0) catalogCache.write(portalKey(settings), catalogSnapshot())
+                delay(250)
             }
+            catalogCache.write(portalKey(settings), catalogSnapshot())
         }
     }
 
@@ -458,7 +465,7 @@ private fun StbPlayRoot(
         if (!connecting && autoConnectKey != key) startConnection(storedSettings)
     }
 
-    fun allStreamFor(media: UiMedia): PortalStream? = (liveStreams + movieStreams + seriesStreams)
+    fun allStreamFor(media: UiMedia): PortalStream? = (liveStreams + movieStreams + seriesStreams + remoteSearchStreams)
         .firstOrNull { it.id == media.id && it.streamType == media.streamType }
 
     fun setFavorite(media: UiMedia) {
@@ -727,7 +734,6 @@ private fun StbPlayRoot(
                     category?.let(::loadLiveCategory)
                 }
                 StbPlayTab.CONTENT -> {
-                    categoryPreloadJob?.cancel()
                     contentCategoryIndex = index
                     category?.id?.takeIf { it != "all" && it !in vodCatalogs }?.let { loadVodCategory(it) }
                 }
@@ -756,6 +762,13 @@ private fun StbPlayRoot(
                 }
                 playRequest != null -> {
                     val currentRequest = playRequest!!
+                    fun playEpisodeAt(index: Int) {
+                        val series = playingSeries ?: return
+                        val episode = playingEpisodes.getOrNull(index) ?: return
+                        playingEpisodeIndex = index
+                        playRequest = null
+                        startQualityChoice(QualityContext(episode.name, series, episode))
+                    }
                     PlaybackRoute(
                     request = currentRequest,
                     portalUiUrl = storedSettings.url,
@@ -767,7 +780,21 @@ private fun StbPlayRoot(
                     onProgress = { position, duration ->
                         if (currentRequest.kind != StalkerContentKind.LIVE) scope.launch { settingsManager.saveProgress(currentRequest.contentId, position, duration) }
                     },
-                    onBack = { playRequest = null; startCategoryPreload(storedSettings) }
+                    episodeTitles = if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE) playingEpisodes.map { it.name } else emptyList(),
+                    currentEpisodeIndex = playingEpisodeIndex,
+                    onEpisodeSelected = ::playEpisodeAt,
+                    onPlaybackEnded = {
+                        if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE && playingEpisodeIndex + 1 < playingEpisodes.size)
+                            playEpisodeAt(playingEpisodeIndex + 1)
+                    },
+                    onBack = {
+                        playRequest = null
+                        selectedSeries = playingSeries
+                        playingSeries = null
+                        playingEpisodes = emptyList()
+                        playingEpisodeIndex = -1
+                        startCategoryPreload(storedSettings)
+                    }
                     )
                 }
                 qualityContext != null -> QualitySelectionScreen(
@@ -796,7 +823,12 @@ private fun StbPlayRoot(
                         repository = portalRepository,
                         isFavorite = series.id in favoriteIds,
                         onToggleFavorite = { setFavorite(toUi(series)) },
-                        onEpisodeClick = { episode -> startQualityChoice(QualityContext(episode.name, series, episode)) },
+                        onEpisodeClick = { episode, episodes ->
+                            playingSeries = series
+                            playingEpisodes = episodes
+                            playingEpisodeIndex = episodes.indexOfFirst { it.id == episode.id }
+                            startQualityChoice(QualityContext(episode.name, series, episode))
+                        },
                         onBack = { selectedSeries = null; startCategoryPreload(storedSettings) }
                     )
                 }
@@ -914,6 +946,8 @@ private fun StbPlayRoot(
                         StbPlayTab.FAVOURITES -> favoriteStreams
                         else -> safeLive + safeVod
                     },
+                    searchRemote = { query, page -> portalRepository.searchVod(query, page) },
+                    onSearchResults = { remoteSearchStreams = it },
                     searchMedia = ::toUi
                 )
             }

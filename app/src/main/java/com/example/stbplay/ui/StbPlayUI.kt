@@ -3,6 +3,8 @@
 package com.example.stbplay.ui
 
 import androidx.activity.compose.BackHandler
+import com.example.stbplay.data.VodCatalogBatch
+import kotlinx.coroutines.CancellationException
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
@@ -239,6 +241,8 @@ fun StbPlayApp(
     onShare: () -> Unit,
     onSearchVisibilityChanged: (Boolean) -> Unit,
     searchCatalog: List<PortalStream>,
+    searchRemote: suspend (String, Int) -> VodCatalogBatch,
+    onSearchResults: (List<PortalStream>) -> Unit,
     searchMedia: (PortalStream) -> UiMedia
 ) {
     var searchOpen by remember { mutableStateOf(false) }
@@ -251,6 +255,8 @@ fun StbPlayApp(
     if (searchOpen) {
         StbPlaySearchScreen(
             catalog = searchCatalog,
+            searchRemote = searchRemote,
+            onSearchResults = onSearchResults,
             toUi = searchMedia,
             scope = selectedTab,
             hasMore = selectedTab == StbPlayTab.CONTENT && contentState.hasMore,
@@ -923,7 +929,8 @@ private fun ContentBrowserScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("Movies & Series", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("Provider catalogue", color = Muted, fontSize = 13.sp)
+                        Text(state.categories.getOrNull(state.selectedCategory)?.title?.takeUnless { it == "All" }
+                            ?: "Provider catalogue", color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(modifier = Modifier.weight(1f))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1042,14 +1049,14 @@ private fun ContentBrowserCompact(
 @Composable
 private fun FilterChip(filter: ContentKindFilter, selected: Boolean, onClick: () -> Unit) {
     val label = when (filter) {
-        ContentKindFilter.ALL -> "All"
+        ContentKindFilter.ALL -> "Both"
         ContentKindFilter.MOVIES -> "Movies"
         ContentKindFilter.SERIES -> "Series"
     }
     var focused by remember { mutableStateOf(false) }
     QuestSurface(
         onClick = onClick,
-        modifier = Modifier.height(38.dp).onFocusChanged { focused = it.isFocused },
+        modifier = Modifier.width(84.dp).height(38.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) Gold else Panel, focusedContainerColor = Gold),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
@@ -1377,6 +1384,8 @@ private fun PrimaryAction(title: String, onClick: () -> Unit) {
 @Composable
 private fun StbPlaySearchScreen(
     catalog: List<PortalStream>,
+    searchRemote: suspend (String, Int) -> VodCatalogBatch,
+    onSearchResults: (List<PortalStream>) -> Unit,
     toUi: (PortalStream) -> UiMedia,
     scope: StbPlayTab,
     hasMore: Boolean,
@@ -1393,6 +1402,10 @@ private fun StbPlaySearchScreen(
     var indexed by remember { mutableStateOf<List<IndexedMedia>>(emptyList()) }
     var results by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+    var remotePage by remember { mutableIntStateOf(1) }
+    var remoteHasMore by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(query) { remotePage = 1; remoteHasMore = false; results = emptyList(); searchError = null }
     LaunchedEffect(catalog) {
         indexed = withContext(Dispatchers.Default) {
             catalog.distinctBy { "${it.streamType}:${it.id}" }.mapIndexed { index, media ->
@@ -1403,11 +1416,28 @@ private fun StbPlaySearchScreen(
             }
         }
     }
-    LaunchedEffect(query, indexed) {
+    LaunchedEffect(query, indexed, remotePage, scope) {
         val normalized = normalizeSearchText(query)
         if (normalized.length < 2) { results = emptyList(); searching = false; return@LaunchedEffect }
         searching = true
-        delay(160)
+        delay(if (scope == StbPlayTab.CONTENT) 350 else 160)
+        if (scope == StbPlayTab.CONTENT) {
+            runCatching { searchRemote(query, remotePage) }
+                .onSuccess { batch ->
+                    val merged = if (remotePage == 1) batch.items else (results + batch.items)
+                        .distinctBy { "${it.streamType}:${it.id}" }
+                    results = merged
+                    remoteHasMore = batch.hasMore
+                    onSearchResults(merged)
+                    searchError = null
+                }
+                .onFailure {
+                    if (it is CancellationException) throw it
+                    searchError = "Portal search unavailable. Try again."
+                }
+            searching = false
+            return@LaunchedEffect
+        }
         val tokens = normalized.split(' ').filter(String::isNotBlank)
         results = withContext(Dispatchers.Default) {
             indexed.mapNotNull { item -> item.matchRank(normalized, tokens)?.let { rank -> Triple(rank, item.index, item.media) } }
@@ -1473,8 +1503,8 @@ private fun StbPlaySearchScreen(
         }
         if (query.trim().length >= 2) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("${if (results.size == 200) "First " else ""}${results.size} matching $resultType · ${catalog.size} loaded", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                if (hasMore && scope == StbPlayTab.CONTENT) WideAction(if (loadingMore) "Loading more titles…" else "Load more titles", onLoadMore, Modifier.width(210.dp))
+                Text(if (scope == StbPlayTab.CONTENT) "${results.size} matching $resultType" else "${if (results.size == 200) "First " else ""}${results.size} matching $resultType · ${catalog.size} loaded", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                if (remoteHasMore && scope == StbPlayTab.CONTENT) WideAction(if (searching) "Loading…" else "More results", { if (!searching) remotePage++ }, Modifier.width(210.dp))
             }
         }
         when {
@@ -1482,7 +1512,7 @@ private fun StbPlaySearchScreen(
             searching -> Text("Searching…", color = Muted, fontSize = 14.sp)
             results.isEmpty() -> EmptyState(
                 "No matching $resultType",
-                if (scope == StbPlayTab.CONTENT && hasMore) "Load more titles above to continue the search."
+                if (searchError != null) searchError!!
                 else "Try a shorter part of the channel or title name."
             )
             else -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {

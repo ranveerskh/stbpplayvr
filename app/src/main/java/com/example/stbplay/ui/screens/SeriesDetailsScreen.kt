@@ -63,7 +63,7 @@ fun SeriesDetailsScreen(
     repository: PortalRepository,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
-    onEpisodeClick: (PortalEpisode) -> Unit,
+    onEpisodeClick: (PortalEpisode, List<PortalEpisode>) -> Unit,
     onBack: () -> Unit
 ) {
     var seasons by remember(series.id) { mutableStateOf<List<PortalSeason>>(emptyList()) }
@@ -175,7 +175,7 @@ fun SeriesDetailsScreen(
                 episodes.isEmpty() -> Text("No episodes were returned for this season.", color = SeriesMuted, fontSize = 13.sp)
                 else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(episodes, key = { it.id }) { episode ->
-                        EpisodeRow(episode, initialFocus = episode.id == episodes.firstOrNull()?.id) { onEpisodeClick(episode) }
+                        EpisodeRow(episode, initialFocus = episode.id == episodes.firstOrNull()?.id) { onEpisodeClick(episode, episodes) }
                     }
                 }
             }
@@ -242,7 +242,7 @@ fun SeriesDetailsScreen(
                         episodes.isEmpty() -> Text("No episodes were returned for this season.", color = SeriesMuted, fontSize = 14.sp)
                         else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                             items(episodes, key = { it.id }) { episode ->
-                                EpisodeRow(episode, initialFocus = episode.id == episodes.firstOrNull()?.id) { onEpisodeClick(episode) }
+                                EpisodeRow(episode, initialFocus = episode.id == episodes.firstOrNull()?.id) { onEpisodeClick(episode, episodes) }
                             }
                         }
                     }
