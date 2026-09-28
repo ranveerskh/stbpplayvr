@@ -6,7 +6,6 @@ import androidx.activity.compose.BackHandler
 import com.example.stbplay.data.VodCatalogBatch
 import kotlinx.coroutines.CancellationException
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -72,7 +71,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -634,13 +632,11 @@ private fun RotatingHero(
         }
     }
     val item = heroes.getOrNull(index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))) ?: return
-    val scale by animateFloatAsState(if (focused) 1.01f else 1f, label = "heroScale")
     QuestSurface(
         onClick = { onMediaClick(item) },
         modifier = Modifier
             .fillMaxWidth()
             .height(if (isCompactAndroidLayout()) 250.dp else 330.dp)
-            .graphicsLayer(scaleX = scale, scaleY = scale)
             .onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
@@ -1126,8 +1122,6 @@ private fun MediaCard(
     onRemoveHistory: (() -> Unit)? = null,
     compactGrid: Boolean = false
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.055f else 1f, label = "cardScale")
     val width = if (item.portrait) 166.dp else 235.dp
     val height = if (item.portrait) 235.dp else 138.dp
     val cardModifier = if (compactGrid) {
@@ -1137,7 +1131,7 @@ private fun MediaCard(
     }
     QuestSurface(
         onClick = onClick,
-        modifier = cardModifier.graphicsLayer(scaleX = scale, scaleY = scale).onFocusChanged { focused = it.isFocused },
+        modifier = cardModifier,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))

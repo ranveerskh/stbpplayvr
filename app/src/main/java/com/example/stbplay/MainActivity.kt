@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -113,9 +114,19 @@ class MainActivity : ComponentActivity() {
     private var lastControllerDirection = 0
     private var lastControllerDirectionAt = 0L
     private var controllerTriggerHeld = false
+    internal var channelStepHandler: ((Int) -> Unit)? = null
 
     /** Quest controllers may arrive as gamepad keys instead of TV remote keys. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val channelStep = when (event.keyCode) {
+            KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_MEDIA_NEXT -> 1
+            KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> -1
+            else -> 0
+        }
+        if (channelStep != 0 && channelStepHandler != null) {
+            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) channelStepHandler?.invoke(channelStep)
+            return true
+        }
         val mappedKeyCode = when (event.keyCode) {
             KeyEvent.KEYCODE_BUTTON_A,
             KeyEvent.KEYCODE_BUTTON_1,
@@ -173,7 +184,7 @@ class MainActivity : ComponentActivity() {
         if (direction == 0) {
             lastControllerDirection = 0
             lastControllerDirectionAt = 0L
-        } else if (direction != lastControllerDirection || event.eventTime - lastControllerDirectionAt >= 230L) {
+        } else if (direction != lastControllerDirection || event.eventTime - lastControllerDirectionAt >= 150L) {
             dispatchControllerKey(direction, event.deviceId, event.eventTime)
             lastControllerDirection = direction
             lastControllerDirectionAt = event.eventTime
@@ -656,6 +667,28 @@ private fun StbPlayRoot(
 
     val filteredLive = remember(liveStreams, uiLiveCategories, liveCategoryIndex) {
         filterByCategory(liveStreams, uiLiveCategories, liveCategoryIndex)
+    }
+    val activity = LocalContext.current as? MainActivity
+    DisposableEffect(activity, playRequest, filteredLive, liveStreams, unlockedAdultCategoryKey) {
+        val handler: ((Int) -> Unit)? = if (playRequest?.kind == StalkerContentKind.LIVE) {
+            { direction: Int ->
+                val currentId = playRequest?.contentId
+                val channels = (if (filteredLive.any { it.id == currentId }) filteredLive else liveStreams)
+                    .filter { stream ->
+                        !stream.isLocked || (uiLiveCategories.getOrNull(liveCategoryIndex)?.let { category ->
+                            category.isLocked && unlockedAdultCategoryKey == "LIVE:$liveCategoryIndex" &&
+                                stream.categoryId == category.id
+                        } == true)
+                    }
+                if (channels.isNotEmpty()) {
+                    val currentIndex = channels.indexOfFirst { it.id == currentId }
+                    val nextIndex = if (currentIndex < 0) 0 else (currentIndex + direction + channels.size) % channels.size
+                    launchPlayback(channels[nextIndex])
+                }
+            }
+        } else null
+        activity?.channelStepHandler = handler
+        onDispose { if (activity?.channelStepHandler === handler) activity.channelStepHandler = null }
     }
     val allVod = remember(movieStreams, seriesStreams) {
         (movieStreams + seriesStreams).distinctBy { "${it.streamType}:${it.id}" }

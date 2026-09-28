@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -176,6 +177,8 @@ private fun NativePlayerScreen(
     var didStart by remember(playbackUrl) { mutableStateOf(false) }
     var didRestore by remember(playbackUrl) { mutableStateOf(false) }
     var autoVlcTried by remember(playbackUrl) { mutableStateOf(false) }
+    var renderedFirstFrame by remember(playbackUrl) { mutableStateOf(false) }
+    var useAlternateSurface by remember(playbackUrl) { mutableStateOf(false) }
     val progressCallback by rememberUpdatedState(onProgress)
     val startedCallback by rememberUpdatedState(onPlaybackStarted)
     val failureCallback by rememberUpdatedState(onPlaybackFailure)
@@ -237,6 +240,10 @@ private fun NativePlayerScreen(
                         playerError = message
                         failureCallback(message)
                     }
+
+                    override fun onRenderedFirstFrame() {
+                        renderedFirstFrame = true
+                    }
                 })
                 val item = MediaItem.Builder().setUri(playbackUrl).apply {
                     if (playbackUrl.substringBefore('?').endsWith(".m3u8", true)) setMimeType(MimeTypes.APPLICATION_M3U8)
@@ -293,12 +300,31 @@ private fun NativePlayerScreen(
             }
         }
     }
+    LaunchedEffect(player, didStart, renderedFirstFrame, useAlternateSurface) {
+        if (!didStart || renderedFirstFrame || playerError != null) return@LaunchedEffect
+        delay(8_000)
+        if (renderedFirstFrame || playerError != null || !player.isPlaying) return@LaunchedEffect
+        if (!useAlternateSurface) {
+            useAlternateSurface = true
+        } else {
+            val message = "Video did not appear on this device. Try VLC in Playback settings."
+            if (playerPreference == PlayerPreference.AUTO && !autoVlcTried) {
+                autoVlcTried = true
+                if (launchVlc(context, playbackUrl, title)) {
+                    playerError = "Opening VLC for this channel."
+                    return@LaunchedEffect
+                }
+            }
+            playerError = message
+            failureCallback(message)
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
+        key(useAlternateSurface) { AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { viewContext ->
-                (if (compactLayout) {
+                (if (compactLayout != useAlternateSurface) {
                     LayoutInflater.from(viewContext).inflate(com.example.stbplay.R.layout.player_view_phone, null) as PlayerView
                 } else PlayerView(viewContext)).apply {
                     this.player = activePlayer
@@ -361,8 +387,8 @@ private fun NativePlayerScreen(
                     post { requestFocus() }
                 }
             },
-            update = { it.player = activePlayer }
-        )
+            update = { if (it.player !== activePlayer) it.player = activePlayer }
+        ) }
         if (playerControlsVisible && playerError == null) {
             QuestButton(
                 onClick = { revealPlayerControls(); onBack() },
