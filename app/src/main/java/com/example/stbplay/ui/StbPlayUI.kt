@@ -579,7 +579,10 @@ private fun RotatingHero(
                         onClick = { onMediaClick(item) },
                         colors = ButtonDefaults.colors(containerColor = Gold, contentColor = Navy, focusedContainerColor = GoldLight, focusedContentColor = Navy)
                     ) { Text("Play now", fontWeight = FontWeight.Bold) }
-                    HeaderAction(if (item.isFavorite) "Saved" else "Add to favourites") { onToggleFavorite(item) }
+                    HeaderAction(
+                        if (item.isFavorite) "Saved" else "Add to favourites",
+                        onClick = { onToggleFavorite(item) }
+                    )
                 }
             }
             if (heroes.size > 1) {
