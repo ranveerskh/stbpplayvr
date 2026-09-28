@@ -47,7 +47,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,13 +87,18 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
+import androidx.media3.cast.MediaRouteButton
+import androidx.media3.common.util.UnstableApi
 import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.SubtitlePreference
 import com.example.stbplay.data.ThemePreference
+import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.domain.model.PortalSettings
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.Normalizer
 import java.util.Locale
 
@@ -230,7 +237,9 @@ fun StbPlayApp(
     onCheckUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onShare: () -> Unit,
-    searchCatalog: List<UiMedia>
+    onSearchVisibilityChanged: (Boolean) -> Unit,
+    searchCatalog: List<PortalStream>,
+    searchMedia: (PortalStream) -> UiMedia
 ) {
     var searchOpen by remember { mutableStateOf(false) }
     var railCollapsed by remember { mutableStateOf(false) }
@@ -242,13 +251,14 @@ fun StbPlayApp(
     if (searchOpen) {
         StbPlaySearchScreen(
             catalog = searchCatalog,
+            toUi = searchMedia,
             scope = selectedTab,
             hasMore = selectedTab == StbPlayTab.CONTENT && contentState.hasMore,
             loadingMore = contentState.loadingMore,
             onLoadMore = onLoadMoreContent,
-            onMediaClick = { media -> searchOpen = false; onMediaClick(media) },
+            onMediaClick = { media -> searchOpen = false; onSearchVisibilityChanged(false); onMediaClick(media) },
             onToggleFavorite = onToggleFavorite,
-            onBack = { searchOpen = false }
+            onBack = { searchOpen = false; onSearchVisibilityChanged(false) }
         )
         return
     }
@@ -307,7 +317,7 @@ fun StbPlayApp(
         Column(modifier = Modifier.fillMaxSize().background(Navy)) {
             StbPlayHeader(
                 selectedTab = selectedTab,
-                onSearchClick = { searchOpen = true },
+                onSearchClick = { searchOpen = true; onSearchVisibilityChanged(true) },
                 onSettingsClick = { onTabSelected(StbPlayTab.SETTINGS) },
                 compact = true
             )
@@ -325,7 +335,7 @@ fun StbPlayApp(
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 StbPlayHeader(
                     selectedTab = selectedTab,
-                    onSearchClick = { searchOpen = true },
+                    onSearchClick = { searchOpen = true; onSearchVisibilityChanged(true) },
                     onSettingsClick = { onTabSelected(StbPlayTab.SETTINGS) }
                 )
                 Box(Modifier.weight(1f).fillMaxWidth()) { pageContent() }
@@ -505,6 +515,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, select
     }
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun StbPlayHeader(
     selectedTab: StbPlayTab,
@@ -534,6 +545,14 @@ private fun StbPlayHeader(
         Spacer(modifier = Modifier.weight(1f))
         HeaderAction(if (compact) "⌕" else "Search", onSearchClick, modifier = Modifier.width(if (compact) 44.dp else 120.dp))
         Spacer(modifier = Modifier.width(if (compact) 6.dp else 10.dp))
+        if (compact) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CompositionLocalProvider(LocalContentColor provides White) {
+                    MediaRouteButton(modifier = Modifier.size(44.dp))
+                }
+                Text("Cast", color = White, fontSize = 12.sp)
+            }
+        }
         if (!compact) HeaderAction("Settings", onSettingsClick, modifier = Modifier.width(120.dp))
     }
 }
@@ -1357,7 +1376,8 @@ private fun PrimaryAction(title: String, onClick: () -> Unit) {
 
 @Composable
 private fun StbPlaySearchScreen(
-    catalog: List<UiMedia>,
+    catalog: List<PortalStream>,
+    toUi: (PortalStream) -> UiMedia,
     scope: StbPlayTab,
     hasMore: Boolean,
     loadingMore: Boolean,
@@ -1370,14 +1390,31 @@ private fun StbPlaySearchScreen(
     var query by remember { mutableStateOf("") }
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { requester.requestFocus() }
-    val results = remember(query, catalog) {
-        if (query.trim().length < 2) emptyList()
-        else catalog.distinctBy { "${it.streamType}:${it.id}" }
-            .mapIndexedNotNull { index, media ->
-                media.catalogMatchRank(query)?.let { rank -> Triple(rank, index, media) }
+    var indexed by remember { mutableStateOf<List<IndexedMedia>>(emptyList()) }
+    var results by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    LaunchedEffect(catalog) {
+        indexed = withContext(Dispatchers.Default) {
+            catalog.distinctBy { "${it.streamType}:${it.id}" }.mapIndexed { index, media ->
+                IndexedMedia(index, media, normalizeSearchText(media.name),
+                    normalizeSearchText(media.originalTitle.orEmpty()),
+                    normalizeSearchText(listOfNotNull(media.description, media.searchText, media.language,
+                        media.genre, media.rating, media.cast, media.year?.toString()).joinToString(" ")))
             }
-            .sortedWith(compareBy<Triple<Int, Int, UiMedia>> { it.first }.thenBy { it.second })
-            .map { it.third }
+        }
+    }
+    LaunchedEffect(query, indexed) {
+        val normalized = normalizeSearchText(query)
+        if (normalized.length < 2) { results = emptyList(); searching = false; return@LaunchedEffect }
+        searching = true
+        delay(160)
+        val tokens = normalized.split(' ').filter(String::isNotBlank)
+        results = withContext(Dispatchers.Default) {
+            indexed.mapNotNull { item -> item.matchRank(normalized, tokens)?.let { rank -> Triple(rank, item.index, item.media) } }
+                .sortedWith(compareBy<Triple<Int, Int, PortalStream>> { it.first }.thenBy { it.second })
+                .take(200).map { it.third }
+        }
+        searching = false
     }
     val scopeTitle = when (scope) {
         StbPlayTab.LIVE -> "Live TV"
@@ -1436,12 +1473,13 @@ private fun StbPlaySearchScreen(
         }
         if (query.trim().length >= 2) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("${results.size} matching $resultType · ${catalog.size} loaded", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("${if (results.size == 200) "First " else ""}${results.size} matching $resultType · ${catalog.size} loaded", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 if (hasMore && scope == StbPlayTab.CONTENT) WideAction(if (loadingMore) "Loading more titles…" else "Load more titles", onLoadMore, Modifier.width(210.dp))
             }
         }
         when {
             query.trim().length < 2 -> Text("Enter 2 or more characters to search. Title matches appear first.", color = Muted, fontSize = 14.sp)
+            searching -> Text("Searching…", color = Muted, fontSize = 14.sp)
             results.isEmpty() -> EmptyState(
                 "No matching $resultType",
                 if (scope == StbPlayTab.CONTENT && hasMore) "Load more titles above to continue the search."
@@ -1456,7 +1494,8 @@ private fun StbPlaySearchScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    gridItems(results, key = { "${it.streamType}:${it.id}" }) { media ->
+                    gridItems(results, key = { "${it.streamType}:${it.id}" }) { stream ->
+                        val media = toUi(stream)
                         MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
                     }
                 }
@@ -1465,13 +1504,10 @@ private fun StbPlaySearchScreen(
     }
 }
 
-private fun UiMedia.catalogMatchRank(rawQuery: String): Int? {
-    val query = normalizeSearchText(rawQuery)
-    val tokens = query.split(' ').filter { it.isNotBlank() }
-    if (tokens.isEmpty()) return null
+private data class IndexedMedia(val index: Int, val media: PortalStream, val titleText: String,
+    val alternateTitle: String, val metadata: String)
 
-    val titleText = normalizeSearchText(title)
-    val alternateTitle = normalizeSearchText(subtitle.orEmpty())
+private fun IndexedMedia.matchRank(query: String, tokens: List<String>): Int? {
     when {
         titleText == query -> return 0
         titleText.startsWith(query) -> return 1
@@ -1483,17 +1519,17 @@ private fun UiMedia.catalogMatchRank(rawQuery: String): Int? {
         tokens.all(alternateTitle::contains) -> return 7
     }
 
-    val metadata = listOfNotNull(description, searchText, language, genre, rating, cast, year?.toString())
-        .joinToString(" ") { normalizeSearchText(it) }
     return if (tokens.all(metadata::contains)) 8 else null
 }
 
+private val searchPunctuation = Regex("[^\\p{L}\\p{N}\\p{M}]+")
+private val searchWhitespace = Regex("\\s+")
 private fun normalizeSearchText(value: String): String = Normalizer
     .normalize(value, Normalizer.Form.NFKC)
     .lowercase(Locale.ROOT)
-    .replace(Regex("[^\\p{L}\\p{N}\\p{M}]+"), " ")
+    .replace(searchPunctuation, " ")
     .trim()
-    .replace(Regex("\\s+"), " ")
+    .replace(searchWhitespace, " ")
 
 @Composable
 fun FirstStartDisclaimer(onAccept: () -> Unit) {

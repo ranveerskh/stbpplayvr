@@ -28,6 +28,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
+import androidx.media3.cast.Cast
+import androidx.media3.common.util.UnstableApi
+import androidx.annotation.OptIn
 import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.PortalRepository
 import com.example.stbplay.data.CatalogCacheStore
@@ -198,8 +201,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) {
+            runCatching { Cast.getSingletonInstance(this).initialize() }
+        }
         settingsManager = SettingsManager(this)
         updateManager = UpdateManager(applicationContext)
         registerUpdateReceiver()
@@ -288,6 +295,9 @@ private fun StbPlayRoot(
     var seriesStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var vodCatalogs by remember { mutableStateOf<Map<String, VodCatalogState>>(emptyMap()) }
     var categoryPreloadJob by remember { mutableStateOf<Job?>(null) }
+    var searchVisible by remember { mutableStateOf(false) }
+    var loadingLiveCategoryId by remember { mutableStateOf<String?>(null) }
+    var liveCategoryError by remember { mutableStateOf<String?>(null) }
     var catalogGeneration by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var liveCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
     var movieCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
@@ -328,8 +338,10 @@ private fun StbPlayRoot(
     )
 
     fun startCategoryPreload(settings: PortalSettings) {
+        if (searchVisible) return
         if (categoryPreloadJob?.isActive == true) return
         categoryPreloadJob = scope.launch {
+            delay(2_000)
             val categories = (movieCategories + seriesCategories)
                 .distinctBy { it.id }
                 .filterNot { it.isLocked }
@@ -351,7 +363,7 @@ private fun StbPlayRoot(
                         seriesStreams = (seriesStreams + batch.items.filter { it.streamType == "series" }).distinctBy { it.id }
                     }
                 catalogCache.write(portalKey(settings), catalogSnapshot())
-                delay(450)
+                delay(1_200)
             }
         }
     }
@@ -587,8 +599,9 @@ private fun StbPlayRoot(
     val recommendationStreams = remember(safeVod, continueStreams, favoriteStreams) {
         val signalGenres = (continueStreams + favoriteStreams).mapNotNull { it.genre?.lowercase() }.toSet()
         val signalLanguages = (continueStreams + favoriteStreams).mapNotNull { it.language?.lowercase() }.toSet()
+        val watchedIds = continueStreams.mapTo(HashSet()) { it.id }
         safeVod
-            .filter { it.id !in continueStreams.map { watched -> watched.id }.toSet() }
+            .filter { it.id !in watchedIds }
             .sortedByDescending { stream ->
                 (if (stream.genre?.lowercase() in signalGenres) 2 else 0) +
                     (if (stream.language?.lowercase() in signalLanguages) 1 else 0)
@@ -611,10 +624,12 @@ private fun StbPlayRoot(
         expiryText = subscription.toExpiryText()
     )
     val liveState = StbPlayLibraryState(
+        loading = loadingLiveCategoryId == uiLiveCategories.getOrNull(liveCategoryIndex)?.id,
         categories = uiLiveCategories,
         selectedCategory = liveCategoryIndex.coerceIn(0, (uiLiveCategories.size - 1).coerceAtLeast(0)),
         items = filteredLive.map(::toUi),
-        totalItemsText = "${filteredLive.size} channels"
+        totalItemsText = "${filteredLive.size} channels",
+        emptyMessage = liveCategoryError ?: "No channels in this category."
     )
     val contentState = StbPlayLibraryState(
         loading = selectedVodCatalog?.loading == true && categoryVod.isEmpty(),
@@ -676,6 +691,25 @@ private fun StbPlayRoot(
         }
     }
 
+    fun loadLiveCategory(category: UiCategory) {
+        if (category.id == "all" || loadingLiveCategoryId == category.id ||
+            liveStreams.any { it.categoryId == category.id }) return
+        val generation = catalogGeneration
+        loadingLiveCategoryId = category.id
+        liveCategoryError = null
+        scope.launch {
+            runCatching { portalRepository.getLiveStreams(category.id) }
+                .onSuccess { fetched ->
+                    if (generation == catalogGeneration) {
+                        liveStreams = (liveStreams + fetched).distinctBy { it.id }
+                        scope.launch { catalogCache.write(portalKey(storedSettings), catalogSnapshot()) }
+                    }
+                }
+                .onFailure { if (generation == catalogGeneration) liveCategoryError = it.message ?: "Could not load channels." }
+            if (generation == catalogGeneration) loadingLiveCategoryId = null
+        }
+    }
+
     fun requestCategory(tab: StbPlayTab, index: Int) {
         val category = when (tab) {
             StbPlayTab.LIVE -> uiLiveCategories.getOrNull(index)
@@ -688,7 +722,10 @@ private fun StbPlayRoot(
         } else {
             if (category?.isLocked != true) unlockedAdultCategoryKey = null
             when (tab) {
-                StbPlayTab.LIVE -> liveCategoryIndex = index
+                StbPlayTab.LIVE -> {
+                    liveCategoryIndex = index
+                    category?.let(::loadLiveCategory)
+                }
                 StbPlayTab.CONTENT -> {
                     categoryPreloadJob?.cancel()
                     contentCategoryIndex = index
@@ -849,14 +886,20 @@ private fun StbPlayRoot(
                         }
                     },
                     onShare = onShare,
+                    onSearchVisibilityChanged = { visible ->
+                        searchVisible = visible
+                        if (visible) categoryPreloadJob?.cancel()
+                        else scope.launch {
+                            delay(1_000)
+                            if (playRequest == null && selectedMovie == null && selectedSeries == null) startCategoryPreload(storedSettings)
+                        }
+                    },
                     searchCatalog = when (selectedTab) {
                         StbPlayTab.LIVE -> liveStreams
                         StbPlayTab.CONTENT -> {
                             // Search everything already loaded from every VOD page/category,
                             // not just the currently selected category's visible page.
-                            val loadedVod = (allVod + vodCatalogs.values.flatMap { it.items })
-                                .distinctBy { "${it.streamType}:${it.id}" }
-                            loadedVod.filter { stream ->
+                            allVod.filter { stream ->
                                 val kindMatches = when (contentFilter) {
                                     ContentKindFilter.ALL -> true
                                     ContentKindFilter.MOVIES -> stream.streamType == "movie"
@@ -870,7 +913,8 @@ private fun StbPlayRoot(
                         }
                         StbPlayTab.FAVOURITES -> favoriteStreams
                         else -> safeLive + safeVod
-                    }.map(::toUi)
+                    },
+                    searchMedia = ::toUi
                 )
             }
 
@@ -889,7 +933,10 @@ private fun StbPlayRoot(
                     onVerified = {
                         unlockedAdultCategoryKey = "${pending.tab.name}:${pending.index}"
                         when (pending.tab) {
-                            StbPlayTab.LIVE -> liveCategoryIndex = pending.index
+                            StbPlayTab.LIVE -> {
+                                liveCategoryIndex = pending.index
+                                uiLiveCategories.getOrNull(pending.index)?.let(::loadLiveCategory)
+                            }
                             StbPlayTab.CONTENT -> {
                                 contentCategoryIndex = pending.index
                                 contentCategories.getOrNull(pending.index)?.id?.let { if (it !in vodCatalogs) loadVodCategory(it) }

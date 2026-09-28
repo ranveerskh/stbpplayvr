@@ -16,8 +16,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -313,24 +318,31 @@ private fun NativePlayerScreen(
         if (playerControlsVisible && playerError == null) {
             QuestButton(
                 onClick = { revealPlayerControls(); onBack() },
-                modifier = Modifier.align(Alignment.TopStart).padding(18.dp)
+                modifier = Modifier.align(Alignment.TopStart).padding(if (compactLayout) 12.dp else 18.dp)
+                    .then(if (compactLayout) Modifier.width(88.dp).height(44.dp) else Modifier)
                     .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
                     .questInitialFocus(),
                 colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
             ) { Text("← Back") }
             Row(
-                modifier = Modifier.align(Alignment.TopEnd).padding(18.dp)
+                modifier = Modifier.align(if (compactLayout) Alignment.BottomCenter else Alignment.TopEnd)
+                    .padding(if (compactLayout) 12.dp else 18.dp)
                     .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
-                    .background(Color(0xCC070707)).padding(horizontal = 10.dp, vertical = 6.dp),
+                    .background(Color(0xCC070707)).padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(if (compactLayout) 5.dp else 8.dp)
             ) {
                 if (compactLayout) {
-                    MediaRouteButton(modifier = Modifier.padding(end = 4.dp))
+                    CompositionLocalProvider(LocalContentColor provides Color.White) {
+                        MediaRouteButton(modifier = Modifier.size(44.dp))
+                    }
+                    Text("Cast", color = Color.White)
                 }
-                Text("Volume $volumePercent%", color = Color.White)
-                QuestButton(onClick = { adjustVolume(-10); revealPlayerControls() }) { Text("−") }
-                QuestButton(onClick = { adjustVolume(10); revealPlayerControls() }) { Text("+") }
+                Text(if (compactLayout) "$volumePercent%" else "Volume $volumePercent%", color = Color.White)
+                QuestButton(onClick = { adjustVolume(-10); revealPlayerControls() },
+                    modifier = if (compactLayout) Modifier.size(44.dp) else Modifier) { Text("−") }
+                QuestButton(onClick = { adjustVolume(10); revealPlayerControls() },
+                    modifier = if (compactLayout) Modifier.size(44.dp) else Modifier) { Text("+") }
             }
         }
         playerError?.let { error ->

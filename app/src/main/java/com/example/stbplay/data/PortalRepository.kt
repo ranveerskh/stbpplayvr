@@ -129,9 +129,23 @@ class PortalRepository {
                 put("category", categoryId)
             }
         }
-        fetchWithPageFallback(settings, session, "itv", "get_all_channels", params, pageValues = listOf(null, "1", "0")) {
+        val allChannels = fetchWithPageFallback(settings, session, "itv", "get_all_channels", params, pageValues = listOf(null, "1", "0")) {
             StalkerParser.parseLiveChannels(it)
-        }.withCategoryLocks(liveCategoriesCache)
+        }
+        if (categoryId.isNullOrBlank() || categoryId == "0") return@withContext allChannels.withCategoryLocks(liveCategoriesCache)
+
+        val categoryChannels = allChannels.filter { it.categoryId == categoryId }
+        if (categoryChannels.isNotEmpty()) return@withContext categoryChannels.withCategoryLocks(liveCategoriesCache)
+
+        // Some portals omit adult channels from get_all_channels. Their genre
+        // endpoint still supplies the requested channel list after PIN entry.
+        val ordered = fetchWithPageFallback(settings, session, "itv", "get_ordered_list",
+            mapOf("genre" to categoryId, "category" to categoryId, "fav" to "0", "sortby" to "number")) {
+            StalkerParser.parseLiveChannels(it)
+                .filter { stream -> stream.categoryId.isNullOrBlank() || stream.categoryId == "0" || stream.categoryId == categoryId }
+                .map { stream -> stream.copy(categoryId = categoryId) }
+        }
+        ordered.withCategoryLocks(liveCategoriesCache)
     }
 
     suspend fun getVodCategories(): List<PortalCategory> = withContext(Dispatchers.IO) {
