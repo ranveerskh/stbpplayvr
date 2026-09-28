@@ -9,12 +9,24 @@ android {
     namespace = "com.example.stbplay"
     compileSdk = 36
 
+    val releaseKeystorePath = providers.environmentVariable("STB_RELEASE_KEYSTORE").orNull
+    if (!releaseKeystorePath.isNullOrBlank()) {
+        signingConfigs {
+            create("stbRelease") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = providers.environmentVariable("STB_RELEASE_STORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("STB_RELEASE_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("STB_RELEASE_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.stbplay"
         minSdk = 26
         targetSdk = 35
-        versionCode = 32
-        versionName = "1.8.32"
+        versionCode = 33
+        versionName = "1.8.33"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -22,6 +34,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (!releaseKeystorePath.isNullOrBlank()) signingConfig = signingConfigs.getByName("stbRelease")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -42,6 +55,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

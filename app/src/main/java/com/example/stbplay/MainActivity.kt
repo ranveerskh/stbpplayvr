@@ -1,6 +1,7 @@
 package com.example.stbplay
 
 import android.app.DownloadManager
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -11,6 +12,7 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -42,6 +44,7 @@ import com.example.stbplay.data.StalkerContentKind
 import com.example.stbplay.data.StalkerPlayRequest
 import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.data.UpdateInfo
+import com.example.stbplay.data.UpdateCheckWorker
 import com.example.stbplay.data.UpdateManager
 import com.example.stbplay.data.model.PortalCategory
 import com.example.stbplay.data.model.PortalEpisode
@@ -67,6 +70,7 @@ import com.example.stbplay.ui.screens.PlaybackRoute
 import com.example.stbplay.ui.screens.QualitySelectionScreen
 import com.example.stbplay.ui.screens.SeriesDetailsScreen
 import com.example.stbplay.ui.screens.SetupScreen
+import com.example.stbplay.ui.screens.UpdateNotice
 import com.example.stbplay.ui.theme.STBPlayTheme
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -98,8 +102,13 @@ private data class VodCatalogState(
 
 class MainActivity : ComponentActivity() {
 
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
+        if (allowed) updateManager.cachedAvailable(BuildConfig.VERSION_NAME)?.let(updateManager::notifyIfNew)
+    }
+
     private lateinit var settingsManager: SettingsManager
     private lateinit var updateManager: UpdateManager
+    private var openUpdates by mutableStateOf(false)
     private var pendingUpdateDownloadId = -1L
     private var lastControllerDirection = 0
     private var lastControllerDirectionAt = 0L
@@ -195,7 +204,7 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
             val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
-            if (id > 0L && id == pendingUpdateDownloadId) {
+            if (id > 0L && (id == pendingUpdateDownloadId || id == updateManager.pendingDownloadId())) {
                 pendingUpdateDownloadId = -1L
                 runCatching { updateManager.openInstaller(id) }
             }
@@ -205,20 +214,44 @@ class MainActivity : ComponentActivity() {
     @AndroidXOptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openUpdates = intent?.getBooleanExtra("stb_open_updates", false) == true
         if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) {
             runCatching { Cast.getSingletonInstance(this).initialize() }
         }
         settingsManager = SettingsManager(this)
         updateManager = UpdateManager(applicationContext)
+        UpdateCheckWorker.schedule(applicationContext)
         registerUpdateReceiver()
 
         setContent {
             val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
             LaunchedEffect(themePreference) { LauncherIconManager.apply(applicationContext, themePreference) }
             STBPlayTheme(preference = themePreference) {
-                StbPlayRoot(settingsManager, updateManager, ::queueUpdateDownload, ::shareApp)
+                StbPlayRoot(settingsManager, updateManager, ::queueUpdateDownload, ::shareApp, openUpdates)
             }
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val prefs = getSharedPreferences("android_updates", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("notification_permission_asked", false)) {
+                prefs.edit().putBoolean("notification_permission_asked", true).apply()
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::updateManager.isInitialized) {
+            val pending = updateManager.pendingDownloadId()
+            if (pending > 0) runCatching { updateManager.openInstaller(pending) }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openUpdates = intent.getBooleanExtra("stb_open_updates", false)
     }
 
     override fun onDestroy() {
@@ -260,7 +293,8 @@ private fun StbPlayRoot(
     settingsManager: SettingsManager,
     updateManager: UpdateManager,
     queueUpdateDownload: (UpdateInfo) -> Result<Long>,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    openUpdates: Boolean
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
@@ -320,8 +354,46 @@ private fun StbPlayRoot(
     var unlockedAdultCategoryKey by remember { mutableStateOf<String?>(null) }
     var editingPortal by remember { mutableStateOf<PortalSettings?>(null) }
     var changingPin by remember { mutableStateOf(false) }
-    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
-    var updateText by remember { mutableStateOf("Check whether a newer STB Play version is available.") }
+    var updateInfo by remember { mutableStateOf(updateManager.cachedAvailable(BuildConfig.VERSION_NAME)) }
+    var updateText by remember { mutableStateOf(updateInfo?.let { "STB Play ${it.version} is available. Update by ${it.deadlineText()}." }
+        ?: "Automatic update checks are on. You can check now too.") }
+    var promptUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
+    var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    fun checkUpdates(manual: Boolean = false) {
+        if (manual) updateText = "Checking for updates…"
+        scope.launch {
+            runCatching { updateManager.check(BuildConfig.VERSION_NAME) }
+                .onSuccess { result ->
+                    updateInfo = result
+                    updateText = result?.let { "STB Play ${it.version} is available. Update by ${it.deadlineText()}." }
+                        ?: "STB Play is up to date. Automatic checks remain on."
+                    if (result != null) {
+                        updateManager.notifyIfNew(result)
+                        if (updateManager.shouldPrompt(result)) promptUpdate = result
+                    } else promptUpdate = null
+                }
+                .onFailure {
+                    updateText = if (updateInfo == null) "Could not check for updates. Try again later."
+                    else "Offline. Last known update: ${updateInfo!!.version}, due ${updateInfo!!.deadlineText()}."
+                }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        updateInfo?.takeIf(updateManager::shouldPrompt)?.let { promptUpdate = it }
+        checkUpdates()
+        while (true) {
+            delay(TimeUnit.HOURS.toMillis(1))
+            currentTime = System.currentTimeMillis()
+        }
+    }
+    LaunchedEffect(openUpdates) {
+        if (openUpdates) {
+            selectedTab = StbPlayTab.SETTINGS
+            updateInfo?.let { promptUpdate = it }
+        }
+    }
 
     fun portalKey(settings: PortalSettings) = "${settings.id}|${settings.url.trim()}|${settings.mac.trim()}"
 
@@ -785,6 +857,17 @@ private fun StbPlayRoot(
     Surface(modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             when {
+                BuildConfig.BUILD_TYPE == "release" && updateInfo?.isOverdue(currentTime) == true && playRequest == null -> {
+                    UpdateNotice(
+                        info = updateInfo!!, required = true, status = updateText,
+                        onUpdate = {
+                            queueUpdateDownload(updateInfo!!)
+                                .onSuccess { updateText = "Downloading update. Android will open the installer when ready." }
+                                .onFailure { updateText = "Download could not start. Check your connection and try again." }
+                        },
+                        onLater = {}, onRetry = { checkUpdates(manual = true) }
+                    )
+                }
                 !disclaimerAcknowledged -> FirstStartDisclaimer {
                     scope.launch { settingsManager.acknowledgeDisclaimer() }
                 }
@@ -924,17 +1007,7 @@ private fun StbPlayRoot(
                     onCatalogueLanguageChanged = { language -> scope.launch { settingsManager.setCatalogueLanguage(language) } },
                     onAnalyticsChanged = { enabled -> scope.launch { settingsManager.setAnalyticsEnabled(enabled) } },
                     onChangePin = { changingPin = true },
-                    onCheckUpdates = {
-                        updateText = "Checking for updates…"
-                        scope.launch {
-                            runCatching { updateManager.check(BuildConfig.VERSION_NAME) }
-                                .onSuccess { result ->
-                                    updateInfo = result
-                                    updateText = result?.let { "STB Play ${it.version} is available." } ?: "STB Play is up to date."
-                                }
-                                .onFailure { updateText = "Could not check for updates. Try again later." }
-                        }
-                    },
+                    onCheckUpdates = { checkUpdates(manual = true) },
                     onDownloadUpdate = {
                         val info = updateInfo
                         if (info == null) {
@@ -1028,6 +1101,20 @@ private fun StbPlayRoot(
                         changingPin = false
                     },
                     onCancel = { changingPin = false }
+                )
+            }
+            promptUpdate?.takeIf { !it.isOverdue(currentTime) || BuildConfig.BUILD_TYPE != "release" }?.let { available ->
+                if (playRequest == null && screen == AppScreen.APP) UpdateNotice(
+                    info = available, required = false, status = updateText,
+                    onUpdate = {
+                        updateManager.markPrompted(available)
+                        promptUpdate = null
+                        queueUpdateDownload(available)
+                            .onSuccess { updateText = "Downloading ${available.version}. Android will open the installer when ready." }
+                            .onFailure { updateText = "Could not start the update download." }
+                    },
+                    onLater = { updateManager.markPrompted(available); promptUpdate = null },
+                    onRetry = { checkUpdates(manual = true) }
                 )
             }
         }
