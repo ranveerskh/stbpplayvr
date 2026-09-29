@@ -64,6 +64,8 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.CompositionLocalProvider
@@ -71,6 +73,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -82,6 +85,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -108,6 +113,7 @@ import androidx.tv.material3.Text
 import androidx.media3.cast.MediaRouteButton
 import androidx.media3.common.util.UnstableApi
 import com.example.stbplay.data.PlayerPreference
+import com.example.stbplay.data.ParentalMode
 import com.example.stbplay.data.SubtitlePreference
 import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.R
@@ -168,8 +174,14 @@ enum class StbPlayTab { HOME, LIVE, CONTENT, FAVOURITES, SETTINGS }
 data class UiCategory(
     val id: String,
     val title: String,
-    val isLocked: Boolean = false
+    val isLocked: Boolean = false,
+    val isAdult: Boolean = isLocked || title.isAdultLabel()
 )
+
+private fun String.isAdultLabel(): Boolean {
+    val value = lowercase()
+    return listOf("18+", "adult", "xxx", "porn", "erotic", "a-rated", "uncensored").any(value::contains)
+}
 
 data class UiMedia(
     val id: String,
@@ -228,6 +240,7 @@ data class StbPlaySettingsState(
     val seriesCount: Int = 0,
     val playerPreference: PlayerPreference = PlayerPreference.AUTO,
     val themePreference: ThemePreference = ThemePreference.BLUE,
+    val parentalMode: ParentalMode = ParentalMode.ALL_CONTENT,
     val subtitlePreference: SubtitlePreference = SubtitlePreference.AUTO,
     val catalogueLanguage: String = "All",
     val analyticsEnabled: Boolean = true,
@@ -266,6 +279,7 @@ fun StbPlayApp(
     onCatalogueLanguageChanged: (String) -> Unit,
     onAnalyticsChanged: (Boolean) -> Unit,
     onChangePin: () -> Unit,
+    onParentalModeChanged: (ParentalMode) -> Unit,
     onCheckUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onShare: () -> Unit,
@@ -344,6 +358,7 @@ fun StbPlayApp(
                     onCatalogueLanguageChanged = onCatalogueLanguageChanged,
                     onAnalyticsChanged = onAnalyticsChanged,
                     onChangePin = onChangePin,
+                    onParentalModeChanged = onParentalModeChanged,
                     onCheckUpdates = onCheckUpdates,
                     onDownloadUpdate = onDownloadUpdate,
                     onShare = onShare
@@ -928,16 +943,16 @@ private fun LiveChannelRow(
     onToggleFavorite: () -> Unit,
     initialFocus: Boolean = false
 ) {
-    var focused by remember { mutableStateOf(false) }
-    QuestSurface(
-        onClick = onClick,
-        modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
-            .fillMaxWidth().height(78.dp).onFocusChanged { focused = it.isFocused },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(13.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Color(0xFF292929)),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
-    ) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height(78.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        QuestSurface(
+            onClick = onClick,
+            modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).weight(1f).fillMaxHeight(),
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(13.dp)),
+            colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Color(0xFF292929)),
+            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
+        ) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(102.dp).height(56.dp).clip(RoundedCornerShape(8.dp)).background(PanelSoft), contentAlignment = Alignment.Center) {
                 ArtworkImage(
                     imageUrl = item.imageUrl,
@@ -956,9 +971,9 @@ private fun LiveChannelRow(
                 Text(item.description?.takeIf { it.isNotBlank() } ?: "Live TV", color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (item.isLocked) StatusPill("PIN", GoldLight)
-            Spacer(modifier = Modifier.width(10.dp))
-            FavoriteButton(item.isFavorite, onToggleFavorite)
+            }
         }
+        FavoriteButton(item.isFavorite, onToggleFavorite, Modifier.size(46.dp), 42.dp)
     }
 }
 
@@ -1140,13 +1155,14 @@ private fun MediaCard(
     } else {
         Modifier.width(width).height(height)
     }
-    QuestSurface(
+    Box(cardModifier) {
+      QuestSurface(
         onClick = onClick,
-        modifier = cardModifier,
+        modifier = Modifier.fillMaxSize(),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
-    ) {
+      ) {
         Box(Modifier.fillMaxSize()) {
             ArtworkImage(
                 imageUrl = item.imageUrl,
@@ -1165,12 +1181,6 @@ private fun MediaCard(
             )
             item.badge?.let { Text(it, color = Color(0xFFF6D896), fontSize = if (compactGrid) 9.sp else 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopStart).padding(if (compactGrid) 6.dp else 9.dp)) }
             if (item.isLocked) StatusPill("PIN", GoldLight, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
-            FavoriteButton(
-                item.isFavorite,
-                onToggleFavorite,
-                Modifier.align(Alignment.TopEnd).padding(if (compactGrid) 4.dp else 6.dp),
-                if (compactGrid) 28.dp else 34.dp
-            )
             onRemoveHistory?.let { remove ->
                 QuestSurface(
                     onClick = remove,
@@ -1189,19 +1199,60 @@ private fun MediaCard(
             Text(item.title, color = PosterWhite, fontSize = if (compactGrid) 11.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(if (compactGrid) 7.dp else 11.dp))
             if (item.progress > 0f) ProgressBar(item.progress, Modifier.align(Alignment.BottomCenter))
         }
+      }
+      FavoriteButton(
+          item.isFavorite,
+          onToggleFavorite,
+          Modifier.align(Alignment.TopEnd).padding(if (compactGrid) 4.dp else 6.dp),
+          if (compactGrid) 34.dp else 40.dp
+      )
     }
 }
 
 @Composable
 private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, buttonSize: Dp = 34.dp) {
+    var showMenu by remember { mutableStateOf(false) }
+    var pressedAt by remember { mutableLongStateOf(0L) }
+    var longPressConsumed by remember { mutableStateOf(false) }
     QuestSurface(
-        onClick = onClick,
-        modifier = modifier.size(buttonSize),
+        onClick = {
+            if (longPressConsumed) longPressConsumed = false else onClick()
+        },
+        modifier = modifier.size(buttonSize).onPreviewKeyEvent { event ->
+            val native = event.nativeKeyEvent
+            if (native.keyCode != android.view.KeyEvent.KEYCODE_DPAD_CENTER &&
+                native.keyCode != android.view.KeyEvent.KEYCODE_ENTER) return@onPreviewKeyEvent false
+            when (event.type) {
+                KeyEventType.KeyDown -> {
+                    if (native.repeatCount == 0) {
+                        pressedAt = native.eventTime
+                        longPressConsumed = false
+                    }
+                    else if (pressedAt > 0L && native.eventTime - pressedAt >= 500L) {
+                        showMenu = true
+                        longPressConsumed = true
+                        true
+                    } else false
+                }
+                KeyEventType.KeyUp -> {
+                    val consume = longPressConsumed
+                    pressedAt = 0L
+                    consume
+                }
+                else -> false
+            }
+        },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(17.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xCC070707), focusedContainerColor = Gold)
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(if (isFavorite) "★" else "☆", color = GoldLight, fontSize = 19.sp)
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text(if (isFavorite) "Remove from favourites" else "Add to favourites") },
+                    onClick = { showMenu = false; onClick() }
+                )
+            }
         }
     }
 }
@@ -1229,6 +1280,7 @@ private fun StbPlaySettingsScreen(
     onCatalogueLanguageChanged: (String) -> Unit,
     onAnalyticsChanged: (Boolean) -> Unit,
     onChangePin: () -> Unit,
+    onParentalModeChanged: (ParentalMode) -> Unit,
     onCheckUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onShare: () -> Unit
@@ -1329,6 +1381,12 @@ private fun StbPlaySettingsScreen(
             SettingsPage.PARENTAL -> item {
                 SettingsSection("Parental controls") {
                     Text("Adult categories re-lock when you leave them.", color = Muted, fontSize = 13.sp)
+                    ParentalMode.entries.forEach { mode ->
+                        PreferenceRow(mode.displayName(), if (state.parentalMode == mode) "Selected" else mode.description()) {
+                            onParentalModeChanged(mode)
+                        }
+                    }
+                    Text("Adult-only mode shows adult content on Home and applies its own dark theme. Provider ratings and labels determine which individual titles are recognized as adult.", color = Muted, fontSize = 12.sp)
                     PrimaryAction("Change PIN", onChangePin)
                 }
             }
@@ -1891,6 +1949,18 @@ private fun ThemePreference.iconResource(): Int = when (this) {
     ThemePreference.BLUE -> R.drawable.icon_blue
     ThemePreference.LIGHT -> R.drawable.icon_light
     ThemePreference.BLACK -> R.drawable.icon_black
+}
+
+private fun ParentalMode.displayName(): String = when (this) {
+    ParentalMode.ALL_CONTENT -> "All content"
+    ParentalMode.HIDE_ADULT -> "Hide adult content"
+    ParentalMode.ADULT_ONLY -> "Adult only"
+}
+
+private fun ParentalMode.description(): String = when (this) {
+    ParentalMode.ALL_CONTENT -> "Adult categories ask for your PIN"
+    ParentalMode.HIDE_ADULT -> "Hide adult categories and flagged titles"
+    ParentalMode.ADULT_ONLY -> "Show only adult categories and flagged titles"
 }
 
 private fun SubtitlePreference.next(): SubtitlePreference = when (this) {

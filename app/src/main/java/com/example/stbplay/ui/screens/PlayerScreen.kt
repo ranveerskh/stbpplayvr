@@ -2,6 +2,7 @@
 
 package com.example.stbplay.ui.screens
 
+import android.os.Build
 import android.content.ActivityNotFoundException
 import android.app.Activity
 import android.content.ContextWrapper
@@ -54,6 +55,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -99,6 +102,7 @@ fun PlaybackRoute(
     currentEpisodeIndex: Int = -1,
     onEpisodeSelected: (Int) -> Unit = {},
     onPlaybackEnded: () -> Unit = {},
+    onChannelStep: (Int) -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -158,6 +162,7 @@ fun PlaybackRoute(
             currentEpisodeIndex = currentEpisodeIndex,
             onEpisodeSelected = onEpisodeSelected,
             onPlaybackEnded = onPlaybackEnded,
+            onChannelStep = onChannelStep,
             onBack = onBack
         )
     }
@@ -182,6 +187,7 @@ private fun NativePlayerScreen(
     currentEpisodeIndex: Int,
     onEpisodeSelected: (Int) -> Unit,
     onPlaybackEnded: () -> Unit,
+    onChannelStep: (Int) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -198,6 +204,12 @@ private fun NativePlayerScreen(
 
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val isAndroidTv = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    val isMetaQuest = remember(context) {
+        val maker = Build.MANUFACTURER.lowercase()
+        val brand = Build.BRAND.lowercase()
+        val model = Build.MODEL.lowercase()
+        maker.contains("oculus") || maker.contains("meta") || brand.contains("oculus") || brand.contains("meta") || model.contains("quest")
+    }
     // Use the device's stable short-side width so rotating a phone into fullscreen does not
     // replace the player/cast controls with the TV layout.
     val compactLayout = configuration.smallestScreenWidthDp < 900 && !isAndroidTv
@@ -294,6 +306,14 @@ private fun NativePlayerScreen(
         phoneActivity?.let { applyPhoneFullscreen(it, enabled, originalOrientation) }
         phoneFullscreen = enabled
         revealPlayerControls()
+    }
+    // A rotation can make Android restore the system bars after the click handler ran.
+    // Re-apply immersive mode once Compose observes the new orientation as well.
+    LaunchedEffect(phoneFullscreen, configuration.orientation) {
+        if (phoneFullscreen) {
+            delay(180)
+            phoneActivity?.let { applyPhoneFullscreen(it, true, originalOrientation) }
+        }
     }
     BackHandler(enabled = compactLayout && phoneActivity != null && phoneFullscreen) {
         setPhoneFullscreen(false)
@@ -424,6 +444,20 @@ private fun NativePlayerScreen(
                 onClick = { episodePickerVisible = true; revealPlayerControls() },
                 modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)
             ) { Text("Episodes") }
+            if (request.kind == StalkerContentKind.LIVE && (compactLayout || isMetaQuest)) {
+                Column(
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = if (compactLayout) 10.dp else 22.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    QuestButton(onClick = { onChannelStep(-1); revealPlayerControls() }, modifier = Modifier.width(56.dp).height(46.dp)) {
+                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel", tint = Color.White)
+                    }
+                    QuestButton(onClick = { onChannelStep(1); revealPlayerControls() }, modifier = Modifier.width(56.dp).height(46.dp)) {
+                        Icon(Icons.Filled.SkipNext, contentDescription = "Next channel", tint = Color.White)
+                    }
+                }
+            }
             Row(
                 modifier = Modifier.align(if (compactLayout) Alignment.BottomCenter else Alignment.TopEnd)
                     .padding(if (compactLayout) 12.dp else 18.dp)
@@ -504,13 +538,17 @@ private fun Context.findActivity(): Activity? {
 
 private fun applyPhoneFullscreen(activity: Activity, enabled: Boolean, originalOrientation: Int) {
     if (enabled) {
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
-            systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            hide(WindowInsetsCompat.Type.systemBars())
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        WindowCompat.setDecorFitsSystemWindows(activity.window, false)
+        activity.window.decorView.post {
+            WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+                systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
+            }
         }
     } else {
         activity.requestedOrientation = originalOrientation
+        WindowCompat.setDecorFitsSystemWindows(activity.window, true)
         WindowCompat.getInsetsController(activity.window, activity.window.decorView)
             .show(WindowInsetsCompat.Type.systemBars())
     }

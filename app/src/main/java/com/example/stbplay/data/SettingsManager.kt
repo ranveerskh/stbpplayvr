@@ -17,6 +17,7 @@ private val Context.dataStore by preferencesDataStore(name = "stb_play_settings"
 
 enum class PlayerPreference { AUTO, INTERNAL, VLC }
 enum class ThemePreference { BLUE, LIGHT, BLACK }
+enum class ParentalMode { ALL_CONTENT, HIDE_ADULT, ADULT_ONLY }
 enum class SubtitlePreference { AUTO, OFF, ENGLISH, HINDI, PUNJABI }
 
 data class WatchProgress(
@@ -34,6 +35,7 @@ class SettingsManager(private val context: Context) {
     private val keyPortals = stringPreferencesKey("portal_profiles_v2")
     private val keyActivePortal = stringPreferencesKey("active_portal_id")
     private val keyParentalPin = stringPreferencesKey("parental_pin")
+    private val keyParentalMode = stringPreferencesKey("parental_mode")
     private val keyFavoritesPrefix = "favorite_ids_"
     private val keyProgressPrefix = "vod_progress_"
     private val keyPlayer = stringPreferencesKey("player_preference")
@@ -93,6 +95,11 @@ class SettingsManager(private val context: Context) {
             ThemePreference.LIGHT.name -> ThemePreference.LIGHT
             else -> ThemePreference.BLUE
         }
+    }
+
+    val parentalMode: Flow<ParentalMode> = context.dataStore.data.map {
+        runCatching { ParentalMode.valueOf(it[keyParentalMode] ?: ParentalMode.ALL_CONTENT.name) }
+            .getOrDefault(ParentalMode.ALL_CONTENT)
     }
 
     val subtitlePreference: Flow<SubtitlePreference> = context.dataStore.data.map {
@@ -204,6 +211,10 @@ class SettingsManager(private val context: Context) {
 
     suspend fun setThemePreference(value: ThemePreference) {
         context.dataStore.edit { it[keyTheme] = value.name }
+    }
+
+    suspend fun setParentalMode(value: ParentalMode) {
+        context.dataStore.edit { it[keyParentalMode] = value.name }
     }
 
     suspend fun setSubtitlePreference(value: SubtitlePreference) {

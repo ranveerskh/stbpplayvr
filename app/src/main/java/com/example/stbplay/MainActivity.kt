@@ -36,6 +36,7 @@ import androidx.media3.cast.Cast
 import androidx.media3.common.util.UnstableApi
 import androidx.annotation.OptIn as AndroidXOptIn
 import com.example.stbplay.data.PlayerPreference
+import com.example.stbplay.data.ParentalMode
 import com.example.stbplay.data.PortalRepository
 import com.example.stbplay.data.CatalogCacheStore
 import com.example.stbplay.data.CatalogSnapshot
@@ -236,8 +237,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
+            val parentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
             LaunchedEffect(themePreference) { LauncherIconManager.apply(applicationContext, themePreference) }
-            STBPlayTheme(preference = themePreference) {
+            STBPlayTheme(preference = themePreference, adultOnly = parentalMode == ParentalMode.ADULT_ONLY) {
                 StbPlayRoot(settingsManager, updateManager, ::queueUpdateDownload, ::shareApp, openUpdates)
             }
         }
@@ -319,6 +321,7 @@ private fun StbPlayRoot(
     val playerPreference by settingsManager.playerPreference.collectAsState(initial = PlayerPreference.AUTO)
     val subtitlePreference by settingsManager.subtitlePreference.collectAsState(initial = com.example.stbplay.data.SubtitlePreference.AUTO)
     val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
+    val parentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
     val catalogueLanguage by settingsManager.catalogueLanguage.collectAsState(initial = "All")
     val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = true)
     val disclaimerAcknowledged by settingsManager.disclaimerAcknowledged.collectAsState(initial = false)
@@ -363,6 +366,7 @@ private fun StbPlayRoot(
     var playingEpisodeIndex by remember { androidx.compose.runtime.mutableIntStateOf(-1) }
     var pendingLockedMedia by remember { mutableStateOf<PortalStream?>(null) }
     var pendingCategory by remember { mutableStateOf<PendingCategory?>(null) }
+    var pendingParentalMode by remember { mutableStateOf<ParentalMode?>(null) }
     var unlockedAdultCategoryKey by remember { mutableStateOf<String?>(null) }
     var editingPortal by remember { mutableStateOf<PortalSettings?>(null) }
     var changingPin by remember { mutableStateOf(false) }
@@ -643,13 +647,50 @@ private fun StbPlayRoot(
         }
     }
 
-    val contentCategories = remember(movieCategories, seriesCategories) {
-        listOf(UiCategory("all", "All")) + (movieCategories + seriesCategories)
-            .distinctBy { it.id }
-            .map { UiCategory(it.id, it.name, it.isLocked) }
+    val allVod = remember(movieStreams, seriesStreams) {
+        (movieStreams + seriesStreams).distinctBy { "${it.streamType}:${it.id}" }
     }
-    val uiLiveCategories = remember(liveCategories) {
-        listOf(UiCategory("all", "All")) + liveCategories.map { UiCategory(it.id, it.name, it.isLocked) }
+    val explicitAdultVodCategoryIds = remember(movieCategories, seriesCategories) {
+        (movieCategories + seriesCategories).filter { it.isAdultCategory() }.mapTo(HashSet()) { it.id }
+    }
+    val explicitAdultLiveCategoryIds = remember(liveCategories) {
+        liveCategories.filter { it.isAdultCategory() }.mapTo(HashSet()) { it.id }
+    }
+    val flaggedAdultVodCategoryIds = remember(allVod) { allVod.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId } }
+    val flaggedAdultLiveCategoryIds = remember(liveStreams) { liveStreams.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId } }
+    val contentCategories = remember(movieCategories, seriesCategories, parentalMode, allVod) {
+        val categories = (movieCategories + seriesCategories).distinctBy { it.id }
+        val flaggedIds = allVod.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId }
+        val visible = when (parentalMode) {
+            ParentalMode.ALL_CONTENT -> categories
+            ParentalMode.HIDE_ADULT -> categories.filterNot { it.isAdultCategory() }
+            ParentalMode.ADULT_ONLY -> categories.filter { it.isAdultCategory() || it.id in flaggedIds }
+        }.map { category ->
+            UiCategory(category.id, category.name, category.isLocked && parentalMode == ParentalMode.ALL_CONTENT,
+                category.isAdultCategory() || category.id in flaggedIds)
+        }
+        if (parentalMode == ParentalMode.ADULT_ONLY) listOf(UiCategory("adult-only", "Adult only", isAdult = true)) + visible
+        else listOf(UiCategory("all", "All")) + visible
+    }
+    val uiLiveCategories = remember(liveCategories, liveStreams, parentalMode) {
+        val flaggedIds = liveStreams.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId }
+        val visible = when (parentalMode) {
+            ParentalMode.ALL_CONTENT -> liveCategories
+            ParentalMode.HIDE_ADULT -> liveCategories.filterNot { it.isAdultCategory() }
+            ParentalMode.ADULT_ONLY -> liveCategories.filter { it.isAdultCategory() || it.id in flaggedIds }
+        }.map { category ->
+            UiCategory(category.id, category.name, category.isLocked && parentalMode == ParentalMode.ALL_CONTENT,
+                category.isAdultCategory() || category.id in flaggedIds)
+        }
+        if (parentalMode == ParentalMode.ADULT_ONLY) listOf(UiCategory("adult-only", "Adult only", isAdult = true)) + visible
+        else listOf(UiCategory("all", "All")) + visible
+    }
+    LaunchedEffect(parentalMode) {
+        unlockedAdultCategoryKey = null
+        liveCategoryIndex = 0
+        contentCategoryIndex = 0
+        focusedLiveChannelId = null
+        scope.launch { liveChannelListState.scrollToItem(0); contentGridState.scrollToItem(0) }
     }
     fun requestMedia(media: UiMedia) {
         val stream = allStreamFor(media) ?: return
@@ -660,53 +701,69 @@ private fun StbPlayRoot(
             StbPlayTab.CONTENT -> contentCategories.getOrNull(categoryIndex)
             else -> null
         }
-        val categoryUnlocked = category?.isLocked == true &&
+        val categoryUnlocked = category?.isAdult == true &&
             unlockedAdultCategoryKey == "${selectedTab.name}:$categoryIndex" &&
             stream.categoryId == category?.id &&
             ((selectedTab == StbPlayTab.LIVE && stream.streamType == "live") ||
                 (selectedTab == StbPlayTab.CONTENT && stream.streamType != "live"))
-        if (stream.isLocked && !categoryUnlocked) pendingLockedMedia = stream else openMedia(stream, media.progress)
+        if (stream.isLocked && parentalMode != ParentalMode.ADULT_ONLY && !categoryUnlocked) pendingLockedMedia = stream else openMedia(stream, media.progress)
     }
 
     fun filterByCategory(items: List<PortalStream>, categories: List<UiCategory>, selectedIndex: Int): List<PortalStream> {
         val category = categories.getOrNull(selectedIndex) ?: categories.firstOrNull()
-        return if (category == null || category.id == "all") items else items.filter { it.categoryId == category.id }
+        val isLive = items.firstOrNull()?.streamType == "live"
+        val explicitCategoryIds = if (isLive) explicitAdultLiveCategoryIds else explicitAdultVodCategoryIds
+        val adultCategoryIds = if (isLive) explicitAdultLiveCategoryIds + flaggedAdultLiveCategoryIds
+            else explicitAdultVodCategoryIds + flaggedAdultVodCategoryIds
+        val eligible = when (parentalMode) {
+            ParentalMode.ALL_CONTENT -> items
+            ParentalMode.HIDE_ADULT -> items.filterNot { it.isAdultContent() || it.categoryId in adultCategoryIds }
+            ParentalMode.ADULT_ONLY -> items.filter { stream ->
+                stream.isAdultContent() || stream.categoryId in explicitCategoryIds
+            }
+        }
+        return when {
+            category == null || category.id == "all" -> if (parentalMode == ParentalMode.ALL_CONTENT)
+                eligible.filterNot { it.isAdultContent() || it.categoryId in adultCategoryIds } else eligible
+            category.id == "adult-only" -> eligible
+            category.isAdult && parentalMode == ParentalMode.ADULT_ONLY -> eligible.filter {
+                it.categoryId == category.id && (it.isAdultContent() || category.id in explicitCategoryIds)
+            }
+            else -> eligible.filter { it.categoryId == category.id }
+        }
     }
 
-    val filteredLive = remember(liveStreams, uiLiveCategories, liveCategoryIndex) {
+    val filteredLive = remember(liveStreams, uiLiveCategories, liveCategoryIndex, parentalMode, explicitAdultVodCategoryIds, explicitAdultLiveCategoryIds, flaggedAdultVodCategoryIds, flaggedAdultLiveCategoryIds) {
         filterByCategory(liveStreams, uiLiveCategories, liveCategoryIndex)
+    }
+    fun stepLiveChannel(direction: Int) {
+        val currentId = playRequest?.contentId
+        val currentCategory = uiLiveCategories.getOrNull(liveCategoryIndex)
+        val categoryUnlocked = parentalMode == ParentalMode.ADULT_ONLY ||
+            (currentCategory?.isAdult == true && unlockedAdultCategoryKey == "LIVE:$liveCategoryIndex")
+        val channels = (if (filteredLive.any { it.id == currentId }) filteredLive else filterByCategory(liveStreams, uiLiveCategories, liveCategoryIndex))
+            .filter { !it.isLocked || categoryUnlocked }
+        if (channels.isNotEmpty()) {
+            val currentIndex = channels.indexOfFirst { it.id == currentId }
+            val nextIndex = if (currentIndex < 0) 0 else (currentIndex + direction + channels.size) % channels.size
+            launchPlayback(channels[nextIndex])
+        }
     }
     val activity = LocalContext.current as? MainActivity
     DisposableEffect(activity, playRequest, filteredLive, liveStreams, unlockedAdultCategoryKey) {
         val handler: ((Int) -> Unit)? = if (playRequest?.kind == StalkerContentKind.LIVE) {
-            { direction: Int ->
-                val currentId = playRequest?.contentId
-                val channels = (if (filteredLive.any { it.id == currentId }) filteredLive else liveStreams)
-                    .filter { stream ->
-                        !stream.isLocked || (uiLiveCategories.getOrNull(liveCategoryIndex)?.let { category ->
-                            category.isLocked && unlockedAdultCategoryKey == "LIVE:$liveCategoryIndex" &&
-                                stream.categoryId == category.id
-                        } == true)
-                    }
-                if (channels.isNotEmpty()) {
-                    val currentIndex = channels.indexOfFirst { it.id == currentId }
-                    val nextIndex = if (currentIndex < 0) 0 else (currentIndex + direction + channels.size) % channels.size
-                    launchPlayback(channels[nextIndex])
-                }
-            }
+            { direction: Int -> stepLiveChannel(direction) }
         } else null
         activity?.channelStepHandler = handler
         onDispose { activity?.let { if (it.channelStepHandler === handler) it.channelStepHandler = null } }
     }
-    val allVod = remember(movieStreams, seriesStreams) {
-        (movieStreams + seriesStreams).distinctBy { "${it.streamType}:${it.id}" }
-    }
     val selectedContentCategory = contentCategories.getOrNull(contentCategoryIndex)
     val selectedVodKey = selectedContentCategory?.id ?: "all"
     val selectedVodCatalog = vodCatalogs[selectedVodKey]
-    val categoryVod = selectedVodCatalog?.items.orEmpty()
-    val filteredVod = remember(categoryVod, catalogueLanguage) {
-        categoryVod.filter { stream ->
+    val categoryVod = if (selectedVodKey == "adult-only") allVod else selectedVodCatalog?.items.orEmpty()
+    val filteredVod = remember(categoryVod, catalogueLanguage, parentalMode, explicitAdultVodCategoryIds, explicitAdultLiveCategoryIds, flaggedAdultVodCategoryIds, flaggedAdultLiveCategoryIds, contentCategories, contentCategoryIndex) {
+        val parentalFiltered = filterByCategory(categoryVod, contentCategories, contentCategoryIndex)
+        parentalFiltered.filter { stream ->
             val languageMatches = catalogueLanguage == "All" ||
                 stream.language?.contains(catalogueLanguage, ignoreCase = true) == true ||
                 stream.searchText?.contains(catalogueLanguage, ignoreCase = true) == true
@@ -731,12 +788,26 @@ private fun StbPlayRoot(
         if (selectedTab == StbPlayTab.CONTENT) filteredVod.map(::toUi) else emptyList()
     }
 
-    val safeLive = remember(liveStreams) { liveStreams.filterNot { it.isLocked } }
-    val safeVod = remember(allVod) { allVod.filterNot { it.isLocked } }
-    val latestMovies = remember(movieStreams) { movieStreams.asSequence().filterNot { it.isLocked }.take(18).toList() }
-    val latestSeries = remember(seriesStreams) { seriesStreams.asSequence().filterNot { it.isLocked }.take(18).toList() }
-    val favoriteStreams = remember(liveStreams, allVod, favoriteIds) {
-        (liveStreams + allVod).filter { it.id in favoriteIds && !it.isLocked }.distinctBy { "${it.streamType}:${it.id}" }
+    fun isAllowedInMode(stream: PortalStream, adultCategoryIds: Set<String>): Boolean = when (parentalMode) {
+        ParentalMode.ALL_CONTENT -> !stream.isAdultContent() && stream.categoryId !in adultCategoryIds
+        ParentalMode.HIDE_ADULT -> !stream.isAdultContent() && stream.categoryId !in adultCategoryIds
+        ParentalMode.ADULT_ONLY -> stream.isAdultContent() || stream.categoryId in adultCategoryIds
+    }
+    val safeLive = remember(liveStreams, parentalMode, explicitAdultLiveCategoryIds) {
+        liveStreams.filter { isAllowedInMode(it, explicitAdultLiveCategoryIds) }
+    }
+    val safeVod = remember(allVod, parentalMode, explicitAdultVodCategoryIds) {
+        allVod.filter { isAllowedInMode(it, explicitAdultVodCategoryIds) }
+    }
+    val latestMovies = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "movie" }.take(18).toList() }
+    val latestSeries = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "series" }.take(18).toList() }
+    val favoriteStreams = remember(liveStreams, allVod, favoriteIds, parentalMode, explicitAdultLiveCategoryIds, explicitAdultVodCategoryIds) {
+        (liveStreams + allVod).filter { stream ->
+            stream.id in favoriteIds && isAllowedInMode(
+                stream,
+                if (stream.streamType == "live") explicitAdultLiveCategoryIds else explicitAdultVodCategoryIds
+            )
+        }.distinctBy { "${it.streamType}:${it.id}" }
     }
     val continueStreams = remember(safeVod, progressById) {
         safeVod.filter { (progressById[it.id] ?: 0f) > 0f }.sortedByDescending { progressById[it.id] ?: 0f }
@@ -807,6 +878,7 @@ private fun StbPlayRoot(
         seriesCount = seriesStreams.size,
         playerPreference = playerPreference,
         themePreference = themePreference,
+        parentalMode = parentalMode,
         subtitlePreference = subtitlePreference,
         catalogueLanguage = catalogueLanguage,
         analyticsEnabled = analyticsEnabled,
@@ -891,7 +963,7 @@ private fun StbPlayRoot(
             else -> null
         }
         val key = "${tab.name}:$index"
-        if (category?.isLocked == true && unlockedAdultCategoryKey != key) {
+        if (category?.isAdult == true && parentalMode == ParentalMode.ALL_CONTENT && unlockedAdultCategoryKey != key) {
             pendingCategory = PendingCategory(tab, index, category.title)
         } else {
             if (category?.isLocked != true) unlockedAdultCategoryKey = null
@@ -955,6 +1027,7 @@ private fun StbPlayRoot(
                         if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE && playingEpisodeIndex + 1 < playingEpisodes.size)
                             playEpisodeAt(playingEpisodeIndex + 1)
                     },
+                    onChannelStep = ::stepLiveChannel,
                     onBack = {
                         playRequest = null
                         selectedSeries = playingSeries
@@ -1030,12 +1103,12 @@ private fun StbPlayRoot(
                     contentGridState = contentGridState,
                     onTabSelected = { tab ->
                         if (tab != selectedTab) {
-                            if (selectedTab == StbPlayTab.LIVE && uiLiveCategories.getOrNull(liveCategoryIndex)?.isLocked == true) {
+                            if (selectedTab == StbPlayTab.LIVE && uiLiveCategories.getOrNull(liveCategoryIndex)?.isAdult == true) {
                                 liveCategoryIndex = 0
                                 focusedLiveChannelId = null
                                 scope.launch { liveChannelListState.scrollToItem(0) }
                             }
-                            if (selectedTab == StbPlayTab.CONTENT && contentCategories.getOrNull(contentCategoryIndex)?.isLocked == true) {
+                            if (selectedTab == StbPlayTab.CONTENT && contentCategories.getOrNull(contentCategoryIndex)?.isAdult == true) {
                                 contentCategoryIndex = 0
                                 scope.launch { contentGridState.scrollToItem(0) }
                             }
@@ -1075,6 +1148,12 @@ private fun StbPlayRoot(
                     onCatalogueLanguageChanged = { language -> scope.launch { settingsManager.setCatalogueLanguage(language) } },
                     onAnalyticsChanged = { enabled -> scope.launch { settingsManager.setAnalyticsEnabled(enabled) } },
                     onChangePin = { changingPin = true },
+                    onParentalModeChanged = { mode ->
+                        if (mode != parentalMode) {
+                            if (storedSettings.pin.isBlank()) scope.launch { settingsManager.setParentalMode(mode) }
+                            else pendingParentalMode = mode
+                        }
+                    },
                     onCheckUpdates = { checkUpdates(manual = true) },
                     onDownloadUpdate = {
                         val info = updateInfo
@@ -1096,11 +1175,11 @@ private fun StbPlayRoot(
                         }
                     },
                     searchCatalog = when (selectedTab) {
-                        StbPlayTab.LIVE -> liveStreams
+                        StbPlayTab.LIVE -> liveStreams.filter { isAllowedInMode(it, explicitAdultLiveCategoryIds) }
                         StbPlayTab.CONTENT -> {
                             // Search everything already loaded from every VOD page/category,
                             // not just the currently selected category's visible page.
-                            allVod.filter { stream ->
+                            allVod.filter { stream -> isAllowedInMode(stream, explicitAdultVodCategoryIds) }.filter { stream ->
                                 catalogueLanguage == "All" ||
                                     stream.language?.contains(catalogueLanguage, ignoreCase = true) == true ||
                                     stream.searchText?.contains(catalogueLanguage, ignoreCase = true) == true
@@ -1110,8 +1189,8 @@ private fun StbPlayRoot(
                         else -> safeLive + safeVod
                     },
                     searchRemote = { query, page ->
-                        portalRepository.searchVod(query, page).let { batch ->
-                            batch.copy(items = batch.items.filter { stream ->
+                            portalRepository.searchVod(query, page).let { batch ->
+                            batch.copy(items = batch.items.filter { stream -> isAllowedInMode(stream, explicitAdultVodCategoryIds) }.filter { stream ->
                                 catalogueLanguage == "All" ||
                                     stream.language?.contains(catalogueLanguage, ignoreCase = true) == true ||
                                     stream.searchText?.contains(catalogueLanguage, ignoreCase = true) == true
@@ -1141,6 +1220,17 @@ private fun StbPlayRoot(
                         pendingCategory = null
                     },
                     onCancel = { pendingCategory = null }
+                )
+            }
+            pendingParentalMode?.let { requestedMode ->
+                PinPrompt(
+                    title = "Change parental mode",
+                    expectedPin = storedSettings.pin,
+                    onVerified = {
+                        scope.launch { settingsManager.setParentalMode(requestedMode) }
+                        pendingParentalMode = null
+                    },
+                    onCancel = { pendingParentalMode = null }
                 )
             }
             if (changingPin) {
