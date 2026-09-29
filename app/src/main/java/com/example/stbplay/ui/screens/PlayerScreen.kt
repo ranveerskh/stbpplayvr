@@ -3,12 +3,17 @@
 package com.example.stbplay.ui.screens
 
 import android.content.ActivityNotFoundException
+import android.app.Activity
+import android.content.ContextWrapper
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
@@ -23,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
@@ -43,6 +49,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -175,10 +186,8 @@ private fun NativePlayerScreen(
 ) {
     val context = LocalContext.current
     var playerError by remember(playbackUrl) { mutableStateOf<String?>(null) }
-    var decoderError by remember(playbackUrl) { mutableStateOf(false) }
     var didStart by remember(playbackUrl) { mutableStateOf(false) }
     var didRestore by remember(playbackUrl) { mutableStateOf(false) }
-    var autoVlcTried by remember(playbackUrl) { mutableStateOf(false) }
     var renderedFirstFrame by remember(playbackUrl) { mutableStateOf(false) }
     var useAlternateSurface by remember(playbackUrl) { mutableStateOf(false) }
     val progressCallback by rememberUpdatedState(onProgress)
@@ -187,11 +196,13 @@ private fun NativePlayerScreen(
     val endedCallback by rememberUpdatedState(onPlaybackEnded)
     var episodePickerVisible by remember(playbackUrl) { mutableStateOf(false) }
 
-    val compactLayout = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 900 &&
-        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
-    // Keep TextureView on phone layouts; Android TV starts with the standard SurfaceView path.
-    // The previous TV-first TextureView could produce green corruption on hardware decoders.
-    val preferTextureSurface = compactLayout
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isAndroidTv = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    // Use the device's stable short-side width so rotating a phone into fullscreen does not
+    // replace the player/cast controls with the TV layout.
+    val compactLayout = configuration.smallestScreenWidthDp < 900 && !isAndroidTv
+    // Match the working v1.8.37 TV path: prefer TextureView first, then try SurfaceView if needed.
+    val preferTextureSurface = compactLayout || isAndroidTv
     val player = remember(playbackUrl, portalUiUrl, token, sessionCookie, subtitlePreference, resumeFraction) {
         val headers = mutableMapOf(
             "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 MAG254",
@@ -234,13 +245,6 @@ private fun NativePlayerScreen(
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        decoderError = error.errorCode in setOf(
-                            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-                            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-                            PlaybackException.ERROR_CODE_DECODING_FAILED,
-                            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-                            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
-                        )
                         val message = "Playback failed: ${error.errorCodeName}"
                         playerError = message
                         failureCallback(message)
@@ -281,6 +285,25 @@ private fun NativePlayerScreen(
         }
     }
 
+    val phoneActivity = remember(context) { context.findActivity() }
+    val originalOrientation = remember(phoneActivity) {
+        phoneActivity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+    var phoneFullscreen by remember(playbackUrl) { mutableStateOf(false) }
+    fun setPhoneFullscreen(enabled: Boolean) {
+        phoneActivity?.let { applyPhoneFullscreen(it, enabled, originalOrientation) }
+        phoneFullscreen = enabled
+        revealPlayerControls()
+    }
+    BackHandler(enabled = compactLayout && phoneActivity != null && phoneFullscreen) {
+        setPhoneFullscreen(false)
+    }
+    DisposableEffect(phoneActivity, phoneFullscreen) {
+        onDispose {
+            if (phoneFullscreen) phoneActivity?.let { applyPhoneFullscreen(it, false, originalOrientation) }
+        }
+    }
+
     DisposableEffect(player, castPlayer) {
         onDispose {
             runCatching {
@@ -296,15 +319,6 @@ private fun NativePlayerScreen(
             if (activePlayer.duration > 0L && activePlayer.currentPosition > 0L) progressCallback(activePlayer.currentPosition, activePlayer.duration)
         }
     }
-    LaunchedEffect(playerError, playerPreference, decoderError) {
-        if (playerError == null) return@LaunchedEffect
-        if (playerPreference == PlayerPreference.AUTO && decoderError && !autoVlcTried) {
-            autoVlcTried = true
-            if (launchVlc(context, playbackUrl, title)) {
-                playerError = "Opening VLC because this device could not decode the stream."
-            }
-        }
-    }
     LaunchedEffect(player, didStart, renderedFirstFrame, useAlternateSurface) {
         if (!didStart || renderedFirstFrame || playerError != null) return@LaunchedEffect
         delay(4_000)
@@ -312,14 +326,7 @@ private fun NativePlayerScreen(
         if (!useAlternateSurface) {
             useAlternateSurface = true
         } else {
-            val message = "Video did not appear on this device. Try VLC below."
-            if (playerPreference == PlayerPreference.AUTO && !autoVlcTried) {
-                autoVlcTried = true
-                if (launchVlc(context, playbackUrl, title)) {
-                    playerError = "Opening VLC for this channel."
-                    return@LaunchedEffect
-                }
-            }
+            val message = "Video did not appear on this device."
             playerError = message
             failureCallback(message)
         }
@@ -436,19 +443,19 @@ private fun NativePlayerScreen(
                     modifier = if (compactLayout) Modifier.size(44.dp) else Modifier) { Text("−") }
                 QuestButton(onClick = { adjustVolume(10); revealPlayerControls() },
                     modifier = if (compactLayout) Modifier.size(44.dp) else Modifier) { Text("+") }
-            }
-            QuestButton(
-                onClick = {
-                    if (launchVlc(context, playbackUrl, title)) {
-                        activePlayer.pause()
-                        playerControlsVisible = false
-                    } else {
-                        playerError = "VLC is not installed. Install VLC or try a different player in Settings."
+                if (compactLayout && phoneActivity != null) {
+                    IconButton(
+                        onClick = { setPhoneFullscreen(!phoneFullscreen) },
+                        modifier = Modifier.size(44.dp).background(Color(0xCC070707), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (phoneFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                            contentDescription = if (phoneFullscreen) "Exit full screen" else "Full screen",
+                            tint = Color.White
+                        )
                     }
-                },
-                modifier = Modifier.align(Alignment.BottomStart).padding(if (compactLayout) 12.dp else 18.dp),
-                colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
-            ) { Text("Try VLC") }
+                }
+            }
         }
         if (episodePickerVisible) {
             Column(
@@ -476,15 +483,44 @@ private fun NativePlayerScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(error, color = Color.White)
-                if (playerPreference == PlayerPreference.AUTO && autoVlcTried) Text("VLC handoff attempted.", color = Color.LightGray)
-                QuestButton(onClick = {
+                if (isVlcInstalled(context)) QuestButton(onClick = {
                     if (launchVlc(context, playbackUrl, title)) activePlayer.pause()
-                    else playerError = "VLC is not installed on this device."
-                }) { Text("Try VLC") }
+                    else playerError = "VLC could not open this stream."
+                }) { Text("Open in VLC") }
                 QuestButton(onClick = onBack, modifier = Modifier.questInitialFocus()) { Text("Back") }
             }
         }
     }
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context? = this
+    while (current != null) {
+        if (current is Activity) return current
+        current = (current as? ContextWrapper)?.baseContext
+    }
+    return null
+}
+
+private fun applyPhoneFullscreen(activity: Activity, enabled: Boolean, originalOrientation: Int) {
+    if (enabled) {
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+    } else {
+        activity.requestedOrientation = originalOrientation
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+            .show(WindowInsetsCompat.Type.systemBars())
+    }
+}
+
+private fun isVlcInstalled(context: Context): Boolean = try {
+    context.packageManager.getPackageInfo("org.videolan.vlc", 0)
+    true
+} catch (_: Throwable) {
+    false
 }
 
 private fun SubtitlePreference.languageCode(): String? = when (this) {
