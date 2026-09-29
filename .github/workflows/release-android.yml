@@ -48,3 +48,4 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" "STB-PLAY-Android-${GITHUB_REF_NAME}.apk" --clobber
           else
             gh release create "$GITHUB_REF_NAME" "STB-PLAY-Android-${GITHUB_REF_NAME}.apk" --verify-tag --title "STB Play ${GITHUB_REF_NAME}" --notes "Android phone, TV and Meta Quest update. Install within 14 days of publication."
+          fi
