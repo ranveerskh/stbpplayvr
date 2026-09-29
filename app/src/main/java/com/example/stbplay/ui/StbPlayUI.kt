@@ -212,7 +212,8 @@ data class StbPlayHomeState(
     val loading: Boolean = false,
     val heroes: List<UiMedia> = emptyList(),
     val rows: List<UiMediaRow> = emptyList(),
-    val expiryText: String? = null
+    val expiryText: String? = null,
+    val portalWarning: String? = null
 )
 
 data class StbPlayLibraryState(
@@ -294,6 +295,10 @@ fun StbPlayApp(
     val compactLayout = configuration.screenWidthDp < 900 &&
         !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
 
+    BackHandler(enabled = !searchOpen && selectedTab != StbPlayTab.HOME) {
+        onTabSelected(StbPlayTab.HOME)
+    }
+
     if (searchOpen) {
         StbPlaySearchScreen(
             catalog = searchCatalog,
@@ -317,7 +322,12 @@ fun StbPlayApp(
                     state = homeState,
                     onMediaClick = onMediaClick,
                     onToggleFavorite = onToggleFavorite,
-                    onRemoveHistory = onRemoveHistory
+                    onRemoveHistory = onRemoveHistory,
+                    onRefresh = onRefresh,
+                    onEditPortal = {
+                        settingsState.profiles.firstOrNull { it.id == settingsState.activeProfileId }
+                            ?.let(onEditPortal)
+                    }
                 )
                 StbPlayTab.LIVE -> LiveTvScreen(
                     state = liveState,
@@ -629,7 +639,9 @@ private fun StbPlayHomeScreen(
     state: StbPlayHomeState,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit,
-    onRemoveHistory: (UiMedia) -> Unit
+    onRemoveHistory: (UiMedia) -> Unit,
+    onRefresh: () -> Unit,
+    onEditPortal: () -> Unit
 ) {
     if (state.loading) {
         LoadingContent("Loading your portal…")
@@ -642,6 +654,9 @@ private fun StbPlayHomeScreen(
         contentPadding = PaddingValues(start = if (compact || denseTv) 14.dp else 30.dp, end = if (compact || denseTv) 14.dp else 30.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact || denseTv) 14.dp else 25.dp)
     ) {
+        state.portalWarning?.let { warning ->
+            item { PortalConnectionWarning(warning, onRefresh, onEditPortal) }
+        }
         item {
             if (state.heroes.isEmpty()) EmptyState("No content found", "Connect a portal with an active catalogue to start watching.")
             else RotatingHero(state.heroes, onMediaClick, onToggleFavorite)
@@ -651,6 +666,23 @@ private fun StbPlayHomeScreen(
         }
         columnItems(state.rows, key = { it.id }) { row ->
             if (row.items.isNotEmpty()) MediaRow(row, onMediaClick, onToggleFavorite, onRemoveHistory)
+        }
+    }
+}
+
+@Composable
+private fun PortalConnectionWarning(message: String, onRetry: () -> Unit, onEditPortal: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF32251B)).border(1.dp, Gold.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        Text("Portal needs attention", color = GoldLight, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(message, color = White, fontSize = 13.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            WideAction("Retry", onRetry, Modifier.weight(1f))
+            WideAction("Update details", onEditPortal, Modifier.weight(1f))
         }
     }
 }
@@ -1252,7 +1284,10 @@ private fun StbPlaySettingsScreen(
     ) {
         if (page != SettingsPage.HOME) item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                QuestButton(onClick = { page = SettingsPage.HOME }, modifier = Modifier.questInitialFocus()) { Text("←", fontSize = 20.sp) }
+                QuestButton(
+                    onClick = { page = SettingsPage.HOME },
+                    modifier = Modifier.widthIn(min = 108.dp).height(46.dp).questInitialFocus()
+                ) { Text("←  Back", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                 Text(page.title, color = White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             }
         }

@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
@@ -42,6 +43,7 @@ import com.example.stbplay.data.CatalogCacheStore
 import com.example.stbplay.data.CatalogSnapshot
 import com.example.stbplay.data.CachedVodCatalog
 import com.example.stbplay.data.SettingsManager
+import com.example.stbplay.data.SettingsBootstrap
 import com.example.stbplay.data.LauncherIconManager
 import com.example.stbplay.data.StalkerContentKind
 import com.example.stbplay.data.StalkerPlayRequest
@@ -78,6 +80,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.map
 import java.text.DateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -314,8 +317,12 @@ private fun StbPlayRoot(
     val catalogCache = remember(appContext) { CatalogCacheStore(appContext) }
     val contentGridState = rememberLazyGridState()
     val liveChannelListState = rememberLazyListState()
-    val storedSettings by settingsManager.portalSettings.collectAsState(initial = PortalSettings())
-    val profiles by settingsManager.portalProfiles.collectAsState(initial = emptyList())
+    val startupSettings by settingsManager.startupSettings
+        .map { it as SettingsBootstrap? }
+        .collectAsState(initial = null)
+    val settingsLoaded = startupSettings != null
+    val storedSettings = startupSettings?.activePortal ?: PortalSettings()
+    val profiles = startupSettings?.profiles.orEmpty()
     val favoriteIds by settingsManager.favoriteIds.collectAsState(initial = emptySet())
     val progressById by settingsManager.vodProgress.collectAsState(initial = emptyMap())
     val playerPreference by settingsManager.playerPreference.collectAsState(initial = PlayerPreference.AUTO)
@@ -324,16 +331,22 @@ private fun StbPlayRoot(
     val parentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
     val catalogueLanguage by settingsManager.catalogueLanguage.collectAsState(initial = "All")
     val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = true)
-    val disclaimerAcknowledged by settingsManager.disclaimerAcknowledged.collectAsState(initial = false)
+    val disclaimerAcknowledged = startupSettings?.disclaimerAcknowledged ?: false
     val lastRefreshAt by settingsManager.lastRefreshAt.collectAsState(initial = 0L)
 
     val portalRepository = remember { PortalRepository() }
-    var screen by remember { mutableStateOf(AppScreen.SETUP) }
+    // Hold a neutral surface until DataStore has returned the saved setup state.
+    // Once it is known, returning users start on Home while the portal reconnects.
+    var screen by remember { mutableStateOf(AppScreen.APP) }
     var loadingStage by remember { mutableStateOf("Preparing portal…") }
     var loadingProgress by remember { mutableStateOf(0f) }
     var connectionError by remember { mutableStateOf<String?>(null) }
     var connecting by remember { mutableStateOf(false) }
     var autoConnectKey by remember { mutableStateOf<String?>(null) }
+    var portalReady by remember { mutableStateOf(false) }
+    var pendingPlaybackMedia by remember { mutableStateOf<UiMedia?>(null) }
+    var playbackSessionGeneration by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var recoveryAttemptedContentIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     var liveStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var movieStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
@@ -475,15 +488,16 @@ private fun StbPlayRoot(
         }
     }
 
-    fun startConnection(input: PortalSettings) {
+    fun startConnection(input: PortalSettings, keepHomeVisible: Boolean = false) {
         if (connecting || input.url.isBlank() || input.mac.isBlank()) return
         categoryPreloadJob?.cancel()
         val refreshingVisibleCatalogue = screen == AppScreen.APP && autoConnectKey == portalKey(input) &&
             (liveStreams.isNotEmpty() || movieStreams.isNotEmpty() || seriesStreams.isNotEmpty())
         if (!refreshingVisibleCatalogue) scope.launch { contentGridState.scrollToItem(0) }
         connecting = true
+        portalReady = false
         catalogGeneration++
-        if (!refreshingVisibleCatalogue) {
+        if (!refreshingVisibleCatalogue && !keepHomeVisible) {
             vodCatalogs = emptyMap()
             liveStreams = emptyList()
             focusedLiveChannelId = null
@@ -494,6 +508,8 @@ private fun StbPlayRoot(
             seriesCategories = emptyList()
             scope.launch { liveChannelListState.scrollToItem(0) }
             screen = AppScreen.LOADING
+        } else if (keepHomeVisible) {
+            screen = AppScreen.APP
         }
         connectionError = null
         loadingStage = "Authenticating portal…"
@@ -520,6 +536,7 @@ private fun StbPlayRoot(
                 }
                 val login = portalRepository.initialize(input)
                 if (!login.success) throw IllegalStateException(login.errorMessage ?: "Portal authentication failed.")
+                portalReady = true
                 subscription = portalRepository.getSubscription()
 
                 loadingStage = "Loading live TV categories…"
@@ -558,22 +575,24 @@ private fun StbPlayRoot(
                 screen = AppScreen.APP
                 startCategoryPreload(input)
             } catch (error: Throwable) {
-                connectionError = error.message ?: "Could not load this portal."
-                if (refreshingVisibleCatalogue) screen = AppScreen.APP
+                val reason = error.message?.takeIf { it.isNotBlank() } ?: "Connection failed."
+                connectionError = "Could not connect to this portal ($reason). The portal may be unavailable, its details may have changed, or the provider service may have expired."
+                if (refreshingVisibleCatalogue || keepHomeVisible) screen = AppScreen.APP
             } finally {
                 connecting = false
             }
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(disclaimerAcknowledged, storedSettings.id, storedSettings.url, storedSettings.mac) {
+    androidx.compose.runtime.LaunchedEffect(settingsLoaded, disclaimerAcknowledged, storedSettings.id, storedSettings.url, storedSettings.mac) {
+        if (!settingsLoaded) return@LaunchedEffect
         if (!disclaimerAcknowledged) return@LaunchedEffect
         if (storedSettings.url.isBlank() || storedSettings.mac.isBlank()) {
             if (!connecting) screen = AppScreen.SETUP
             return@LaunchedEffect
         }
         val key = portalKey(storedSettings)
-        if (!connecting && autoConnectKey != key) startConnection(storedSettings)
+        if (!connecting && autoConnectKey != key) startConnection(storedSettings, keepHomeVisible = true)
     }
 
     fun allStreamFor(media: UiMedia): PortalStream? = (liveStreams + movieStreams + seriesStreams + remoteSearchStreams)
@@ -705,6 +724,10 @@ private fun StbPlayRoot(
         scope.launch { liveChannelListState.scrollToItem(0); contentGridState.scrollToItem(0) }
     }
     fun requestMedia(media: UiMedia) {
+        if (!portalReady) {
+            if (connecting) pendingPlaybackMedia = media
+            return
+        }
         val stream = allStreamFor(media) ?: return
         categoryPreloadJob?.cancel()
         val categoryIndex = if (selectedTab == StbPlayTab.LIVE) liveCategoryIndex else contentCategoryIndex
@@ -724,6 +747,16 @@ private fun StbPlayRoot(
         }
         val needsPin = stream.isLocked || (parentalMode == ParentalMode.ALL_CONTENT && properAdultCategory)
         if (needsPin && parentalMode != ParentalMode.ADULT_ONLY && !categoryUnlocked) pendingLockedMedia = stream else openMedia(stream, media.progress)
+    }
+
+    LaunchedEffect(portalReady, connecting, pendingPlaybackMedia) {
+        val queued = pendingPlaybackMedia ?: return@LaunchedEffect
+        if (portalReady) {
+            pendingPlaybackMedia = null
+            requestMedia(queued)
+        } else if (!connecting && connectionError != null) {
+            pendingPlaybackMedia = null
+        }
     }
 
     fun filterByCategory(items: List<PortalStream>, categories: List<UiCategory>, selectedIndex: Int): List<PortalStream> {
@@ -855,6 +888,7 @@ private fun StbPlayRoot(
     val homeState = StbPlayHomeState(
         loading = screen == AppScreen.LOADING,
         heroes = homeHeroes,
+        portalWarning = connectionError,
         rows = buildList {
             if (continueStreams.isNotEmpty()) add(UiMediaRow("continue", "Continue Watching", "Saved on this device", continueStreams.take(16).map(::toUi)))
             if (recommendationStreams.isNotEmpty()) add(UiMediaRow("recommended", "Recommended for you", "Based on what you watch", recommendationStreams.map(::toUi)))
@@ -1015,9 +1049,12 @@ private fun StbPlayRoot(
                         onLater = {}, onRetry = { checkUpdates(manual = true) }
                     )
                 }
+                !settingsLoaded -> Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
                 !disclaimerAcknowledged -> FirstStartDisclaimer {
                     scope.launch { settingsManager.acknowledgeDisclaimer() }
                 }
+                screen == AppScreen.APP && (storedSettings.url.isBlank() || storedSettings.mac.isBlank()) ->
+                    Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
                 playRequest != null -> {
                     val currentRequest = playRequest!!
                     fun playEpisodeAt(index: Int) {
@@ -1027,7 +1064,7 @@ private fun StbPlayRoot(
                         playRequest = null
                         startQualityChoice(QualityContext(episode.name, series, episode))
                     }
-                    PlaybackRoute(
+                    androidx.compose.runtime.key(playbackSessionGeneration) { PlaybackRoute(
                     request = currentRequest,
                     portalUiUrl = storedSettings.url,
                     macAddress = storedSettings.mac,
@@ -1037,6 +1074,23 @@ private fun StbPlayRoot(
                     subtitlePreference = subtitlePreference,
                     onProgress = { position, duration ->
                         if (currentRequest.kind != StalkerContentKind.LIVE) scope.launch { settingsManager.saveProgress(currentRequest.contentId, position, duration) }
+                    },
+                    onPlaybackFailure = {
+                        if (currentRequest.contentId !in recoveryAttemptedContentIds) {
+                            recoveryAttemptedContentIds = recoveryAttemptedContentIds + currentRequest.contentId
+                            scope.launch {
+                                val login = portalRepository.initialize(storedSettings)
+                                if (login.success) {
+                                    portalReady = true
+                                    subscription = portalRepository.getSubscription()
+                                    connectionError = null
+                                    playbackSessionGeneration++
+                                } else {
+                                    portalReady = false
+                                    connectionError = "Portal connection failed after playback recovery. Check the portal details or provider service status."
+                                }
+                            }
+                        }
                     },
                     episodeTitles = if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE) playingEpisodes.map { it.name } else emptyList(),
                     currentEpisodeIndex = playingEpisodeIndex,
@@ -1054,7 +1108,7 @@ private fun StbPlayRoot(
                         playingEpisodeIndex = -1
                         startCategoryPreload(storedSettings)
                     }
-                    )
+                    ) }
                 }
                 qualityContext != null -> QualitySelectionScreen(
                     title = qualityContext!!.title,

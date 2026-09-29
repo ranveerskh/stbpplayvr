@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -440,11 +441,11 @@ private fun NativePlayerScreen(
             QuestButton(
                 onClick = { revealPlayerControls(); onBack() },
                 modifier = Modifier.align(Alignment.TopStart).padding(if (compactLayout) 12.dp else 18.dp)
-                    .then(if (compactLayout) Modifier.width(88.dp).height(44.dp) else Modifier)
+                    .widthIn(min = if (compactLayout) 108.dp else 116.dp).heightIn(min = 48.dp)
                     .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
                     .questInitialFocus(),
                 colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
-            ) { Text("← Back") }
+            ) { Text("←  Back", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
             if (episodeTitles.isNotEmpty()) QuestButton(
                 onClick = { episodePickerVisible = true; revealPlayerControls() },
                 modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)

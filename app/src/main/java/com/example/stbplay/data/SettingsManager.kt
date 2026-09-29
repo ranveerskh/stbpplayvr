@@ -26,6 +26,12 @@ data class WatchProgress(
     val updatedAt: Long
 )
 
+data class SettingsBootstrap(
+    val profiles: List<PortalSettings>,
+    val activePortal: PortalSettings,
+    val disclaimerAcknowledged: Boolean
+)
+
 /**
  * All personal settings remain local to this Android TV. Portal URLs and MAC
  * addresses are not placed in analytics, diagnostics, or a public catalogue.
@@ -54,6 +60,18 @@ class SettingsManager(private val context: Context) {
 
     val portalProfiles: Flow<List<PortalSettings>> = context.dataStore.data.map { prefs ->
         profilesFrom(prefs[keyPortals], prefs)
+    }
+
+    /** A single persisted snapshot prevents startup from routing before portal/setup state is known. */
+    val startupSettings: Flow<SettingsBootstrap> = context.dataStore.data.map { prefs ->
+        val profiles = profilesFrom(prefs[keyPortals], prefs)
+        val activeId = prefs[keyActivePortal].orEmpty()
+        val active = profiles.firstOrNull { it.id == activeId } ?: profiles.firstOrNull()
+        SettingsBootstrap(
+            profiles = profiles,
+            activePortal = active?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty()) ?: PortalSettings(),
+            disclaimerAcknowledged = prefs[keyDisclaimer] ?: false
+        )
     }
 
     val portalSettings: Flow<PortalSettings> = context.dataStore.data.map { prefs ->

@@ -57,5 +57,5 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --clobber
           else
-            gh release create "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --verify-tag --title "STB Play ${RELEASE_TAG#v}" --notes "Meta Quest playback controls and Back navigation improved. Channel lists and parental filters corrected, with stable manual catalogue loading. Install within 14 days of publication."
+            gh release create "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --verify-tag --title "STB Play ${RELEASE_TAG#v}" --notes "Adult mode remains available. Returning users open Home directly while the portal reconnects; portal and playback recovery messages are clearer, and Back navigation is easier to use. Install within 14 days of publication."
           fi
