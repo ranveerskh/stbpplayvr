@@ -5,6 +5,8 @@ package com.example.stbplay.ui
 import androidx.activity.compose.BackHandler
 import com.example.stbplay.data.VodCatalogBatch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -117,6 +119,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.Normalizer
+import java.util.PriorityQueue
 import java.util.Locale
 
 private val Navy: Color @Composable get() = LocalStbPalette.current.background
@@ -135,14 +138,19 @@ private val PosterWhite = Color.White
 @Composable
 private fun isCompactAndroidLayout(): Boolean {
     val context = LocalContext.current
-    return LocalConfiguration.current.screenWidthDp < 900 &&
-        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    val isTelevision = remember(context) {
+        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    }
+    return LocalConfiguration.current.screenWidthDp < 900 && !isTelevision
 }
 
 @Composable
-private fun isTelevisionLayout(): Boolean = LocalContext.current.packageManager.hasSystemFeature(
-    android.content.pm.PackageManager.FEATURE_LEANBACK
-)
+private fun isTelevisionLayout(): Boolean {
+    val context = LocalContext.current
+    return remember(context) {
+        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    }
+}
 
 /** Gives a newly opened TV screen a focused control for Quest/gamepad input. */
 @Composable
@@ -734,7 +742,7 @@ private fun MediaRow(
             horizontalArrangement = Arrangement.spacedBy(if (denseTv) 10.dp else 15.dp),
             contentPadding = PaddingValues(end = 22.dp)
         ) {
-            columnItems(row.items, key = { it.id }) { media ->
+            columnItems(row.items, key = { it.id }, contentType = { if (it.portrait) "poster" else "landscape" }) { media ->
                 MediaCard(
                     item = media,
                     onClick = { onMediaClick(media) },
@@ -765,7 +773,7 @@ private fun LiveTvScreen(
                 state.loading -> LoadingContent("Loading channels…")
                 state.items.isEmpty() -> EmptyState("No channels in this category", state.emptyMessage)
                 else -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 18.dp)) {
-                    columnItems(state.items, key = { it.id }) { channel ->
+                    columnItems(state.items, key = { it.id }, contentType = { "channel" }) { channel ->
                         LiveChannelRow(channel, { onMediaClick(channel) }, { onToggleFavorite(channel) }, initialFocus = channel.id == state.items.firstOrNull()?.id)
                     }
                 }
@@ -795,7 +803,7 @@ private fun LiveTvScreen(
                     verticalArrangement = Arrangement.spacedBy(if (denseTv) 5.dp else 9.dp),
                     contentPadding = PaddingValues(bottom = 30.dp)
                 ) {
-                    columnItems(state.items, key = { it.id }) { channel ->
+                    columnItems(state.items, key = { it.id }, contentType = { "channel" }) { channel ->
                         LiveChannelRow(
                             channel,
                             { onMediaClick(channel) },
@@ -821,7 +829,7 @@ private fun CategorySidebar(categories: List<UiCategory>, selected: Int, onSelec
     ) {
         Text("Categories", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(if (denseTv) 2.dp else 6.dp)) {
-            indexedColumnItems(categories, key = { _, category -> category.id }) { index, category ->
+            indexedColumnItems(categories, key = { _, category -> category.id }, contentType = { _, _ -> "category" }) { index, category ->
                 CategorySidebarItem(category, index == selected) { onSelected(index) }
             }
         }
@@ -886,17 +894,21 @@ private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick
     QuestSurface(
         onClick = onClick,
         modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier)
-            .fillMaxWidth().height(if (denseTv) 46.dp else 58.dp).onFocusChanged { focused = it.isFocused },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
+            .fillMaxWidth().height(if (denseTv) 48.dp else 58.dp).onFocusChanged { focused = it.isFocused },
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Gold.copy(alpha = 0.2f) else Color.Transparent,
             focusedContainerColor = Gold
         ),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(category.title, color = if (focused) OnAccent else White, fontSize = if (denseTv) 11.sp else 12.sp, lineHeight = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (category.isLocked) Text("PIN", color = if (focused) OnAccent else GoldLight, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxSize().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(category.title, color = if (focused) OnAccent else White, fontSize = if (denseTv) 11.sp else 12.sp,
+                lineHeight = if (denseTv) 13.sp else 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f))
+            if (category.isLocked) Text("PIN", color = if (focused) OnAccent else GoldLight,
+                fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
@@ -1025,7 +1037,8 @@ private fun ContentBrowserScreen(
                         horizontalArrangement = Arrangement.spacedBy(if (denseTv) 8.dp else 12.dp),
                         verticalArrangement = Arrangement.spacedBy(if (denseTv) 10.dp else 16.dp)
                     ) {
-                        gridItems(state.items, key = { "${it.streamType}:${it.id}" }) { media ->
+                        gridItems(state.items, key = { "${it.streamType}:${it.id}" },
+                            contentType = { if (it.portrait) "poster" else "landscape" }) { media ->
                             MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
                         }
                         if (state.hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
@@ -1080,7 +1093,8 @@ private fun ContentBrowserCompact(
                     contentPadding = PaddingValues(bottom = 20.dp, end = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(9.dp), verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    gridItems(state.items, key = { "${it.streamType}:${it.id}" }) { media ->
+                    gridItems(state.items, key = { "${it.streamType}:${it.id}" },
+                        contentType = { if (it.portrait) "poster" else "landscape" }) { media ->
                         MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
                     }
                     if (state.hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
@@ -1397,7 +1411,8 @@ private enum class SettingsPage(val title: String) {
 
 @Composable
 private fun SettingsMenuGroup(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().widthIn(max = 820.dp).clip(RoundedCornerShape(16.dp)).background(Panel).padding(5.dp), content = content)
+    Column(Modifier.fillMaxWidth().widthIn(max = 820.dp).clip(RoundedCornerShape(16.dp)).background(Panel)
+        .border(1.dp, White.copy(alpha = 0.06f), RoundedCornerShape(16.dp)).padding(5.dp), content = content)
 }
 
 @Composable
@@ -1443,7 +1458,8 @@ private fun SubscriptionCard(state: StbPlaySettingsState) {
 @Composable
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Panel).padding(18.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Panel)
+            .border(1.dp, White.copy(alpha = 0.06f), RoundedCornerShape(15.dp)).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(11.dp)
     ) {
         Text(title, color = GoldLight, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -1534,7 +1550,9 @@ private fun StbPlaySearchScreen(
     LaunchedEffect(catalog) {
         if (scope == StbPlayTab.CONTENT) { indexed = emptyList(); return@LaunchedEffect }
         indexed = withContext(Dispatchers.Default) {
-            catalog.distinctBy { "${it.streamType}:${it.id}" }.mapIndexed { index, media ->
+            val uniqueCatalog = catalog.distinctBy { "${it.streamType}:${it.id}" }
+            uniqueCatalog.mapIndexed { index, media ->
+                if ((index and 255) == 0) currentCoroutineContext().ensureActive()
                 IndexedMedia(index, media, normalizeSearchText(media.name),
                     normalizeSearchText(media.originalTitle.orEmpty()),
                     normalizeSearchText(listOfNotNull(media.description, media.searchText, media.language,
@@ -1574,9 +1592,7 @@ private fun StbPlaySearchScreen(
         }
         val tokens = normalized.split(' ').filter(String::isNotBlank)
         results = withContext(Dispatchers.Default) {
-            indexed.mapNotNull { item -> item.matchRank(normalized, tokens)?.let { rank -> Triple(rank, item.index, item.media) } }
-                .sortedWith(compareBy<Triple<Int, Int, PortalStream>> { it.first }.thenBy { it.second })
-                .take(200).map { it.third }
+            topSearchMatches(indexed, normalized, tokens, limit = 200)
         }
         searching = false
     }
@@ -1658,7 +1674,8 @@ private fun StbPlaySearchScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    gridItems(results, key = { "${it.streamType}:${it.id}" }) { stream ->
+                    gridItems(results, key = { "${it.streamType}:${it.id}" },
+                        contentType = { if (it.streamType == "live") "channel" else "title" }) { stream ->
                         val media = toUi(stream)
                         MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
                     }
@@ -1670,6 +1687,31 @@ private fun StbPlaySearchScreen(
 
 private data class IndexedMedia(val index: Int, val media: PortalStream, val titleText: String,
     val alternateTitle: String, val metadata: String)
+
+private data class RankedSearchResult(val rank: Int, val index: Int, val media: PortalStream)
+
+/** Keeps only the best 200 local matches, avoiding a full-catalogue sort on every keystroke. */
+private suspend fun topSearchMatches(
+    indexed: List<IndexedMedia>,
+    query: String,
+    tokens: List<String>,
+    limit: Int
+): List<PortalStream> {
+    val resultOrder = compareBy<RankedSearchResult> { it.rank }.thenBy { it.index }
+    val worstFirst = Comparator<RankedSearchResult> { first, second -> resultOrder.compare(second, first) }
+    val best = PriorityQueue(limit.coerceAtLeast(1), worstFirst)
+    indexed.forEachIndexed { position, item ->
+        if ((position and 255) == 0) currentCoroutineContext().ensureActive()
+        val rank = item.matchRank(query, tokens) ?: return@forEachIndexed
+        val candidate = RankedSearchResult(rank, item.index, item.media)
+        if (best.size < limit) best.add(candidate)
+        else if (resultOrder.compare(candidate, best.peek()) < 0) {
+            best.poll()
+            best.add(candidate)
+        }
+    }
+    return best.toList().sortedWith(resultOrder).map { it.media }
+}
 
 private fun IndexedMedia.matchRank(query: String, tokens: List<String>): Int? {
     when {

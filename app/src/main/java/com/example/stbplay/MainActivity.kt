@@ -734,6 +734,8 @@ private fun StbPlayRoot(
 
     val safeLive = remember(liveStreams) { liveStreams.filterNot { it.isLocked } }
     val safeVod = remember(allVod) { allVod.filterNot { it.isLocked } }
+    val latestMovies = remember(movieStreams) { movieStreams.asSequence().filterNot { it.isLocked }.take(18).toList() }
+    val latestSeries = remember(seriesStreams) { seriesStreams.asSequence().filterNot { it.isLocked }.take(18).toList() }
     val favoriteStreams = remember(liveStreams, allVod, favoriteIds) {
         (liveStreams + allVod).filter { it.id in favoriteIds && !it.isLocked }.distinctBy { "${it.streamType}:${it.id}" }
     }
@@ -744,26 +746,34 @@ private fun StbPlayRoot(
         val signalGenres = (continueStreams + favoriteStreams).mapNotNull { it.genre?.lowercase() }.toSet()
         val signalLanguages = (continueStreams + favoriteStreams).mapNotNull { it.language?.lowercase() }.toSet()
         val watchedIds = continueStreams.mapTo(HashSet()) { it.id }
-        safeVod
+        // Provider catalogues can contain 100k+ titles. Score a bounded, recent
+        // candidate window instead of sorting the full catalogue on the UI thread.
+        safeVod.asSequence()
+            .take(1_200)
             .filter { it.id !in watchedIds }
             .sortedByDescending { stream ->
                 (if (stream.genre?.lowercase() in signalGenres) 2 else 0) +
                     (if (stream.language?.lowercase() in signalLanguages) 1 else 0)
             }
             .take(18)
+            .toList()
     }
+
+    val homeHeroes = remember(safeVod, safeLive, progressById, favoriteIds, catalogGeneration) {
+        (safeVod.asSequence() + safeLive.asSequence()).take(7).map(::toUi).toList()
+    }
+    val favouriteLive = remember(favoriteStreams) { favoriteStreams.filter { it.streamType == "live" } }
 
     val homeState = StbPlayHomeState(
         loading = screen == AppScreen.LOADING,
-        heroes = (safeVod + safeLive).take(7).map(::toUi),
+        heroes = homeHeroes,
         rows = buildList {
             if (continueStreams.isNotEmpty()) add(UiMediaRow("continue", "Continue Watching", "Saved on this device", continueStreams.take(16).map(::toUi)))
             if (recommendationStreams.isNotEmpty()) add(UiMediaRow("recommended", "Recommended for you", "Based on what you watch", recommendationStreams.map(::toUi)))
-            val favoritesLive = favoriteStreams.filter { it.streamType == "live" }
-            if (favoritesLive.isNotEmpty()) add(UiMediaRow("favorites-live", "Favourite channels", items = favoritesLive.take(16).map(::toUi)))
+            if (favouriteLive.isNotEmpty()) add(UiMediaRow("favorites-live", "Favourite channels", items = favouriteLive.take(16).map(::toUi)))
             if (safeLive.isNotEmpty()) add(UiMediaRow("live", "Live TV", items = safeLive.take(16).map(::toUi)))
-            if (movieStreams.filterNot { it.isLocked }.isNotEmpty()) add(UiMediaRow("latest-movies", "Latest releases", "Movies", movieStreams.filterNot { it.isLocked }.take(18).map(::toUi)))
-            if (seriesStreams.filterNot { it.isLocked }.isNotEmpty()) add(UiMediaRow("latest-series", "Latest releases", "Series", seriesStreams.filterNot { it.isLocked }.take(18).map(::toUi)))
+            if (latestMovies.isNotEmpty()) add(UiMediaRow("latest-movies", "Latest releases", "Movies", latestMovies.map(::toUi)))
+            if (latestSeries.isNotEmpty()) add(UiMediaRow("latest-series", "Latest releases", "Series", latestSeries.map(::toUi)))
         },
         expiryText = subscription.toExpiryText()
     )
