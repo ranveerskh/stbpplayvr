@@ -163,6 +163,7 @@ fun PlaybackRoute(
             onEpisodeSelected = onEpisodeSelected,
             onPlaybackEnded = onPlaybackEnded,
             onChannelStep = onChannelStep,
+            showChannelStepButtons = request.kind == StalkerContentKind.LIVE,
             onBack = onBack
         )
     }
@@ -188,6 +189,7 @@ private fun NativePlayerScreen(
     onEpisodeSelected: (Int) -> Unit,
     onPlaybackEnded: () -> Unit,
     onChannelStep: (Int) -> Unit,
+    showChannelStepButtons: Boolean,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -444,7 +446,7 @@ private fun NativePlayerScreen(
                 onClick = { episodePickerVisible = true; revealPlayerControls() },
                 modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)
             ) { Text("Episodes") }
-            if (request.kind == StalkerContentKind.LIVE && (compactLayout || isMetaQuest)) {
+            if (showChannelStepButtons && (compactLayout || isMetaQuest)) {
                 Column(
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = if (compactLayout) 10.dp else 22.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),

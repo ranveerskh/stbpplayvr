@@ -85,7 +85,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -1222,8 +1221,8 @@ private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: M
             val native = event.nativeKeyEvent
             if (native.keyCode != android.view.KeyEvent.KEYCODE_DPAD_CENTER &&
                 native.keyCode != android.view.KeyEvent.KEYCODE_ENTER) return@onPreviewKeyEvent false
-            when (event.type) {
-                KeyEventType.KeyDown -> {
+            when (native.action) {
+                android.view.KeyEvent.ACTION_DOWN -> {
                     if (native.repeatCount == 0) {
                         pressedAt = native.eventTime
                         longPressConsumed = false
@@ -1234,7 +1233,7 @@ private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: M
                         true
                     } else false
                 }
-                KeyEventType.KeyUp -> {
+                android.view.KeyEvent.ACTION_UP -> {
                     val consume = longPressConsumed
                     pressedAt = 0L
                     consume
