@@ -582,7 +582,6 @@ private fun StbPlayRoot(
             .firstOrNull { it.id == media.id && it.streamType == media.streamType }
 
     fun setFavorite(media: UiMedia) {
-        if (media.isLocked) return
         scope.launch { settingsManager.setFavorite(media.id, media.id !in favoriteIds) }
     }
 
@@ -594,7 +593,10 @@ private fun StbPlayRoot(
         resumeFraction: Float = 0f,
         contentId: String = stream.id
     ) {
-        if (stream.streamType == "live") focusedLiveChannelId = stream.id
+        if (stream.streamType == "live") {
+            focusedLiveChannelId = stream.id
+            scope.launch { settingsManager.markRecentlyPlayed(stream.id) }
+        }
         playRequest = StalkerPlayRequest(
             command = command,
             kind = when {
@@ -823,8 +825,10 @@ private fun StbPlayRoot(
             )
         }.distinctBy { "${it.streamType}:${it.id}" }
     }
-    val continueStreams = remember(safeVod, progressById) {
-        safeVod.filter { (progressById[it.id] ?: 0f) > 0f }.sortedByDescending { progressById[it.id] ?: 0f }
+    val continueStreams = remember(safeVod, safeLive, progressById) {
+        (safeVod + safeLive).filter { (progressById[it.id] ?: 0f) > 0f }
+            .distinctBy { "${it.streamType}:${it.id}" }
+            .sortedByDescending { progressById[it.id] ?: 0f }
     }
     val recommendationStreams = remember(safeVod, continueStreams, favoriteStreams) {
         val signalGenres = (continueStreams + favoriteStreams).mapNotNull { it.genre?.lowercase() }.toSet()

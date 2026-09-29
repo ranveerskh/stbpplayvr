@@ -187,6 +187,19 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    /** Records a live channel in Continue Watching without pretending it has seek progress. */
+    suspend fun markRecentlyPlayed(contentId: String) {
+        if (contentId.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val profileId = activeProfileId(prefs)
+            if (profileId.isBlank()) return@edit
+            val key = stringPreferencesKey(keyProgressPrefix + profileId)
+            val progress = parseProgress(prefs[key].orEmpty()).toMutableMap()
+            progress[contentId] = (progress[contentId]?.first ?: 0.001f) to System.currentTimeMillis()
+            prefs[key] = encodeProgress(progress)
+        }
+    }
+
     suspend fun removeFromHistory(contentId: String) {
         context.dataStore.edit { prefs ->
             val profileId = activeProfileId(prefs)

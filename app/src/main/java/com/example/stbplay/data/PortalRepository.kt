@@ -279,14 +279,19 @@ class PortalRepository {
             "category" to "*",
             "sortby" to "added"
         )
-        val vodResult = fetchWithPageFallback(settings, session, "vod", "get_ordered_list", params) {
+        val vodResult = fetchWithPageFallback(settings, session, "series", "get_ordered_list", params + mapOf("series_id" to seriesId)) {
             StalkerParser.parseSeasons(it)
         }
         if (vodResult.isNotEmpty()) return@withContext vodResult
 
+        val legacyVodResult = fetchWithPageFallback(settings, session, "vod", "get_ordered_list", params) {
+            StalkerParser.parseSeasons(it)
+        }
+        if (legacyVodResult.isNotEmpty()) return@withContext legacyVodResult
+
         val candidates = listOf(
-            "get_seasons" to mapOf("series_id" to seriesId, "movie_id" to seriesId),
-            "get_ordered_list" to mapOf("series_id" to seriesId, "movie_id" to seriesId, "category" to "*")
+            "get_seasons" to mapOf("series_id" to seriesId, "movie_id" to seriesId, "category" to "*"),
+            "get_ordered_list" to mapOf("series_id" to seriesId, "movie_id" to seriesId, "season_id" to "0", "episode_id" to "0", "category" to "*")
         )
         candidates.firstNotNullOfOrNull { (action, extra) ->
             runCatching {
@@ -308,14 +313,20 @@ class PortalRepository {
             "category" to "*",
             "sortby" to "added"
         )
+        val seriesParams = params + mapOf("series_id" to seriesId)
+        val seriesResult = fetchWithPageFallback(settings, session, "series", "get_ordered_list", seriesParams) {
+            StalkerParser.parseEpisodes(it, parentCommand)
+        }
+        if (seriesResult.isNotEmpty()) return@withContext seriesResult
+
         val vodResult = fetchWithPageFallback(settings, session, "vod", "get_ordered_list", params) {
             StalkerParser.parseEpisodes(it, parentCommand)
         }
         if (vodResult.isNotEmpty()) return@withContext vodResult
 
         val candidates = listOf(
-            "get_episodes" to mapOf("series_id" to seriesId, "season_id" to seasonId),
-            "get_ordered_list" to mapOf("series_id" to seriesId, "movie_id" to seriesId, "season_id" to seasonId, "category" to "*")
+            "get_episodes" to mapOf("series_id" to seriesId, "movie_id" to seriesId, "season_id" to seasonId, "category" to "*"),
+            "get_ordered_list" to mapOf("series_id" to seriesId, "movie_id" to seriesId, "season_id" to seasonId, "episode_id" to "0", "category" to "*")
         )
         candidates.firstNotNullOfOrNull { (action, extra) ->
             runCatching {
