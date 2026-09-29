@@ -666,8 +666,13 @@ private fun StbPlayRoot(
             ParentalMode.HIDE_ADULT -> categories.filterNot { it.isAdultCategory() }
             ParentalMode.ADULT_ONLY -> categories.filter { it.isAdultCategory() || it.id in flaggedIds }
         }.map { category ->
-            UiCategory(category.id, category.name, category.isLocked && parentalMode == ParentalMode.ALL_CONTENT,
-                category.isAdultCategory() || category.id in flaggedIds)
+            val properAdultCategory = category.isAdultCategory()
+            UiCategory(
+                category.id,
+                category.name,
+                parentalMode == ParentalMode.ALL_CONTENT && properAdultCategory,
+                properAdultCategory || (parentalMode == ParentalMode.ADULT_ONLY && category.id in flaggedIds)
+            )
         }
         if (parentalMode == ParentalMode.ADULT_ONLY) listOf(UiCategory("adult-only", "Adult only", isAdult = true)) + visible
         else listOf(UiCategory("all", "All")) + visible
@@ -679,8 +684,13 @@ private fun StbPlayRoot(
             ParentalMode.HIDE_ADULT -> liveCategories.filterNot { it.isAdultCategory() }
             ParentalMode.ADULT_ONLY -> liveCategories.filter { it.isAdultCategory() || it.id in flaggedIds }
         }.map { category ->
-            UiCategory(category.id, category.name, category.isLocked && parentalMode == ParentalMode.ALL_CONTENT,
-                category.isAdultCategory() || category.id in flaggedIds)
+            val properAdultCategory = category.isAdultCategory()
+            UiCategory(
+                category.id,
+                category.name,
+                parentalMode == ParentalMode.ALL_CONTENT && properAdultCategory,
+                properAdultCategory || (parentalMode == ParentalMode.ADULT_ONLY && category.id in flaggedIds)
+            )
         }
         if (parentalMode == ParentalMode.ADULT_ONLY) listOf(UiCategory("adult-only", "Adult only", isAdult = true)) + visible
         else listOf(UiCategory("all", "All")) + visible
@@ -706,25 +716,29 @@ private fun StbPlayRoot(
             stream.categoryId == category?.id &&
             ((selectedTab == StbPlayTab.LIVE && stream.streamType == "live") ||
                 (selectedTab == StbPlayTab.CONTENT && stream.streamType != "live"))
-        if (stream.isLocked && parentalMode != ParentalMode.ADULT_ONLY && !categoryUnlocked) pendingLockedMedia = stream else openMedia(stream, media.progress)
+        val properAdultCategory = when (stream.streamType) {
+            "live" -> stream.categoryId in explicitAdultLiveCategoryIds
+            else -> stream.categoryId in explicitAdultVodCategoryIds
+        }
+        val needsPin = stream.isLocked || (parentalMode == ParentalMode.ALL_CONTENT && properAdultCategory)
+        if (needsPin && parentalMode != ParentalMode.ADULT_ONLY && !categoryUnlocked) pendingLockedMedia = stream else openMedia(stream, media.progress)
     }
 
     fun filterByCategory(items: List<PortalStream>, categories: List<UiCategory>, selectedIndex: Int): List<PortalStream> {
         val category = categories.getOrNull(selectedIndex) ?: categories.firstOrNull()
         val isLive = items.firstOrNull()?.streamType == "live"
         val explicitCategoryIds = if (isLive) explicitAdultLiveCategoryIds else explicitAdultVodCategoryIds
-        val adultCategoryIds = if (isLive) explicitAdultLiveCategoryIds + flaggedAdultLiveCategoryIds
-            else explicitAdultVodCategoryIds + flaggedAdultVodCategoryIds
         val eligible = when (parentalMode) {
             ParentalMode.ALL_CONTENT -> items
-            ParentalMode.HIDE_ADULT -> items.filterNot { it.isAdultContent() || it.categoryId in adultCategoryIds }
+            // In Adult Free, remove adult categories and individually flagged titles.
+            // A single R-rated title must not hide every title in its normal category.
+            ParentalMode.HIDE_ADULT -> items.filterNot { it.isAdultContent() || it.categoryId in explicitCategoryIds }
             ParentalMode.ADULT_ONLY -> items.filter { stream ->
                 stream.isAdultContent() || stream.categoryId in explicitCategoryIds
             }
         }
         return when {
-            category == null || category.id == "all" -> if (parentalMode == ParentalMode.ALL_CONTENT)
-                eligible.filterNot { it.isAdultContent() || it.categoryId in adultCategoryIds } else eligible
+            category == null || category.id == "all" -> eligible
             category.id == "adult-only" -> eligible
             category.isAdult && parentalMode == ParentalMode.ADULT_ONLY -> eligible.filter {
                 it.categoryId == category.id && (it.isAdultContent() || category.id in explicitCategoryIds)
@@ -788,10 +802,10 @@ private fun StbPlayRoot(
         if (selectedTab == StbPlayTab.CONTENT) filteredVod.map(::toUi) else emptyList()
     }
 
-    fun isAllowedInMode(stream: PortalStream, adultCategoryIds: Set<String>): Boolean = when (parentalMode) {
-        ParentalMode.ALL_CONTENT -> !stream.isAdultContent() && stream.categoryId !in adultCategoryIds
-        ParentalMode.HIDE_ADULT -> !stream.isAdultContent() && stream.categoryId !in adultCategoryIds
-        ParentalMode.ADULT_ONLY -> stream.isAdultContent() || stream.categoryId in adultCategoryIds
+    fun isAllowedInMode(stream: PortalStream, explicitAdultCategoryIds: Set<String>): Boolean = when (parentalMode) {
+        ParentalMode.ALL_CONTENT -> !stream.isAdultContent() && stream.categoryId !in explicitAdultCategoryIds
+        ParentalMode.HIDE_ADULT -> !stream.isAdultContent() && stream.categoryId !in explicitAdultCategoryIds
+        ParentalMode.ADULT_ONLY -> stream.isAdultContent() || stream.categoryId in explicitAdultCategoryIds
     }
     val safeLive = remember(liveStreams, parentalMode, explicitAdultLiveCategoryIds) {
         liveStreams.filter { isAllowedInMode(it, explicitAdultLiveCategoryIds) }

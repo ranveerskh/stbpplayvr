@@ -320,6 +320,9 @@ private fun NativePlayerScreen(
     BackHandler(enabled = compactLayout && phoneActivity != null && phoneFullscreen) {
         setPhoneFullscreen(false)
     }
+    // Quest's controller Back action can be delivered as a system back event,
+    // independently of focus inside the native Media3 view.
+    BackHandler(enabled = isMetaQuest) { onBack() }
     DisposableEffect(phoneActivity, phoneFullscreen) {
         onDispose {
             if (phoneFullscreen) phoneActivity?.let { applyPhoneFullscreen(it, false, originalOrientation) }
@@ -380,7 +383,7 @@ private fun NativePlayerScreen(
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     setOnKeyListener { _, keyCode, event ->
                         when (keyCode) {
-                            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B -> {
                                 if (event.action == KeyEvent.ACTION_UP) onBack()
                                 true
                             }
@@ -448,21 +451,35 @@ private fun NativePlayerScreen(
             ) { Text("Episodes") }
             if (showChannelStepButtons && (compactLayout || isMetaQuest)) {
                 Column(
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = if (compactLayout) 10.dp else 22.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = if (isMetaQuest) 42.dp else 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    QuestButton(onClick = { onChannelStep(-1); revealPlayerControls() }, modifier = Modifier.width(56.dp).height(46.dp)) {
-                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel", tint = Color.White)
+                    QuestButton(
+                        onClick = { onChannelStep(-1); revealPlayerControls() },
+                        modifier = Modifier.width(68.dp).height(58.dp),
+                        colors = ButtonDefaults.colors(
+                            containerColor = Color(0xAA070707), contentColor = Color.White,
+                            focusedContainerColor = Color(0xCC070707), focusedContentColor = Color.White
+                        )
+                    ) {
+                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel", tint = Color.White, modifier = Modifier.size(30.dp))
                     }
-                    QuestButton(onClick = { onChannelStep(1); revealPlayerControls() }, modifier = Modifier.width(56.dp).height(46.dp)) {
-                        Icon(Icons.Filled.SkipNext, contentDescription = "Next channel", tint = Color.White)
+                    QuestButton(
+                        onClick = { onChannelStep(1); revealPlayerControls() },
+                        modifier = Modifier.width(68.dp).height(58.dp),
+                        colors = ButtonDefaults.colors(
+                            containerColor = Color(0xAA070707), contentColor = Color.White,
+                            focusedContainerColor = Color(0xCC070707), focusedContentColor = Color.White
+                        )
+                    ) {
+                        Icon(Icons.Filled.SkipNext, contentDescription = "Next channel", tint = Color.White, modifier = Modifier.size(30.dp))
                     }
                 }
             }
             Row(
-                modifier = Modifier.align(if (compactLayout) Alignment.BottomCenter else Alignment.TopEnd)
-                    .padding(if (compactLayout) 12.dp else 18.dp)
+                modifier = Modifier.align(if (compactLayout && !isMetaQuest) Alignment.BottomCenter else Alignment.TopEnd)
+                    .padding(if (isMetaQuest) 12.dp else if (compactLayout) 12.dp else 18.dp)
                     .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
                     .background(Color(0xCC070707)).padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,

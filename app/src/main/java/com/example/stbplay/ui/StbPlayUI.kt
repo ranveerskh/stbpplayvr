@@ -78,7 +78,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -121,7 +120,6 @@ import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.domain.model.PortalSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.Normalizer
@@ -993,14 +991,8 @@ private fun ContentBrowserScreen(
     val categoryListState = rememberLazyListState(
         initialFirstVisibleItemIndex = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
     )
-    LaunchedEffect(gridState, state.items.size, state.hasMore, state.loadingMore) {
-        if (state.items.isNotEmpty() && state.hasMore && !state.loadingMore) {
-            val prefetchIndex = (state.items.size - 12).coerceAtLeast(0)
-            snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-                .first { lastVisible -> lastVisible >= prefetchIndex }
-            onLoadMore()
-        }
-    }
+    // Paging is user initiated. Auto-prefetch here re-fired after each page while
+    // the grid remained near its end, making Adult Only's Load More control flash.
     Row(modifier = Modifier.fillMaxSize().padding(start = if (denseTv) 14.dp else 24.dp, end = if (denseTv) 16.dp else 30.dp, bottom = if (denseTv) 14.dp else 28.dp)) {
         CategorySidebar(state.categories, state.selectedCategory, categoryListState, onCategorySelected)
         Spacer(modifier = Modifier.width(if (denseTv) 12.dp else 24.dp))
