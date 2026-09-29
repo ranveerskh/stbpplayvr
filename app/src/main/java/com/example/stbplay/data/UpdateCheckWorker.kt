@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
 class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
         UpdateManager(applicationContext).run {
-            check(BuildConfig.VERSION_NAME)?.let(::notifyIfNew)
+            check(BuildConfig.VERSION_NAME).update?.let(::notifyIfNew)
         }
         Result.success()
     } catch (_: Exception) {

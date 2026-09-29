@@ -35,6 +35,11 @@ data class UpdateInfo(
     fun isOverdue(now: Long = System.currentTimeMillis()): Boolean = now >= deadlineAtMillis
 }
 
+data class UpdateCheckResult(
+    val update: UpdateInfo? = null,
+    val hasPublishedRelease: Boolean = true
+)
+
 /** Only published GitHub Android releases with an APK are offered as updates. */
 class UpdateManager(private val context: Context) {
     private val client = OkHttpClient.Builder()
@@ -43,17 +48,20 @@ class UpdateManager(private val context: Context) {
         .build()
     private val prefs = context.getSharedPreferences("android_updates", Context.MODE_PRIVATE)
 
-    suspend fun check(currentVersion: String): UpdateInfo? = withContext(Dispatchers.IO) {
+    suspend fun check(currentVersion: String): UpdateCheckResult = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(LATEST_RELEASE_URL).header("Cache-Control", "no-cache").build()
         val json = client.newCall(request).execute().use { response ->
-            if (response.code == 404) return@withContext null // No Android release published yet.
+            if (response.code == 404) {
+                prefs.edit().remove("available").apply()
+                return@withContext UpdateCheckResult(hasPublishedRelease = false)
+            }
             if (!response.isSuccessful) error("Update service returned ${response.code}.")
             JSONObject(response.body?.string().orEmpty())
         }
         val version = json.optString("tag_name").trim().removePrefix("v")
         if (version.isBlank() || compareVersions(version, currentVersion) <= 0) {
             prefs.edit().remove("available").apply()
-            return@withContext null
+            return@withContext UpdateCheckResult()
         }
         val assets = json.optJSONArray("assets") ?: error("Release has no Android APK.")
         val url = (0 until assets.length()).asSequence()
@@ -68,7 +76,7 @@ class UpdateManager(private val context: Context) {
         prefs.edit().putString("available", JSONObject().put("version", info.version)
             .put("url", info.downloadUrl).put("notes", info.notes)
             .put("publishedAt", info.publishedAtMillis).toString()).apply()
-        info
+        UpdateCheckResult(update = info)
     }
 
     fun cachedAvailable(currentVersion: String): UpdateInfo? {

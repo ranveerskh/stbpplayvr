@@ -375,10 +375,14 @@ private fun StbPlayRoot(
         if (manual) updateText = "Checking for updates…"
         scope.launch {
             runCatching { updateManager.check(BuildConfig.VERSION_NAME) }
-                .onSuccess { result ->
+                .onSuccess { checkResult ->
+                    val result = checkResult.update
                     updateInfo = result
-                    updateText = result?.let { "STB Play ${it.version} is available. Update by ${it.deadlineText()}." }
-                        ?: "STB Play is up to date. Automatic checks remain on."
+                    updateText = when {
+                        result != null -> "STB Play ${result.version} is available. Update by ${result.deadlineText()}."
+                        !checkResult.hasPublishedRelease -> "No update has been published yet. Automatic checks remain on."
+                        else -> "STB Play is up to date. Automatic checks remain on."
+                    }
                     if (result != null) {
                         updateManager.notifyIfNew(result)
                         if (updateManager.shouldPrompt(result)) promptUpdate = result
