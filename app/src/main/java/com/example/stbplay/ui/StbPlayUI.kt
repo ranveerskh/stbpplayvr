@@ -1226,8 +1226,8 @@ private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: M
                     if (native.repeatCount == 0) {
                         pressedAt = native.eventTime
                         longPressConsumed = false
-                    }
-                    else if (pressedAt > 0L && native.eventTime - pressedAt >= 500L) {
+                        false
+                    } else if (pressedAt > 0L && native.eventTime - pressedAt >= 500L) {
                         showMenu = true
                         longPressConsumed = true
                         true
