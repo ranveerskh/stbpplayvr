@@ -50,6 +50,16 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.window.Dialog
@@ -75,6 +85,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -1243,117 +1254,175 @@ private fun StbPlaySettingsScreen(
     onDownloadUpdate: () -> Unit,
     onShare: () -> Unit
 ) {
+    var page by remember { mutableStateOf(SettingsPage.HOME) }
+    val uriHandler = LocalUriHandler.current
+    BackHandler(enabled = page != SettingsPage.HOME) { page = SettingsPage.HOME }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = if (isCompactAndroidLayout()) 14.dp else 30.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(horizontal = if (isCompactAndroidLayout()) 16.dp else 24.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Settings", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                Text("Your STB Play preferences are stored on this device.", color = Muted, fontSize = 13.sp)
+        if (page != SettingsPage.HOME) item {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                QuestButton(onClick = { page = SettingsPage.HOME }, modifier = Modifier.questInitialFocus()) { Text("←", fontSize = 20.sp) }
+                Text(page.title, color = White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             }
         }
-        item {
-            SettingsSection("Parental controls") {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Text("Adult and A-rated content stays locked until the PIN is entered. It re-locks when you leave.", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    PrimaryAction("Change PIN", onChangePin)
+        when (page) {
+            SettingsPage.HOME -> {
+                item {
+                    SettingsMenuGroup {
+                        SettingsMenuRow(Icons.Filled.Info, "Subscription", state.subscriptionPlan, initialFocus = true) { page = SettingsPage.SUBSCRIPTION }
+                    }
+                }
+                item {
+                    SettingsMenuGroup {
+                        SettingsMenuRow(Icons.Filled.Storage, "Content sources", "Manage portals") { page = SettingsPage.SOURCES }
+                        SettingsMenuDivider()
+                        SettingsMenuRow(Icons.Filled.Tv, "Content & storage", "Catalogue and history") { page = SettingsPage.CONTENT }
+                    }
+                }
+                item {
+                    SettingsMenuGroup {
+                        SettingsMenuRow(Icons.Filled.PlayArrow, "Player options", state.playerPreference.displayName()) { page = SettingsPage.PLAYBACK }
+                        SettingsMenuDivider()
+                        SettingsMenuRow(Icons.Filled.Language, "Appearance & language", state.themePreference.displayName()) { page = SettingsPage.APPEARANCE }
+                        SettingsMenuDivider()
+                        SettingsMenuRow(Icons.Filled.Lock, "Parental controls", "Change PIN") { page = SettingsPage.PARENTAL }
+                    }
+                }
+                item {
+                    SettingsMenuGroup {
+                        SettingsMenuRow(Icons.Filled.SystemUpdate, "Updates", state.updateAvailableVersion?.let { "Version $it available" }) { page = SettingsPage.UPDATES }
+                        SettingsMenuDivider()
+                        SettingsMenuRow(Icons.Filled.Lock, "Privacy & permissions", "How your data is used") { page = SettingsPage.PRIVACY }
+                    }
+                }
+                item {
+                    SettingsMenuGroup {
+                        SettingsMenuRow(Icons.Filled.Info, "About STB Play") { page = SettingsPage.ABOUT }
+                        SettingsMenuDivider()
+                        SettingsMenuRow(Icons.Filled.Share, "Share app", showChevron = false, onClick = onShare)
+                    }
                 }
             }
-        }
-        item { SubscriptionCard(state) }
-        item {
-            SettingsSection("Content sources") {
-                if (state.profiles.isEmpty()) {
-                    Text("No portals saved yet. Add one to get started.", color = Muted, fontSize = 13.sp)
+            SettingsPage.SUBSCRIPTION -> item { SubscriptionCard(state) }
+            SettingsPage.SOURCES -> item {
+                SettingsSection("Content sources") {
+                    if (state.profiles.isEmpty()) Text("No portals saved yet.", color = Muted, fontSize = 13.sp)
+                    state.profiles.forEach { profile ->
+                        PortalProfileRow(profile, profile.id == state.activeProfileId,
+                            { onUsePortal(profile) }, { onEditPortal(profile) }, { onDeletePortal(profile) })
+                    }
+                    WideAction("Add portal", onAddPortal)
                 }
-                state.profiles.forEach { profile ->
-                    PortalProfileRow(
-                        profile = profile,
-                        active = profile.id == state.activeProfileId,
-                        onUse = { onUsePortal(profile) },
-                        onEdit = { onEditPortal(profile) },
-                        onDelete = { onDeletePortal(profile) }
-                    )
-                }
-                WideAction("Add portal", onAddPortal)
             }
-        }
-        item {
-            SettingsSection("Playback") {
-                PreferenceRow("Default player", state.playerPreference.displayName()) {
-                    onPlayerPreferenceChanged(state.playerPreference.next())
+            SettingsPage.PLAYBACK -> item {
+                SettingsSection("Playback") {
+                    PreferenceRow("Default player", state.playerPreference.displayName()) { onPlayerPreferenceChanged(state.playerPreference.next()) }
+                    PreferenceRow("Audio & subtitles", state.subtitlePreference.displayName()) { onSubtitlePreferenceChanged(state.subtitlePreference.next()) }
+                    Text("Auto uses the internal player first and offers VLC when playback fails, if installed.", color = Muted, fontSize = 12.sp)
                 }
-                PreferenceRow("Audio & subtitles", state.subtitlePreference.displayName()) {
-                    onSubtitlePreferenceChanged(state.subtitlePreference.next())
-                }
-                Text("Internal Media3 is used first. Auto sends a failed stream to VLC only when VLC is installed.", color = Muted, fontSize = 11.sp)
             }
-        }
-        item {
-            SettingsSection("Appearance & language") {
-                Text("App theme & launcher icon", color = White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ThemePreference.entries.forEach { theme ->
-                        val selected = state.themePreference == theme
-                        QuestSurface(
-                            onClick = { onThemePreferenceChanged(theme) },
-                            modifier = Modifier.weight(1f).heightIn(min = 94.dp)
-                                .border(if (selected) 2.dp else 0.dp, Gold, RoundedCornerShape(10.dp)),
-                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
-                            colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) Gold.copy(alpha = 0.18f) else Navy, focusedContainerColor = Gold.copy(alpha = 0.28f)),
-                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
-                        ) {
-                            Column(Modifier.fillMaxWidth().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Image(painterResource(theme.iconResource()), contentDescription = "${theme.displayName()} icon", modifier = Modifier.size(49.dp))
-                                Text(theme.shortName(), color = White, fontSize = 11.sp, maxLines = 1)
+            SettingsPage.APPEARANCE -> item {
+                SettingsSection("Theme & launcher icon") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ThemePreference.entries.forEach { theme ->
+                            val selected = state.themePreference == theme
+                            QuestSurface(
+                                onClick = { onThemePreferenceChanged(theme) },
+                                modifier = Modifier.weight(1f).heightIn(min = 94.dp)
+                                    .border(if (selected) 2.dp else 0.dp, Gold, RoundedCornerShape(10.dp)),
+                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                                colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) Gold.copy(alpha = 0.18f) else Navy, focusedContainerColor = Gold.copy(alpha = 0.28f)),
+                                border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
+                            ) {
+                                Column(Modifier.fillMaxWidth().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Image(painterResource(theme.iconResource()), contentDescription = "${theme.displayName()} icon", modifier = Modifier.size(49.dp))
+                                    Text(theme.shortName(), color = White, fontSize = 11.sp, maxLines = 1)
+                                }
                             }
                         }
                     }
-                }
-                PreferenceRow("Catalogue language", state.catalogueLanguage) {
-                    onCatalogueLanguageChanged(nextLanguage(state.catalogueLanguage))
+                    PreferenceRow("Catalogue language", state.catalogueLanguage) { onCatalogueLanguageChanged(nextLanguage(state.catalogueLanguage)) }
                 }
             }
-        }
-        item {
-            SettingsSection("Content") {
-                PreferenceRow("Catalogue", "${state.liveCount} live · ${state.movieCount} movies · ${state.seriesCount} series") {}
-                Text("Last refresh: ${state.lastRefreshText}", color = Muted, fontSize = 11.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryAction("Refresh content", onRefresh)
-                    WideAction("Clear local cache", onClearCache)
+            SettingsPage.PARENTAL -> item {
+                SettingsSection("Parental controls") {
+                    Text("Adult categories re-lock when you leave them.", color = Muted, fontSize = 13.sp)
+                    PrimaryAction("Change PIN", onChangePin)
                 }
             }
-        }
-        item {
-            SettingsSection("History") {
-                WideAction("Clear watch history", onClearHistory, Modifier.fillMaxWidth())
-            }
-        }
-        item {
-            SettingsSection("Anonymous analytics") {
-                PreferenceRow("Anonymous diagnostics", if (state.analyticsEnabled) "Enabled" else "Disabled") {
-                    onAnalyticsChanged(!state.analyticsEnabled)
+            SettingsPage.CONTENT -> item {
+                SettingsSection("Content & storage") {
+                    Text("${state.liveCount} live · ${state.movieCount} movies · ${state.seriesCount} series", color = White, fontSize = 14.sp)
+                    Text("Last refresh: ${state.lastRefreshText}", color = Muted, fontSize = 12.sp)
+                    WideAction("Refresh content", onRefresh, Modifier.fillMaxWidth())
+                    WideAction("Clear local cache", onClearCache, Modifier.fillMaxWidth())
+                    WideAction("Clear watch history", onClearHistory, Modifier.fillMaxWidth())
                 }
-                Text("No portal URL, MAC address, stream URL, title, channel name, or personal files are sent.", color = Muted, fontSize = 11.sp)
             }
-        }
-        item {
-            SettingsSection("Updates") {
-                Text(state.updateText, color = if (state.updateAvailableVersion == null) Muted else Good, fontSize = 12.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    WideAction("Check for updates", onCheckUpdates)
+            SettingsPage.UPDATES -> item {
+                SettingsSection("App updates") {
+                    Text(state.updateText, color = if (state.updateAvailableVersion == null) Muted else Good, fontSize = 13.sp)
+                    WideAction("Check for updates", onCheckUpdates, Modifier.fillMaxWidth())
                     if (state.updateAvailableVersion != null) PrimaryAction("Download & install", onDownloadUpdate)
                 }
             }
-        }
-        item {
-            SettingsSection("About, FAQ & policies") {
-                Text("STB Play does not provide any IPTV service, subscriptions, channels, movies, or streams. Use only sources you are authorized to access.", color = Muted, fontSize = 12.sp)
-                WideAction("Share STB Play", onShare)
+            SettingsPage.PRIVACY -> item {
+                SettingsSection("Privacy policy") {
+                    Text("STB Play stores your portal address, MAC, parental PIN, favourites, playback progress and preferences on this device. The app connects directly to the portal and media or artwork hosts you choose. Those services can receive your device network address and requests. A portal may use HTTP, which is not encrypted.", color = White, fontSize = 13.sp)
+                    Text("The app checks GitHub for releases. Casting uses the Cast service if you choose it. STB Play has no account server, advertising SDK or analytics SDK. Data stays on the device until you remove it or uninstall the app; the app does not back it up to Android cloud backup.", color = White, fontSize = 13.sp)
+                    Text("Permissions: Internet and network state connect to your portal; notifications announce available updates if allowed; install packages opens the Android installer when you request an update. No camera, microphone, contacts or location permission is requested.", color = White, fontSize = 13.sp)
+                    Text("Use Content & storage to erase cached catalogues and watch history. Remove saved portals in Content sources. Uninstalling clears remaining local app data.", color = Muted, fontSize = 12.sp)
+                    WideAction("Full privacy policy online", { uriHandler.openUri("https://github.com/ranveerskh/stbpplayvr/blob/main/PRIVACY_POLICY.md") }, Modifier.fillMaxWidth())
+                }
             }
+            SettingsPage.ABOUT -> item {
+                SettingsSection("About") {
+                    Text("STB Play does not provide subscriptions, channels, movies or streams. Use only content sources you are authorized to access.", color = White, fontSize = 13.sp)
+                    Text("Privacy questions and support: github.com/ranveerskh/stbpplayvr/issues", color = Muted, fontSize = 12.sp)
+                    WideAction("Share STB Play", onShare, Modifier.fillMaxWidth())
+                }
+            }
+        }
+    }
+}
+
+private enum class SettingsPage(val title: String) {
+    HOME("Settings"), SUBSCRIPTION("Subscription"), SOURCES("Content sources"),
+    PLAYBACK("Player options"), APPEARANCE("Appearance & language"), PARENTAL("Parental controls"),
+    CONTENT("Content & storage"), UPDATES("Updates"), PRIVACY("Privacy & permissions"), ABOUT("About")
+}
+
+@Composable
+private fun SettingsMenuGroup(content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().widthIn(max = 820.dp).clip(RoundedCornerShape(16.dp)).background(Panel).padding(5.dp), content = content)
+}
+
+@Composable
+private fun SettingsMenuDivider() {
+    Spacer(Modifier.fillMaxWidth().padding(horizontal = 14.dp).height(1.dp).background(Muted.copy(alpha = 0.18f)))
+}
+
+@Composable
+private fun SettingsMenuRow(icon: ImageVector, title: String, subtitle: String? = null, showChevron: Boolean = true,
+                            initialFocus: Boolean = false, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    QuestSurface(onClick = onClick,
+        modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
+            .fillMaxWidth().height(64.dp).onFocusChanged { focused = it.isFocused },
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
+        colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Gold),
+        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Icon(icon, contentDescription = null, tint = if (focused) OnAccent else Muted, modifier = Modifier.size(24.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = if (focused) OnAccent else White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                subtitle?.let { Text(it, color = if (focused) OnAccent else Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }
+            if (showChevron) Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = if (focused) OnAccent else Muted)
         }
     }
 }

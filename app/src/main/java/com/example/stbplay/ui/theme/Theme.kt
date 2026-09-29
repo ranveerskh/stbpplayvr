@@ -26,9 +26,9 @@ data class StbPalette(
 )
 
 val BluePalette = StbPalette(
-    background = Color(0xFF071629), rail = Color(0xFF0C2038), panel = Color(0xFF102945),
-    panelSoft = Color(0xFF173657), accent = Color(0xFFD6AC58), accentLight = Color(0xFFF6D896),
-    text = Color(0xFFF6F8FC), muted = Color(0xFFAABBD0), onAccent = Color(0xFF071629)
+    background = Color(0xFF0A1019), rail = Color(0xFF101A27), panel = Color(0xFF1B2635),
+    panelSoft = Color(0xFF263447), accent = Color(0xFFD6AC58), accentLight = Color(0xFFF6D896),
+    text = Color(0xFFF6F8FC), muted = Color(0xFFB1BECE), onAccent = Color(0xFF0A1019)
 )
 val LightPalette = StbPalette(
     background = Color(0xFFF5F2EB), rail = Color(0xFFEDE8DF), panel = Color(0xFFFFFFFF),

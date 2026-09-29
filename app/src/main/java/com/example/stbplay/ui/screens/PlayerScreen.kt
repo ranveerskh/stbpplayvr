@@ -137,6 +137,7 @@ fun PlaybackRoute(
             sessionCookie = sessionCookie,
             playerPreference = playerPreference,
             subtitlePreference = subtitlePreference,
+            allowSeeking = request.kind != StalkerContentKind.LIVE,
             title = request.title,
             resumeFraction = request.resumeFraction,
             onProgress = onProgress,
@@ -160,6 +161,7 @@ private fun NativePlayerScreen(
     sessionCookie: String,
     playerPreference: PlayerPreference,
     subtitlePreference: SubtitlePreference,
+    allowSeeking: Boolean,
     title: String,
     resumeFraction: Float,
     onProgress: (positionMs: Long, durationMs: Long) -> Unit,
@@ -327,9 +329,19 @@ private fun NativePlayerScreen(
             modifier = Modifier.fillMaxSize(),
             factory = { viewContext ->
                 (if (preferTextureSurface != useAlternateSurface) {
-                    LayoutInflater.from(viewContext).inflate(com.example.stbplay.R.layout.player_view_phone, null) as PlayerView
-                } else PlayerView(viewContext)).apply {
+                    LayoutInflater.from(viewContext).inflate(com.example.stbplay.R.layout.player_view_phone, null) as SeekablePlayerView
+                } else SeekablePlayerView(viewContext)).apply {
                     this.player = activePlayer
+                    onSeekDirection = if (allowSeeking) ({ direction ->
+                        if (activePlayer.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)) {
+                            val stepMs = if (activePlayer.duration in 1..59_999) 5_000L else 10_000L
+                            val target = (activePlayer.currentPosition + direction * stepMs)
+                                .coerceIn(0L, activePlayer.duration.takeIf { it > 0L } ?: Long.MAX_VALUE)
+                            activePlayer.seekTo(target)
+                            revealPlayerControls()
+                            showController()
+                        }
+                    }) else null
                     useController = true
                     controllerShowTimeoutMs = 3_000
                     keepScreenOn = true
