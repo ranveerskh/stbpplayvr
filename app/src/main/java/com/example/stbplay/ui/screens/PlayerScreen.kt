@@ -189,8 +189,9 @@ private fun NativePlayerScreen(
 
     val compactLayout = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 900 &&
         !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
-    val preferTextureSurface = compactLayout ||
-        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    // Keep TextureView on phone layouts; Android TV starts with the standard SurfaceView path.
+    // The previous TV-first TextureView could produce green corruption on hardware decoders.
+    val preferTextureSurface = compactLayout
     val player = remember(playbackUrl, portalUiUrl, token, sessionCookie, subtitlePreference, resumeFraction) {
         val headers = mutableMapOf(
             "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 MAG254",

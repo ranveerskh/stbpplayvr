@@ -55,7 +55,11 @@ fun LoadingScreen(
                 Text("${(progress.coerceIn(0f, 1f) * 100).toInt()}%", color = LoadMuted, fontSize = 12.sp)
             } else {
                 Text("Connection error", color = Color(0xFFFFA4A4), fontSize = 22.sp)
-                Text(error, color = LoadMuted, fontSize = 14.sp)
+                Text(
+                    "We couldn't connect to this portal. Check your connection and portal details. If it still fails, contact your authorized service provider.",
+                    color = LoadMuted,
+                    fontSize = 14.sp
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     QuestButton(onClick = onRetry, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = LoadGold, contentColor = LoadNavy)) { Text("Retry") }
                     QuestButton(onClick = onEdit, colors = ButtonDefaults.colors(containerColor = Color(0xFF262626), contentColor = LoadWhite)) { Text("Edit portal") }
