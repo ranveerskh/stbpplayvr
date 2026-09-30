@@ -1,4 +1,5 @@
 name: Build STB PLAY Android TV APK
+run-name: Test APK build (${{ github.ref_name }})
 
 on:
   workflow_dispatch:
