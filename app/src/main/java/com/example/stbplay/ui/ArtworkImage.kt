@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.tv.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,11 +36,17 @@ fun ArtworkImage(
     fallbackColor: Color = Color(0xFFDDB32F)
 ) {
     val context = LocalContext.current
-    val request = remember(imageUrl, requestHeaders) {
+    val isTelevision = remember(context) {
+        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    }
+    var retryCount by remember(imageUrl, requestHeaders) { mutableIntStateOf(0) }
+    val request = remember(imageUrl, requestHeaders, retryCount, isTelevision) {
         imageUrl?.trim()?.takeIf { it.isNotBlank() }?.let { url ->
             ImageRequest.Builder(context)
                 .data(url)
                 .crossfade(false)
+                .memoryCacheKey(if (retryCount == 0) url else "$url#tv-retry")
+                .apply { if (isTelevision) allowHardware(false) }
                 .apply {
                     requestHeaders.forEach { (name, value) -> addHeader(name, value) }
                 }
@@ -56,7 +65,10 @@ fun ArtworkImage(
             model = request,
             contentDescription = title.takeIf { it.isNotBlank() },
             modifier = Modifier.fillMaxSize(),
-            contentScale = contentScale
+            contentScale = contentScale,
+            onError = {
+                if (isTelevision && retryCount == 0) retryCount = 1
+            }
         )
     }
 }

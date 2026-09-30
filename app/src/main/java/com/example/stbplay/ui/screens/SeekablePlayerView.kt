@@ -15,6 +15,7 @@ class SeekablePlayerView @JvmOverloads constructor(
 ) : PlayerView(context, attrs) {
     var onSeekDirection: ((Int) -> Unit)? = null
 
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val direction = when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> -1
@@ -22,7 +23,7 @@ class SeekablePlayerView @JvmOverloads constructor(
             else -> 0
         }
         if (direction != 0 && onSeekDirection != null) {
-            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) onSeekDirection?.invoke(direction)
+            if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled) onSeekDirection?.invoke(direction)
             return true
         }
         return super.dispatchKeyEvent(event)
