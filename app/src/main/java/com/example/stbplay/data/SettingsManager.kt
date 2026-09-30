@@ -126,7 +126,7 @@ class SettingsManager(private val context: Context) {
     }
 
     val catalogueLanguage: Flow<String> = context.dataStore.data.map { it[keyLanguage] ?: "All" }
-    val analyticsEnabled: Flow<Boolean> = context.dataStore.data.map { it[keyAnalytics] ?: true }
+    val analyticsEnabled: Flow<Boolean> = context.dataStore.data.map { it[keyAnalytics] ?: false }
     val disclaimerAcknowledged: Flow<Boolean> = context.dataStore.data.map { it[keyDisclaimer] ?: false }
     val lastRefreshAt: Flow<Long> = context.dataStore.data.map { it[keyLastRefresh] ?: 0L }
 

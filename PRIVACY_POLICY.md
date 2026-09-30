@@ -1,39 +1,47 @@
-# STB Play Privacy Policy
+# STB Play Privacy Policy and Authorized-Use Terms
 
 Effective date: September 30, 2026
 
-STB Play is a player for content sources that you add. It does not provide subscriptions, channels, movies, series, or streams. Use only sources you are authorized to access.
+Policy version: 2
 
-## Information stored on this device
+## 1. What STB Play does
 
-The app stores portal profiles and settings, parental PIN, favourites, playback progress and history, catalogue cache, and preferences locally. The portal expiry date used for reminders is kept on this device. Notifications are generated locally; STB Play does not send your viewing history to create them.
+STB Play is a media-player application. It does not provide or sell portals, accounts, subscriptions, playlists, channels, movies, series, stream links, or portal credentials. Content and services come from the source that a user adds.
 
-## Optional basic usage counts
+## 2. Authorized sources and user responsibility
 
-You can allow or decline basic usage counts in the app. If allowed, the app sends a pseudonymous device identifier, platform, app version, and last-active time to STB Play's Firebase service over HTTPS. The server stores a SHA-256 hash of the device identifier, not the raw identifier. This lets us estimate installations and active devices; it does not identify a verified person. Records are deleted after 12 months without a heartbeat. Turn off “Share basic usage counts” in Settings to stop future heartbeats.
+Add only a portal or server that you own or are authorized by its operator to use. Play only content you have the right to access. You are responsible for your source, credentials, access permissions, and compliance with applicable law, copyright requirements, and the provider's terms. Do not use STB Play to bypass access controls or to redistribute content without permission.
 
-These usage-count heartbeats do not include your portal address, portal credentials, MAC address, content titles, or viewing history. If you activate a STB Play licence key, the app separately sends the key, a pseudonymous device identifier, platform, app version, and portal hostname to validate the key and count licensed devices. The service stores a hash of the key and device identifier; the portal hostname is visible to the STB Play administrator. Licence device activity records are deleted after 12 months without activity.
+The app displays catalogues, ratings, categories, and labels supplied by the source. They can be incomplete or inaccurate. Parental PIN locks are a convenience and cannot guarantee that every unsuitable title will be identified. Keep the device and PIN secure, and supervise children's use.
 
-STB Play does not include a third-party advertising or analytics SDK.
+## 3. Information stored on your device
 
-## Connections you choose
+STB Play stores portal profiles and settings, portal address, MAC address, parental PIN, favourites, watch history and playback progress, catalogue cache, and preferences in local app storage. This is not an encrypted password vault. Remove saved portal profiles or clear catalogue/history in Settings, or uninstall the app to remove local app data. Android backup is disabled.
 
-The app contacts your portal to authenticate, load a catalogue, request media links, and play content. It also contacts hosts supplied by the portal for artwork and streams. Those third parties may receive your IP address and request information, including the MAC address or credentials required by your portal. A portal may use HTTP rather than HTTPS, so traffic to it may not be encrypted. Your provider's own privacy practices apply.
+Portal-expiry reminders are scheduled locally from the expiry date reported by your source. Viewing history is not sent to create these reminders.
 
-When you choose Cast, Google's Cast framework and a selected receiver participate in playback. The app checks GitHub for published updates and downloads an APK only if you choose to install it. GitHub, Google, and Firebase may process connection information under their own policies.
+## 4. Connections to your source and third parties
 
-## Android permissions
+The app connects to your portal to authenticate, load its catalogue, request playback links, and play content. It also connects to stream and artwork hosts supplied by that portal. These services receive connection requests and may receive your IP address and the portal credentials required for access. If your portal uses HTTP, its traffic is not encrypted. The portal and media hosts have their own privacy and service terms.
 
-* Internet and network state: connect to your portal, media hosts, Cast services, update service, and optional usage-count service.
-* Notifications: announce app updates and local portal-expiry reminders if you grant permission on supported Android versions.
-* Install packages: open the Android installer after you explicitly request an APK update. Android asks you to allow this separately.
+If you choose Cast, Google Cast and the receiver you select participate in playback. The app checks GitHub for published updates and downloads an APK only after you choose an update. Google, Firebase, GitHub, your portal, and media hosts may process connection information under their own policies.
 
-The app does not request camera, microphone, contacts, or location permissions.
+## 5. STB Play license service
 
-## Retention and controls
+If you enter a STB Play license key, the app sends that key, a persistent Android device identifier, platform, app version, and the portal hostname to the STB Play license service over HTTPS to activate or check the license. The service uses one-way SHA-256 hashes as key and device record identifiers. It stores the portal hostname, platform, app version, and registration/last-seen timestamps for license-device administration. It does not require your portal password, MAC address, full portal URL, or watched titles for license checks. License-device records are marked to expire 12 months after their last activity.
 
-Your saved data stays on the device until you delete it. In Settings you can remove portal profiles, clear catalogue cache, and clear watch history. Uninstalling the app removes its remaining local data. Android backup and device transfer of app data are disabled. Information already sent to a portal, media host, Firebase, GitHub, Google, or Cast service is controlled by that service.
+## 6. Optional device counts
 
-## Contact and changes
+Device-count sharing is optional and off by default on new installs. If enabled, the app sends its Android device identifier, platform, and app version to the STB Play service so the service can estimate installations and recently active devices. This request does not include your portal details or viewing history. The service uses a hashed device reference with first/last activity dates; count records are marked to expire after 12 months without activity. Turn off “Share optional device counts” in Settings to stop future requests. STB Play does not include an advertising SDK.
 
-For privacy questions or requests, open an issue at https://github.com/ranveerskh/stbpplayvr/issues. This public issue tracker is not suitable for posting portal credentials, MAC addresses, or private stream links. Updates to this policy will be published here with a new effective date.
+## 7. Permissions and notifications
+
+Internet and network-state access support connections to your portal, media hosts, Cast, updates, and license service. Notifications can announce available app updates and local portal-expiry reminders if you grant notification permission. Android separately asks you to allow installation when you choose to install an APK update. STB Play does not request camera, microphone, contacts, or location access.
+
+## 8. Retention and choices
+
+Local data remains on the device until you remove it or uninstall the app. You can remove portal profiles, clear catalogue cache and watch history, and disable optional device counts in Settings. The service applies a 12-month inactivity-expiry marker to usage and license-device records; the cloud service's configured retention controls determine when marked records are deleted. Information already sent to a portal, media host, Google, Firebase, or GitHub is subject to that service's own controls.
+
+## 9. Policy changes and contact
+
+This policy may change as STB Play changes. A revised version may be shown in the app before continued use. For privacy questions, use the support contact published with the official STB Play distribution. Do not post portal credentials, MAC addresses, or private stream links in a public issue tracker.

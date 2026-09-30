@@ -351,10 +351,13 @@ private fun StbPlayRoot(
     val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
     val parentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
     val catalogueLanguage by settingsManager.catalogueLanguage.collectAsState(initial = "All")
-    val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = true)
+    val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = false)
     val privacyPrefs = remember(appContext) { appContext.getSharedPreferences("privacy_notice", Context.MODE_PRIVATE) }
-    var usageNoticeSeen by remember(privacyPrefs) { mutableStateOf(privacyPrefs.getBoolean("usage_notice_seen", false)) }
+    var acceptedPolicyVersion by remember(privacyPrefs) {
+        mutableStateOf(privacyPrefs.getInt("policy_accepted_version", 0))
+    }
     val disclaimerAcknowledged = startupSettings?.disclaimerAcknowledged ?: false
+    val policyAccepted = disclaimerAcknowledged && acceptedPolicyVersion >= REQUIRED_POLICY_VERSION
     val lastRefreshAt by settingsManager.lastRefreshAt.collectAsState(initial = 0L)
 
     val portalRepository = remember { PortalRepository() }
@@ -388,8 +391,8 @@ private fun StbPlayRoot(
     var licenseStatus by remember { mutableStateOf("No key activated") }
     var licenseBusy by remember { mutableStateOf(false) }
 
-    LaunchedEffect(usageNoticeSeen, analyticsEnabled) {
-        if (usageNoticeSeen && analyticsEnabled) platformLicenseClient.usageHeartbeat()
+    LaunchedEffect(policyAccepted, analyticsEnabled) {
+        if (policyAccepted && analyticsEnabled) platformLicenseClient.usageHeartbeat()
     }
 
     var selectedTab by remember { mutableStateOf(StbPlayTab.HOME) }
@@ -1122,7 +1125,9 @@ private fun StbPlayRoot(
                     )
                 }
                 !settingsLoaded -> Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
-                !disclaimerAcknowledged -> FirstStartDisclaimer {
+                !policyAccepted -> FirstStartDisclaimer {
+                    privacyPrefs.edit().putInt("policy_accepted_version", REQUIRED_POLICY_VERSION).apply()
+                    acceptedPolicyVersion = REQUIRED_POLICY_VERSION
                     scope.launch { settingsManager.acknowledgeDisclaimer() }
                 }
                 screen == AppScreen.APP && (storedSettings.url.isBlank() || storedSettings.mac.isBlank()) ->
@@ -1345,13 +1350,7 @@ private fun StbPlayRoot(
                         }
                     },
                     onSearchResults = { remoteSearchStreams = it },
-                    searchMedia = ::toUi,
-                    showUsageDisclosure = !usageNoticeSeen,
-                    onUsageDisclosureChoice = { enabled ->
-                        scope.launch { settingsManager.setAnalyticsEnabled(enabled) }
-                        privacyPrefs.edit().putBoolean("usage_notice_seen", true).apply()
-                        usageNoticeSeen = true
-                    }
+                    searchMedia = ::toUi
                 )
             }
 
@@ -1413,6 +1412,8 @@ private fun StbPlayRoot(
         }
     }
 }
+
+private const val REQUIRED_POLICY_VERSION = 2
 
 private fun PortalStream.toUiMedia(
     portrait: Boolean,

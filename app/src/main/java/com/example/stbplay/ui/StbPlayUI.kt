@@ -35,6 +35,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -256,7 +259,7 @@ data class StbPlaySettingsState(
     val parentalMode: ParentalMode = ParentalMode.ALL_CONTENT,
     val subtitlePreference: SubtitlePreference = SubtitlePreference.AUTO,
     val catalogueLanguage: String = "All",
-    val analyticsEnabled: Boolean = true,
+    val analyticsEnabled: Boolean = false,
     val lastRefreshText: String = "Not refreshed yet",
     val updateText: String = "Check whether a newer STB Play version is available.",
     val updateAvailableVersion: String? = null,
@@ -304,9 +307,7 @@ fun StbPlayApp(
     searchCatalog: List<PortalStream>,
     searchRemote: suspend (String, Int) -> VodCatalogBatch,
     onSearchResults: (List<PortalStream>) -> Unit,
-    searchMedia: (PortalStream) -> UiMedia,
-    showUsageDisclosure: Boolean,
-    onUsageDisclosureChoice: (Boolean) -> Unit
+    searchMedia: (PortalStream) -> UiMedia
 ) {
     var searchOpen by remember { mutableStateOf(false) }
     val tvLayout = isTelevisionLayout()
@@ -423,22 +424,6 @@ fun StbPlayApp(
                     denseTv = tvLayout
                 )
                 Box(Modifier.weight(1f).fillMaxWidth()) { pageContent() }
-            }
-        }
-    }
-    if (showUsageDisclosure) Dialog(onDismissRequest = { onUsageDisclosureChoice(false) }) {
-        Surface(
-            modifier = Modifier.widthIn(min = 300.dp, max = 500.dp),
-            shape = RoundedCornerShape(18.dp),
-            colors = SurfaceDefaults.colors(containerColor = Panel)
-        ) {
-            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Basic app usage counts", color = GoldLight, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                Text("If enabled, STB Play sends a pseudonymous device ID, app platform, version, and last-active time; the server stores the ID as a hash so we can count app installs and active devices. These records expire after 12 months without activity. Portal address, credentials, and viewing history are not included.", color = White, fontSize = 13.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PrimaryAction("Allow basic counts") { onUsageDisclosureChoice(true) }
-                    WideAction("Not now", { onUsageDisclosureChoice(false) })
-                }
             }
         }
     }
@@ -1566,18 +1551,21 @@ private fun StbPlaySettingsScreen(
             }
             SettingsPage.PRIVACY -> item {
                 SettingsSection("Privacy policy") {
-                    Text("STB Play stores your portal address, MAC, parental PIN, favourites, playback progress and preferences on this device. The app connects directly to the portal and media or artwork hosts you choose. Those services can receive your device network address and requests. A portal may use HTTP, which is not encrypted.", color = White, fontSize = 13.sp)
-                    Text("With basic usage counts enabled, STB Play sends a pseudonymous device ID, platform, app version and last-active time; the server stores the ID as a hash to its Firebase service. This helps count installs and active devices; the record expires after 12 months without activity. Portal address, credentials and viewing history are not sent for this count. STB Play has no third-party advertising or analytics SDK.", color = White, fontSize = 13.sp)
+                    Text("STB Play is a player only; it does not supply portals, accounts, subscriptions, channels, movies, series or streams. Add only a portal and content you are authorized to access. You are responsible for complying with local law and your provider’s terms.", color = White, fontSize = 13.sp)
+                    Text("Portal profiles, portal address, MAC address, parental PIN, favourites, playback history/progress, cached catalogue data and preferences are stored in local app storage. They are not sent to STB Play for basic usage counts. Protect the device; local app storage is not an encrypted password vault.", color = White, fontSize = 13.sp)
+                    Text("The app connects directly to your portal and to media/artwork hosts supplied by it. Those services receive network requests and may see your IP address and portal credentials required for playback. HTTP portals do not encrypt that connection. Their privacy practices apply. Casting uses Google Cast and the receiver you select; update checks and downloads use GitHub.", color = White, fontSize = 13.sp)
+                    Text("If you activate a STB Play key, the app sends the key, Android device identifier, platform, app version and portal hostname over HTTPS for validation. The service stores hashed key/device references plus the portal hostname and activity details; it does not need your portal password, MAC address, full portal URL or viewing history.", color = White, fontSize = 13.sp)
+                    Text("Optional device counts are off unless you enable them here. When enabled, the app sends its Android device identifier, platform and app version to the STB Play service; it does not send portal details or viewing history for this count. The service uses a hashed device reference and activity dates, with records marked to expire after 12 months without activity. Turn this off any time to stop future count requests.", color = White, fontSize = 13.sp)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
-                            Text("Share basic usage counts", color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text(if (state.analyticsEnabled) "Enabled · turn off to stop future pings" else "Disabled · stops future usage-count pings", color = Muted, fontSize = 12.sp)
+                            Text("Share optional device counts", color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (state.analyticsEnabled) "On · tap to stop future count requests" else "Off · no count requests are sent", color = Muted, fontSize = 12.sp)
                         }
                         Switch(checked = state.analyticsEnabled, onCheckedChange = onAnalyticsChanged)
                     }
-                    Text("Permissions: Internet and network state connect to your portal; notifications announce available updates if allowed; install packages opens the Android installer when you request an update. No camera, microphone, contacts or location permission is requested.", color = White, fontSize = 13.sp)
+                    Text("Internet/network access connects to selected services. Notifications are used for updates and locally scheduled portal-expiry reminders if you allow them. The app requests permission to open an APK installer only when you choose an update. It does not request camera, microphone, contacts or location access.", color = White, fontSize = 13.sp)
                     Text("Use Content & storage to erase cached catalogues and watch history. Remove saved portals in Content sources. Uninstalling clears remaining local app data.", color = Muted, fontSize = 12.sp)
-                    WideAction("Full privacy policy online", { uriHandler.openUri("https://github.com/ranveerskh/stbpplayvr/blob/main/PRIVACY_POLICY.md") }, Modifier.fillMaxWidth())
+                    WideAction("Full privacy policy online", { uriHandler.openUri("https://github.com/ranveerskh/stbpplayvr/blob/v1.9.10/PRIVACY_POLICY.md") }, Modifier.fillMaxWidth())
                 }
             }
             SettingsPage.ABOUT -> item {
@@ -1998,23 +1986,76 @@ private fun normalizeSearchText(value: String): String = Normalizer
 
 @Composable
 fun FirstStartDisclaimer(onAccept: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(Navy), contentAlignment = Alignment.Center) {
+    var agreed by remember { mutableStateOf(false) }
+    val policyScrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    Box(
+        Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp),
+        contentAlignment = Alignment.Center
+    ) {
         Surface(
-            modifier = Modifier.widthIn(max = 690.dp).padding(32.dp),
+            modifier = Modifier.widthIn(max = 820.dp).fillMaxWidth().fillMaxHeight(),
             shape = RoundedCornerShape(20.dp),
             colors = SurfaceDefaults.colors(containerColor = Panel)
         ) {
-            Column(Modifier.padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(15.dp)) {
-                Text("Before you continue", color = GoldLight, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                Text("STB Play is a media player. It does not provide IPTV service, channels, movies, subscriptions, stream URLs, or access credentials.", color = White, fontSize = 15.sp, textAlign = TextAlign.Center)
-                Text("Use only portals and content you are authorized to access. Your portal URL and MAC address remain on this device.", color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+            Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Privacy and authorized use", color = GoldLight, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                Text("Review these terms before continuing. You can revisit the privacy controls in Settings.", color = Muted, fontSize = 13.sp)
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(policyScrollState).focusable()
+                        .questInitialFocus()
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            when (event.key) {
+                                Key.DirectionDown -> if (policyScrollState.canScrollForward) {
+                                    scope.launch {
+                                        policyScrollState.animateScrollTo((policyScrollState.value + 240).coerceAtMost(policyScrollState.maxValue))
+                                    }
+                                    true
+                                } else false
+                                Key.DirectionUp -> if (policyScrollState.canScrollBackward) {
+                                    scope.launch {
+                                        policyScrollState.animateScrollTo((policyScrollState.value - 240).coerceAtLeast(0))
+                                    }
+                                    true
+                                } else false
+                                else -> false
+                            }
+                        },
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    PolicySection("1. STB Play and your content sources", "STB Play is a media player. It does not provide portals, accounts, subscriptions, playlists, channels, movies, series, stream links or credentials. Add only a portal/server you own or are authorized by its operator to use, and play only content you have the right to access. You are responsible for the source, its credentials, and following applicable laws, copyright rules and provider terms. Do not use the app to bypass access controls or redistribute content without permission.")
+                    PolicySection("2. Ratings and parental controls", "Categories, age ratings and labels come from your provider and may be missing or inaccurate. PIN locks help restrict access but cannot guarantee that all unsuitable titles will be identified. Keep your device and PIN secure, and supervise children’s use.")
+                    PolicySection("3. Data saved on this device", "The app saves portal profiles and settings, portal address, MAC address, parental PIN, favourites, watch history and progress, catalogue cache and preferences in local app storage. This is not an encrypted password vault. Remove saved portals or clear history/cache in Settings, or uninstall the app to remove local app data. Android backup is disabled.")
+                    PolicySection("4. Connections to portals and other services", "The app contacts the portal you add to sign in, load its catalogue, and request playback links; it then contacts stream and artwork hosts supplied by that source. Those services can receive your network address and requests, and the portal receives the credentials needed to authenticate you. A portal using HTTP does not encrypt that traffic. The source operator’s own privacy and service terms apply. If you use Cast, Google Cast and your selected receiver participate in playback. Update checks and downloads use GitHub.")
+                    PolicySection("5. STB Play key and license service", "If you activate a STB Play key, the app sends the entered key, Android device identifier, app platform/version and portal hostname over HTTPS for license verification. The service keeps hashed key and device references together with the portal hostname and registration/activity details. It does not need your portal password, MAC address, full portal URL or watched titles for license checks. The license service and its cloud host process these requests under their own security and retention settings.")
+                    PolicySection("6. Optional device counts", "Device-count sharing is optional and off by default for new installs. If enabled in Settings, the app sends its Android device identifier, platform and app version to the STB Play service to estimate installs and recently active devices. The request excludes portal details and viewing history. Device references are hashed by the service; count records are marked to expire after 12 months without activity. You can turn this option off at any time in Settings. No advertising SDK is included.")
+                    PolicySection("7. Notifications and permissions", "Internet and network access are used for your selected portal, streams, Cast, updates and license service. Notifications may announce an update or a local portal-expiry reminder if you grant permission. Android asks separately before installing an update you choose. STB Play does not request camera, microphone, contacts or location access.")
+                    PolicySection("8. Changes and third parties", "Portal operators, media hosts, Google, Firebase and GitHub are separate services and handle their own connection data under their policies. STB Play cannot control their availability or practices. The full privacy policy is published in Settings and in the app’s policy document; a revised policy may be shown again when its version changes.")
+                }
+                QuestButton(
+                    onClick = { agreed = !agreed },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                    colors = ButtonDefaults.colors(containerColor = Navy, contentColor = White, focusedContainerColor = Navy, focusedContentColor = White)
+                ) {
+                    Text(if (agreed) "☑  I agree to the privacy policy and authorized-use terms" else "□  I agree to the privacy policy and authorized-use terms", fontSize = 13.sp, textAlign = TextAlign.Center)
+                }
                 QuestButton(
                     onClick = onAccept,
-                    modifier = Modifier.questInitialFocus(),
+                    enabled = agreed,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)
-                ) { Text("I have read and understand", fontWeight = FontWeight.Bold) }
+                ) { Text("Agree and continue", fontWeight = FontWeight.Bold) }
             }
         }
+    }
+}
+
+@Composable
+private fun PolicySection(title: String, body: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(body, color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
     }
 }
 

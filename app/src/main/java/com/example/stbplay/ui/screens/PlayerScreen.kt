@@ -33,7 +33,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -63,7 +65,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -488,44 +489,86 @@ private fun NativePlayerScreen(
             update = { if (it.player !== activePlayer) it.player = activePlayer }
         ) }
         if (playerControlsVisible && playerError == null) {
-            if (!isAndroidTv && !isMetaQuest) Row(
-                modifier = Modifier.align(Alignment.TopStart).padding(if (compactLayout) 12.dp else 18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                QuestButton(
-                    onClick = { revealPlayerControls(); onBack() },
-                    modifier = Modifier.widthIn(min = if (compactLayout) 108.dp else 116.dp).heightIn(min = 48.dp)
-                        .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
-                        .questInitialFocus(),
-                    colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
-                ) { Text("←  Back", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
-                if (compactLayout && !isMetaQuest && phoneActivity != null) {
-                    IconButton(
+            val phoneActionBar = compactLayout && !isMetaQuest && !isAndroidTv && phoneActivity != null
+            if (phoneActionBar) {
+                Row(
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp)
+                        .onFocusChanged { if (it.hasFocus) revealPlayerControls() },
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val actionColors = ButtonDefaults.colors(
+                        containerColor = Color(0xCC070707), contentColor = Color.White,
+                        focusedContainerColor = Color(0xEE070707), focusedContentColor = Color.White
+                    )
+                    QuestButton(
+                        onClick = { revealPlayerControls(); onBack() },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        colors = actionColors
+                    ) { Text("← Back", fontSize = 12.sp, maxLines = 1) }
+                    QuestButton(
                         onClick = { setPhoneFullscreen(!phoneFullscreen) },
-                        modifier = Modifier.size(48.dp).background(Color(0xCC070707), CircleShape)
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        colors = actionColors
                     ) {
-                        Icon(
-                            imageVector = if (phoneFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                            contentDescription = if (phoneFullscreen) "Exit full screen" else "Full screen",
-                            tint = Color.White
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Icon(
+                                imageVector = if (phoneFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text("Full", fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
+                    if (episodeTitles.isNotEmpty()) QuestButton(
+                        onClick = { episodePickerVisible = true; revealPlayerControls() },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        colors = actionColors
+                    ) { Text("Episodes", fontSize = 11.sp, maxLines = 1) }
+                    Box(
+                        modifier = Modifier.weight(1f).height(48.dp)
+                            .background(Color(0xCC070707), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CompositionLocalProvider(LocalContentColor provides Color.White) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                MediaRouteButton(modifier = Modifier.size(36.dp))
+                                Text("Cast", color = Color.White, fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
                     }
                 }
-            }
-            if (compactLayout && !isMetaQuest) Box(
-                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).size(52.dp)
-                    .background(Color(0xCC070707), RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                CompositionLocalProvider(LocalContentColor provides Color.White) {
-                    MediaRouteButton(modifier = Modifier.size(44.dp))
+            } else {
+                if (!isAndroidTv && !isMetaQuest) Row(
+                    modifier = Modifier.align(Alignment.TopStart).padding(if (compactLayout) 12.dp else 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QuestButton(
+                        onClick = { revealPlayerControls(); onBack() },
+                        modifier = Modifier.widthIn(min = if (compactLayout) 108.dp else 116.dp).heightIn(min = 48.dp)
+                            .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
+                            .questInitialFocus(),
+                        colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
+                    ) { Text("←  Back", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
                 }
+                if (compactLayout && !isMetaQuest) Box(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).size(52.dp)
+                        .background(Color(0xCC070707), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CompositionLocalProvider(LocalContentColor provides Color.White) {
+                        MediaRouteButton(modifier = Modifier.size(44.dp))
+                    }
+                }
+                if (episodeTitles.isNotEmpty()) QuestButton(
+                    onClick = { episodePickerVisible = true; revealPlayerControls() },
+                    modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)
+                ) { Text("Episodes") }
             }
-            if (episodeTitles.isNotEmpty()) QuestButton(
-                onClick = { episodePickerVisible = true; revealPlayerControls() },
-                modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)
-            ) { Text("Episodes") }
             if (isMetaQuest) {
                 Row(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 112.dp)
