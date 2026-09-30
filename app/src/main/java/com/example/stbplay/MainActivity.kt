@@ -52,6 +52,7 @@ import com.example.stbplay.data.UpdateInfo
 import com.example.stbplay.data.UpdateCheckWorker
 import com.example.stbplay.data.UpdateManager
 import com.example.stbplay.data.PlatformLicenseClient
+import com.example.stbplay.data.PortalExpiryReminderWorker
 import com.example.stbplay.data.model.PortalCategory
 import com.example.stbplay.data.model.PortalEpisode
 import com.example.stbplay.data.model.PortalQualityOption
@@ -239,6 +240,7 @@ class MainActivity : ComponentActivity() {
         settingsManager = SettingsManager(this)
         updateManager = UpdateManager(applicationContext)
         UpdateCheckWorker.schedule(applicationContext)
+        PortalExpiryReminderWorker.schedule(applicationContext)
         registerUpdateReceiver()
 
         setContent {
@@ -332,6 +334,7 @@ private fun StbPlayRoot(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
     val platformLicenseClient = remember(appContext) { PlatformLicenseClient(appContext) }
+    var platformLicense by remember { mutableStateOf(platformLicenseClient.currentLicense()) }
     val catalogCache = remember(appContext) { CatalogCacheStore(appContext) }
     val contentGridState = rememberLazyGridState()
     val liveChannelListState = rememberLazyListState()
@@ -349,6 +352,8 @@ private fun StbPlayRoot(
     val parentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
     val catalogueLanguage by settingsManager.catalogueLanguage.collectAsState(initial = "All")
     val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = true)
+    val privacyPrefs = remember(appContext) { appContext.getSharedPreferences("privacy_notice", Context.MODE_PRIVATE) }
+    var usageNoticeSeen by remember(privacyPrefs) { mutableStateOf(privacyPrefs.getBoolean("usage_notice_seen", false)) }
     val disclaimerAcknowledged = startupSettings?.disclaimerAcknowledged ?: false
     val lastRefreshAt by settingsManager.lastRefreshAt.collectAsState(initial = 0L)
 
@@ -382,6 +387,10 @@ private fun StbPlayRoot(
     var subscription by remember { mutableStateOf(PortalSubscription()) }
     var licenseStatus by remember { mutableStateOf("No key activated") }
     var licenseBusy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(usageNoticeSeen, analyticsEnabled) {
+        if (usageNoticeSeen && analyticsEnabled) platformLicenseClient.usageHeartbeat()
+    }
 
     var selectedTab by remember { mutableStateOf(StbPlayTab.HOME) }
     var liveCategoryIndex by remember { mutableStateOf(0) }
@@ -559,6 +568,7 @@ private fun StbPlayRoot(
                 if (!login.success) throw IllegalStateException(login.errorMessage ?: "Portal authentication failed.")
                 portalReady = true
                 subscription = portalRepository.getSubscription()
+                PortalExpiryReminderWorker.setExpiry(appContext, subscription.expiryEpochMillis.takeUnless { subscription.unlimited })
 
                 loadingStage = "Loading live TV categories…"
                 loadingProgress = 0.22f
@@ -949,6 +959,13 @@ private fun StbPlayRoot(
         subscriptionPlan = subscription.plan,
         subscriptionStatus = subscription.status,
         expiryText = subscription.toExpiryText().orEmpty(),
+        licenseName = if (platformLicense.hasKey) platformLicense.label else "Demo trial",
+        licenseExpiryText = when {
+            !platformLicense.hasKey -> "No STB Play key activated"
+            platformLicense.expiresAtMillis == null -> "No expiry set"
+            platformLicense.expiresAtMillis <= System.currentTimeMillis() -> "Expired ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(java.util.Date(platformLicense.expiresAtMillis))}"
+            else -> "Expires ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(java.util.Date(platformLicense.expiresAtMillis))} · ${kotlin.math.ceil((platformLicense.expiresAtMillis - System.currentTimeMillis()).toDouble() / TimeUnit.DAYS.toMillis(1)).toInt()} days left"
+        },
         liveCount = liveStreams.size,
         movieCount = movieStreams.size,
         seriesCount = seriesStreams.size,
@@ -967,7 +984,10 @@ private fun StbPlayRoot(
 
     LaunchedEffect(portalReady, storedSettings.url) {
         if (portalReady) {
-            platformLicenseClient.heartbeat(storedSettings.url)?.let { licenseStatus = it }
+            platformLicenseClient.heartbeat(storedSettings.url)?.let {
+                licenseStatus = it
+                platformLicense = platformLicenseClient.currentLicense()
+            }
         }
     }
 
@@ -978,6 +998,7 @@ private fun StbPlayRoot(
         scope.launch {
             try {
                 licenseStatus = platformLicenseClient.activate(key, storedSettings.url)
+                platformLicense = platformLicenseClient.currentLicense()
             } catch (error: Exception) {
                 licenseStatus = error.message ?: "Could not verify this key. Try again."
             } finally {
@@ -1133,6 +1154,7 @@ private fun StbPlayRoot(
                                 if (login.success) {
                                     portalReady = true
                                     subscription = portalRepository.getSubscription()
+                                    PortalExpiryReminderWorker.setExpiry(appContext, subscription.expiryEpochMillis.takeUnless { subscription.unlimited })
                                     connectionError = null
                                     playbackSessionGeneration++
                                 } else {
@@ -1322,7 +1344,13 @@ private fun StbPlayRoot(
                         }
                     },
                     onSearchResults = { remoteSearchStreams = it },
-                    searchMedia = ::toUi
+                    searchMedia = ::toUi,
+                    showUsageDisclosure = !usageNoticeSeen,
+                    onUsageDisclosureChoice = { enabled ->
+                        scope.launch { settingsManager.setAnalyticsEnabled(enabled) }
+                        privacyPrefs.edit().putBoolean("usage_notice_seen", true).apply()
+                        usageNoticeSeen = true
+                    }
                 )
             }
 
@@ -1422,14 +1450,14 @@ private fun PortalStream.toUiMedia(
 private fun PortalSubscription.toExpiryText(): String? {
     if (unlimited) return "Unlimited subscription"
     val expiry = expiryEpochMillis ?: return null
+    val date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(expiry))
     val diff = expiry - System.currentTimeMillis()
-    if (diff <= 0L) return "Subscription expired"
+    if (diff <= 0L) return "Subscription expired on $date"
     val days = TimeUnit.MILLISECONDS.toDays(diff)
     return when {
-        days == 0L -> "Subscription expires today"
-        days == 1L -> "Subscription expires tomorrow"
-        days < 30L -> "Subscription expires in $days days"
-        else -> "Subscription expires ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(expiry))}"
+        days == 0L -> "Expires today · $date"
+        days == 1L -> "Expires tomorrow · $date"
+        else -> "Expires $date · $days days left"
     }
 }
 

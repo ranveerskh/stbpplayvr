@@ -71,6 +71,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Switch
 import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
@@ -245,6 +246,8 @@ data class StbPlaySettingsState(
     val subscriptionPlan: String = "Subscription",
     val subscriptionStatus: String = "",
     val expiryText: String = "",
+    val licenseName: String = "Demo trial",
+    val licenseExpiryText: String = "",
     val liveCount: Int = 0,
     val movieCount: Int = 0,
     val seriesCount: Int = 0,
@@ -301,7 +304,9 @@ fun StbPlayApp(
     searchCatalog: List<PortalStream>,
     searchRemote: suspend (String, Int) -> VodCatalogBatch,
     onSearchResults: (List<PortalStream>) -> Unit,
-    searchMedia: (PortalStream) -> UiMedia
+    searchMedia: (PortalStream) -> UiMedia,
+    showUsageDisclosure: Boolean,
+    onUsageDisclosureChoice: (Boolean) -> Unit
 ) {
     var searchOpen by remember { mutableStateOf(false) }
     val tvLayout = isTelevisionLayout()
@@ -418,6 +423,22 @@ fun StbPlayApp(
                     denseTv = tvLayout
                 )
                 Box(Modifier.weight(1f).fillMaxWidth()) { pageContent() }
+            }
+        }
+    }
+    if (showUsageDisclosure) Dialog(onDismissRequest = { onUsageDisclosureChoice(false) }) {
+        Surface(
+            modifier = Modifier.widthIn(min = 300.dp, max = 500.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = SurfaceDefaults.colors(containerColor = Panel)
+        ) {
+            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Basic app usage counts", color = GoldLight, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text("If enabled, STB Play sends a pseudonymous device ID, app platform, version, and last-active time; the server stores the ID as a hash so we can count app installs and active devices. These records expire after 12 months without activity. Portal address, credentials, and viewing history are not included.", color = White, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PrimaryAction("Allow basic counts") { onUsageDisclosureChoice(true) }
+                    WideAction("Not now", { onUsageDisclosureChoice(false) })
+                }
             }
         }
     }
@@ -1546,7 +1567,14 @@ private fun StbPlaySettingsScreen(
             SettingsPage.PRIVACY -> item {
                 SettingsSection("Privacy policy") {
                     Text("STB Play stores your portal address, MAC, parental PIN, favourites, playback progress and preferences on this device. The app connects directly to the portal and media or artwork hosts you choose. Those services can receive your device network address and requests. A portal may use HTTP, which is not encrypted.", color = White, fontSize = 13.sp)
-                    Text("The app checks GitHub for releases. Casting uses the Cast service if you choose it. STB Play has no account server, advertising SDK or analytics SDK. Data stays on the device until you remove it or uninstall the app; the app does not back it up to Android cloud backup.", color = White, fontSize = 13.sp)
+                    Text("With basic usage counts enabled, STB Play sends a pseudonymous device ID, platform, app version and last-active time; the server stores the ID as a hash to its Firebase service. This helps count installs and active devices; the record expires after 12 months without activity. Portal address, credentials and viewing history are not sent for this count. STB Play has no third-party advertising or analytics SDK.", color = White, fontSize = 13.sp)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Share basic usage counts", color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (state.analyticsEnabled) "Enabled · turn off to stop future pings" else "Disabled · stops future usage-count pings", color = Muted, fontSize = 12.sp)
+                        }
+                        Switch(checked = state.analyticsEnabled, onCheckedChange = onAnalyticsChanged)
+                    }
                     Text("Permissions: Internet and network state connect to your portal; notifications announce available updates if allowed; install packages opens the Android installer when you request an update. No camera, microphone, contacts or location permission is requested.", color = White, fontSize = 13.sp)
                     Text("Use Content & storage to erase cached catalogues and watch history. Remove saved portals in Content sources. Uninstalling clears remaining local app data.", color = Muted, fontSize = 12.sp)
                     WideAction("Full privacy policy online", { uriHandler.openUri("https://github.com/ranveerskh/stbpplayvr/blob/main/PRIVACY_POLICY.md") }, Modifier.fillMaxWidth())
@@ -1609,6 +1637,8 @@ private fun SubscriptionCard(state: StbPlaySettingsState, onActivateLicense: (St
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SettingsSection("STB Play demo trial") {
+            Text(state.licenseName, color = White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            if (state.licenseExpiryText.isNotBlank()) Text(state.licenseExpiryText, color = Muted, fontSize = 12.sp)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Free 1-month trial", color = White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                 Text("ACTIVE", color = Good, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -1628,6 +1658,7 @@ private fun SubscriptionCard(state: StbPlaySettingsState, onActivateLicense: (St
             Text(state.subscriptionPlan, color = White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             val details = listOf(state.subscriptionStatus, state.expiryText).filter { it.isNotBlank() }.joinToString(" · ")
             Text(details.ifBlank { "Subscription details are reported by the portal when available." }, color = Muted, fontSize = 12.sp)
+            Text("Expiry reminders: 10 and 9 days before, then daily during the final 5 days.", color = Muted, fontSize = 12.sp)
         }
     }
 
