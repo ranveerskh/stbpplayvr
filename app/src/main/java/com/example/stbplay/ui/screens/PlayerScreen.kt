@@ -399,9 +399,13 @@ private fun NativePlayerScreen(
         key(useAlternateSurface) { AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { viewContext ->
-                (if (preferTextureSurface != useAlternateSurface) {
-                    LayoutInflater.from(viewContext).inflate(com.example.stbplay.R.layout.player_view_phone, null) as SeekablePlayerView
-                } else SeekablePlayerView(viewContext)).apply {
+                val playerLayout = when {
+                    isMetaQuest -> com.example.stbplay.R.layout.player_view_meta
+                    preferTextureSurface != useAlternateSurface -> com.example.stbplay.R.layout.player_view_phone
+                    else -> null
+                }
+                (playerLayout?.let { LayoutInflater.from(viewContext).inflate(it, null) as SeekablePlayerView }
+                    ?: SeekablePlayerView(viewContext)).apply {
                     this.player = activePlayer
                     onSeekDirection = if (allowSeeking) ({ direction ->
                         seekByRemote(direction)
@@ -414,9 +418,6 @@ private fun NativePlayerScreen(
                     isFocusable = true
                     isFocusableInTouchMode = true
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                    if (isMetaQuest) post {
-                        expandSeekTouchTarget((72f * resources.displayMetrics.density).roundToInt())
-                    }
                     setOnKeyListener { _, keyCode, event ->
                         when (keyCode) {
                             KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B -> {
