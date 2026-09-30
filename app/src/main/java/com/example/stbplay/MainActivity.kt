@@ -916,7 +916,7 @@ private fun StbPlayRoot(
             ?: "${categoryVod.size} titles loaded",
         hasMore = selectedVodCatalog?.hasMore == true,
         loadingMore = selectedVodCatalog?.loading == true,
-        emptyMessage = selectedVodCatalog?.error ?: "Try another category or load more titles."
+        emptyMessage = selectedVodCatalog?.error ?: "Try another category or refresh the portal."
     )
     val favouritesState = StbPlayLibraryState(items = favoriteStreams.map(::toUi))
     val settingsState = StbPlaySettingsState(

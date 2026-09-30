@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.itemsIndexed as indexedGridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -76,7 +77,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,6 +89,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -122,6 +128,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collect
 import java.text.Normalizer
 import java.util.PriorityQueue
 import java.util.Locale
@@ -833,8 +840,33 @@ private fun LiveTvScreen(
     val categoryListState = rememberLazyListState(
         initialFirstVisibleItemIndex = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
     )
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
+    val categoryScope = rememberCoroutineScope()
+    val initialCategoryFocusRequested = remember { mutableStateOf(false) }
+    LaunchedEffect(state.categories.size) {
+        if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
+            categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+            withFrameNanos { }
+            selectedCategoryFocusRequester.requestFocus()
+            initialCategoryFocusRequested.value = true
+        }
+    }
+    LaunchedEffect(state.selectedCategory, state.categories.size) {
+        if (state.categories.isNotEmpty()) {
+            categoryListState.animateScrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+        }
+    }
+    fun focusSelectedCategory() {
+        if (state.categories.isEmpty()) return
+        val selected = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
+        categoryScope.launch {
+            if (state.categories.isNotEmpty()) categoryListState.scrollToItem(selected)
+            withFrameNanos { }
+            selectedCategoryFocusRequester.requestFocus()
+        }
+    }
     Row(modifier = Modifier.fillMaxSize().padding(start = if (denseTv) 14.dp else 24.dp, end = if (denseTv) 16.dp else 30.dp, bottom = if (denseTv) 14.dp else 28.dp)) {
-        CategorySidebar(state.categories, state.selectedCategory, categoryListState, onCategorySelected)
+        CategorySidebar(state.categories, state.selectedCategory, categoryListState, selectedCategoryFocusRequester, onCategorySelected)
         Spacer(modifier = Modifier.width(if (denseTv) 12.dp else 24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -860,7 +892,8 @@ private fun LiveTvScreen(
                             channel,
                             { onMediaClick(channel) },
                             { onToggleFavorite(channel) },
-                            initialFocus = channel.id == initialChannelFocusId
+                            initialFocus = channel.id == initialChannelFocusId,
+                            onReturnToCategory = if (denseTv) ({ focusSelectedCategory() }) else null
                         )
                     }
                 }
@@ -870,7 +903,13 @@ private fun LiveTvScreen(
 }
 
 @Composable
-private fun CategorySidebar(categories: List<UiCategory>, selected: Int, listState: LazyListState, onSelected: (Int) -> Unit) {
+private fun CategorySidebar(
+    categories: List<UiCategory>,
+    selected: Int,
+    listState: LazyListState,
+    selectedFocusRequester: FocusRequester,
+    onSelected: (Int) -> Unit
+) {
     val denseTv = isTelevisionLayout()
     Column(
         modifier = Modifier.width(if (denseTv) 170.dp else 210.dp).fillMaxHeight()
@@ -882,7 +921,7 @@ private fun CategorySidebar(categories: List<UiCategory>, selected: Int, listSta
         Text("Categories", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(if (denseTv) 2.dp else 6.dp)) {
             indexedColumnItems(categories, key = { _, category -> category.id }, contentType = { _, _ -> "category" }) { index, category ->
-                CategorySidebarItem(category, index == selected) { onSelected(index) }
+                CategorySidebarItem(category, index == selected, if (index == selected) selectedFocusRequester else null) { onSelected(index) }
             }
         }
     }
@@ -940,12 +979,12 @@ private fun CompactCategorySelector(categories: List<UiCategory>, selected: Int,
 }
 
 @Composable
-private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick: () -> Unit) {
+private fun CategorySidebarItem(category: UiCategory, selected: Boolean, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
     val denseTv = isTelevisionLayout()
     var focused by remember { mutableStateOf(false) }
     QuestSurface(
         onClick = onClick,
-        modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier)
+        modifier = Modifier.then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
             .fillMaxWidth().height(if (denseTv) 48.dp else 58.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
@@ -970,13 +1009,20 @@ private fun LiveChannelRow(
     item: UiMedia,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
-    initialFocus: Boolean = false
+    initialFocus: Boolean = false,
+    onReturnToCategory: (() -> Unit)? = null
 ) {
     Row(Modifier.fillMaxWidth().height(78.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuestSurface(
             onClick = onClick,
-            modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).weight(1f).fillMaxHeight(),
+            modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
+                .onPreviewKeyEvent { event ->
+                    if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                        onReturnToCategory()
+                        true
+                    } else false
+                }.weight(1f).fillMaxHeight(),
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(13.dp)),
             colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Color(0xFF292929)),
             border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
@@ -1007,6 +1053,43 @@ private fun LiveChannelRow(
 }
 
 @Composable
+private fun AutoLoadMoreForGrid(
+    gridState: LazyGridState,
+    itemCount: Int,
+    prefetchDistance: Int,
+    hasMore: Boolean,
+    loading: Boolean,
+    resetKey: String,
+    onLoadMore: () -> Unit
+) {
+    val latestItemCount by rememberUpdatedState(itemCount)
+    val latestPrefetchDistance by rememberUpdatedState(prefetchDistance)
+    val latestHasMore by rememberUpdatedState(hasMore)
+    val latestLoading by rememberUpdatedState(loading)
+    val loadMore by rememberUpdatedState(onLoadMore)
+    var lastRequestedItemCount by remember(gridState, resetKey) { mutableIntStateOf(-1) }
+    var lastRequestedVisibleIndex by remember(gridState, resetKey) { mutableIntStateOf(-1) }
+
+    LaunchedEffect(gridState, resetKey) {
+        snapshotFlow {
+            val itemCountNow = latestItemCount
+            val lastVisibleIndex = gridState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.index } ?: -1
+            val nearEnd = itemCountNow == 0 ||
+                lastVisibleIndex >= (itemCountNow - latestPrefetchDistance).coerceAtLeast(0)
+            Triple(lastVisibleIndex, itemCountNow, latestHasMore && !latestLoading && nearEnd)
+        }.collect { (lastVisibleIndex, itemCountNow, shouldLoad) ->
+            val newContentOrScroll = itemCountNow > lastRequestedItemCount ||
+                lastVisibleIndex > lastRequestedVisibleIndex
+            if (shouldLoad && newContentOrScroll) {
+                lastRequestedItemCount = itemCountNow
+                lastRequestedVisibleIndex = lastVisibleIndex
+                loadMore()
+            }
+        }
+    }
+}
+
+@Composable
 private fun ContentBrowserScreen(
     state: StbPlayLibraryState,
     gridState: LazyGridState,
@@ -1015,18 +1098,50 @@ private fun ContentBrowserScreen(
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit
 ) {
+    val selectedCategoryKey = state.categories.getOrNull(state.selectedCategory)?.id ?: state.selectedCategory.toString()
+    AutoLoadMoreForGrid(
+        gridState = gridState,
+        itemCount = state.items.size,
+        prefetchDistance = if (isTelevisionLayout()) 14 else 10,
+        hasMore = state.hasMore,
+        loading = state.loading || state.loadingMore,
+        resetKey = selectedCategoryKey,
+        onLoadMore = onLoadMore
+    )
     if (isCompactAndroidLayout()) {
-        ContentBrowserCompact(state, gridState, onLoadMore, onCategorySelected, onMediaClick, onToggleFavorite)
+        ContentBrowserCompact(state, gridState, onCategorySelected, onMediaClick, onToggleFavorite)
         return
     }
     val denseTv = isTelevisionLayout()
-    val categoryListState = rememberLazyListState(
-        initialFirstVisibleItemIndex = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
-    )
-    // Paging is user initiated. Auto-prefetch here re-fired after each page while
-    // the grid remained near its end, making Adult Only's Load More control flash.
+    val categoryListState = rememberLazyListState()
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
+    val categoryScope = rememberCoroutineScope()
+    val initialCategoryFocusRequested = remember { mutableStateOf(false) }
+    LaunchedEffect(state.categories.size) {
+        if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
+            categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+            withFrameNanos { }
+            selectedCategoryFocusRequester.requestFocus()
+            initialCategoryFocusRequested.value = true
+        }
+    }
+    LaunchedEffect(state.selectedCategory, state.categories.size) {
+        if (state.categories.isNotEmpty()) {
+            categoryListState.animateScrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+        }
+    }
+    LaunchedEffect(selectedCategoryKey) { gridState.scrollToItem(0) }
+    fun focusSelectedCategory() {
+        if (state.categories.isEmpty()) return
+        val selected = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
+        categoryScope.launch {
+            if (state.categories.isNotEmpty()) categoryListState.scrollToItem(selected)
+            withFrameNanos { }
+            selectedCategoryFocusRequester.requestFocus()
+        }
+    }
     Row(modifier = Modifier.fillMaxSize().padding(start = if (denseTv) 14.dp else 24.dp, end = if (denseTv) 16.dp else 30.dp, bottom = if (denseTv) 14.dp else 28.dp)) {
-        CategorySidebar(state.categories, state.selectedCategory, categoryListState, onCategorySelected)
+        CategorySidebar(state.categories, state.selectedCategory, categoryListState, selectedCategoryFocusRequester, onCategorySelected)
         Spacer(modifier = Modifier.width(if (denseTv) 12.dp else 24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Column(verticalArrangement = Arrangement.spacedBy(if (denseTv) 5.dp else 11.dp)) {
@@ -1037,12 +1152,7 @@ private fun ContentBrowserScreen(
                             fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(modifier = Modifier.weight(1f))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(state.totalItemsText.ifBlank { "${state.items.size} titles" }, color = Muted, fontSize = 12.sp)
-                        if (state.hasMore) QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
-                            Text(if (state.loadingMore) "Loading…" else "Load more")
-                        }
-                    }
+                    Text(state.totalItemsText.ifBlank { "${state.items.size} titles" }, color = Muted, fontSize = 12.sp)
                 }
             }
             Spacer(modifier = Modifier.height(if (denseTv) 9.dp else 17.dp))
@@ -1052,9 +1162,7 @@ private fun ContentBrowserScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("No titles in this category", color = White, fontSize = 20.sp)
                         Text(state.emptyMessage, color = Muted, fontSize = 13.sp)
-                        if (state.hasMore) QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
-                            Text(if (state.loadingMore) "Loading…" else "Load more titles")
-                        }
+                        if (state.loadingMore) Text("Loading more titles…", color = Muted, fontSize = 12.sp)
                     }
                 }
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -1068,15 +1176,16 @@ private fun ContentBrowserScreen(
                         horizontalArrangement = Arrangement.spacedBy(if (denseTv) 8.dp else 12.dp),
                         verticalArrangement = Arrangement.spacedBy(if (denseTv) 10.dp else 16.dp)
                     ) {
-                        gridItems(state.items, key = { "${it.streamType}:${it.id}" },
-                            contentType = { if (it.portrait) "poster" else "landscape" }) { media ->
-                            MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
+                        indexedGridItems(state.items, key = { _, item -> "${item.streamType}:${item.id}" },
+                            contentType = { _, item -> if (item.portrait) "poster" else "landscape" }) { index, media ->
+                            MediaCard(
+                                media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true,
+                                onReturnToCategory = if (denseTv && index % columns == 0) ({ focusSelectedCategory() }) else null
+                            )
                         }
-                        if (state.hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        if (state.loadingMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                             Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
-                                    Text(if (state.loadingMore) "Loading…" else "Load more titles")
-                                }
+                                Text("Loading more titles…", color = Muted, fontSize = 12.sp)
                             }
                         }
                     }
@@ -1090,7 +1199,6 @@ private fun ContentBrowserScreen(
 private fun ContentBrowserCompact(
     state: StbPlayLibraryState,
     gridState: LazyGridState,
-    onLoadMore: () -> Unit,
     onCategorySelected: (Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit
@@ -1121,11 +1229,9 @@ private fun ContentBrowserCompact(
                         contentType = { if (it.portrait) "poster" else "landscape" }) { media ->
                         MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
                     }
-                    if (state.hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                    if (state.loadingMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                         Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                            QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
-                                Text(if (state.loadingMore) "Loading…" else "Load more titles")
-                            }
+                            Text("Loading more titles…", color = Muted, fontSize = 12.sp)
                         }
                     }
                 }
@@ -1168,7 +1274,8 @@ private fun MediaCard(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     onRemoveHistory: (() -> Unit)? = null,
-    compactGrid: Boolean = false
+    compactGrid: Boolean = false,
+    onReturnToCategory: (() -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
     val width = if (item.portrait) (if (denseTv) 142.dp else 166.dp) else (if (denseTv) 205.dp else 235.dp)
@@ -1181,7 +1288,12 @@ private fun MediaCard(
     Box(cardModifier) {
       QuestSurface(
         onClick = onClick,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+            if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                onReturnToCategory()
+                true
+            } else false
+        },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
@@ -1410,7 +1522,6 @@ private fun StbPlaySettingsScreen(
             SettingsPage.ABOUT -> item {
                 SettingsSection("About") {
                     Text("STB Play does not provide subscriptions, channels, movies or streams. Use only content sources you are authorized to access.", color = White, fontSize = 13.sp)
-                    Text("Privacy questions and support: github.com/ranveerskh/stbpplayvr/issues", color = Muted, fontSize = 12.sp)
                     WideAction("Share STB Play", onShare, Modifier.fillMaxWidth())
                 }
             }

@@ -22,7 +22,7 @@ class SeekablePlayerView @JvmOverloads constructor(
             else -> 0
         }
         if (direction != 0 && onSeekDirection != null) {
-            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) onSeekDirection?.invoke(direction)
+            if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled) onSeekDirection?.invoke(direction)
             return true
         }
         return super.dispatchKeyEvent(event)
