@@ -239,8 +239,10 @@ class MainActivity : ComponentActivity() {
         }
         settingsManager = SettingsManager(this)
         updateManager = UpdateManager(applicationContext)
-        UpdateCheckWorker.schedule(applicationContext)
-        PortalExpiryReminderWorker.schedule(applicationContext)
+        // Scheduling background work is optional; never let a scheduler failure
+        // prevent the player UI from starting on a device.
+        runCatching { UpdateCheckWorker.schedule(applicationContext) }
+        runCatching { PortalExpiryReminderWorker.schedule(applicationContext) }
         registerUpdateReceiver()
 
         setContent {

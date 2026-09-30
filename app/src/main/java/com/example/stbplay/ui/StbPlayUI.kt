@@ -1988,7 +1988,11 @@ private fun normalizeSearchText(value: String): String = Normalizer
 fun FirstStartDisclaimer(onAccept: () -> Unit) {
     var agreed by remember { mutableStateOf(false) }
     val policyScrollState = rememberScrollState()
+    val policyFocusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(policyFocusRequester) {
+        policyFocusRequester.requestFocus()
+    }
     Box(
         Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp),
         contentAlignment = Alignment.Center
@@ -2002,8 +2006,8 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
                 Text("Privacy and authorized use", color = GoldLight, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                 Text("Review these terms before continuing. You can revisit the privacy controls in Settings.", color = Muted, fontSize = 13.sp)
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().verticalScroll(policyScrollState).focusable()
-                        .questInitialFocus()
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(policyScrollState)
+                        .focusRequester(policyFocusRequester).focusable()
                         .onPreviewKeyEvent { event ->
                             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             when (event.key) {
