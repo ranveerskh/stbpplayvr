@@ -953,6 +953,7 @@ private fun StbPlayRoot(
         emptyMessage = selectedVodCatalog?.error ?: "Try another category or refresh the portal."
     )
     val favouritesState = StbPlayLibraryState(items = favoriteStreams.map(::toUi))
+    val licenseExpiryMillis = platformLicense.expiresAtMillis
     val settingsState = StbPlaySettingsState(
         profiles = profiles,
         activeProfileId = storedSettings.id,
@@ -962,9 +963,9 @@ private fun StbPlayRoot(
         licenseName = if (platformLicense.hasKey) platformLicense.label else "Demo trial",
         licenseExpiryText = when {
             !platformLicense.hasKey -> "No STB Play key activated"
-            platformLicense.expiresAtMillis == null -> "No expiry set"
-            platformLicense.expiresAtMillis <= System.currentTimeMillis() -> "Expired ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(java.util.Date(platformLicense.expiresAtMillis))}"
-            else -> "Expires ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(java.util.Date(platformLicense.expiresAtMillis))} · ${kotlin.math.ceil((platformLicense.expiresAtMillis - System.currentTimeMillis()).toDouble() / TimeUnit.DAYS.toMillis(1)).toInt()} days left"
+            licenseExpiryMillis == null -> "No expiry set"
+            licenseExpiryMillis <= System.currentTimeMillis() -> "Expired ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(java.util.Date(licenseExpiryMillis))}"
+            else -> "Expires ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(java.util.Date(licenseExpiryMillis))} · ${kotlin.math.ceil((licenseExpiryMillis - System.currentTimeMillis()).toDouble() / TimeUnit.DAYS.toMillis(1)).toInt()} days left"
         },
         liveCount = liveStreams.size,
         movieCount = movieStreams.size,
