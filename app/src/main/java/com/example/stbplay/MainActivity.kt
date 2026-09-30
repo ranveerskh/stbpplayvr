@@ -963,8 +963,8 @@ private fun StbPlayRoot(
         licenseExpiryText = when {
             !platformLicense.hasKey -> "No STB Play key activated"
             platformLicense.expiresAtMillis == null -> "No expiry set"
-            platformLicense.expiresAtMillis <= System.currentTimeMillis() -> "Expired ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(java.util.Date(platformLicense.expiresAtMillis))}"
-            else -> "Expires ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(java.util.Date(platformLicense.expiresAtMillis))} · ${kotlin.math.ceil((platformLicense.expiresAtMillis - System.currentTimeMillis()).toDouble() / TimeUnit.DAYS.toMillis(1)).toInt()} days left"
+            platformLicense.expiresAtMillis <= System.currentTimeMillis() -> "Expired ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(java.util.Date(platformLicense.expiresAtMillis))}"
+            else -> "Expires ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(java.util.Date(platformLicense.expiresAtMillis))} · ${kotlin.math.ceil((platformLicense.expiresAtMillis - System.currentTimeMillis()).toDouble() / TimeUnit.DAYS.toMillis(1)).toInt()} days left"
         },
         liveCount = liveStreams.size,
         movieCount = movieStreams.size,
@@ -1450,7 +1450,7 @@ private fun PortalStream.toUiMedia(
 private fun PortalSubscription.toExpiryText(): String? {
     if (unlimited) return "Unlimited subscription"
     val expiry = expiryEpochMillis ?: return null
-    val date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(expiry))
+    val date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(expiry))
     val diff = expiry - System.currentTimeMillis()
     if (diff <= 0L) return "Subscription expired on $date"
     val days = TimeUnit.MILLISECONDS.toDays(diff)
