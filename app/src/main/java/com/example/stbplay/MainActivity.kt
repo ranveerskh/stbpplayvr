@@ -51,6 +51,7 @@ import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.data.UpdateInfo
 import com.example.stbplay.data.UpdateCheckWorker
 import com.example.stbplay.data.UpdateManager
+import com.example.stbplay.data.PlatformLicenseClient
 import com.example.stbplay.data.model.PortalCategory
 import com.example.stbplay.data.model.PortalEpisode
 import com.example.stbplay.data.model.PortalQualityOption
@@ -115,6 +116,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var updateManager: UpdateManager
     private var openUpdates by mutableStateOf(false)
     private var pendingUpdateDownloadId = -1L
+    private var observedPackageUpdateTime = 0L
     private var lastControllerDirection = 0
     private var lastControllerDirectionAt = 0L
     private var controllerTriggerHeld = false
@@ -229,6 +231,7 @@ class MainActivity : ComponentActivity() {
     @AndroidXOptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        observedPackageUpdateTime = installedPackageUpdateTime()
         openUpdates = intent?.getBooleanExtra("stb_open_updates", false) == true
         if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) {
             runCatching { Cast.getSingletonInstance(this).initialize() }
@@ -258,11 +261,25 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Some Android installers return to the old task without recreating it.
+        // Recreate only when this package was actually replaced, so Compose and
+        // the portal session are rebuilt automatically after an in-app update.
+        val currentPackageUpdateTime = installedPackageUpdateTime()
+        if (observedPackageUpdateTime > 0L && currentPackageUpdateTime > observedPackageUpdateTime) {
+            observedPackageUpdateTime = currentPackageUpdateTime
+            recreate()
+            return
+        }
+        if (currentPackageUpdateTime > 0L) observedPackageUpdateTime = currentPackageUpdateTime
         if (::updateManager.isInitialized) {
             val pending = updateManager.pendingDownloadId()
             if (pending > 0) runCatching { updateManager.openInstaller(pending) }
         }
     }
+
+    private fun installedPackageUpdateTime(): Long = runCatching {
+        packageManager.getPackageInfo(packageName, 0).lastUpdateTime
+    }.getOrDefault(0L)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -314,6 +331,7 @@ private fun StbPlayRoot(
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
+    val platformLicenseClient = remember(appContext) { PlatformLicenseClient(appContext) }
     val catalogCache = remember(appContext) { CatalogCacheStore(appContext) }
     val contentGridState = rememberLazyGridState()
     val liveChannelListState = rememberLazyListState()
@@ -362,11 +380,14 @@ private fun StbPlayRoot(
     var movieCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
     var seriesCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
     var subscription by remember { mutableStateOf(PortalSubscription()) }
+    var licenseStatus by remember { mutableStateOf("No key activated") }
+    var licenseBusy by remember { mutableStateOf(false) }
 
     var selectedTab by remember { mutableStateOf(StbPlayTab.HOME) }
     var liveCategoryIndex by remember { mutableStateOf(0) }
     var contentCategoryIndex by remember { mutableStateOf(0) }
     var focusedLiveChannelId by remember { mutableStateOf<String?>(null) }
+    var focusedContentId by remember { mutableStateOf<String?>(null) }
     var selectedMovie by remember { mutableStateOf<PortalStream?>(null) }
     var selectedSeries by remember { mutableStateOf<PortalStream?>(null) }
     var qualityContext by remember { mutableStateOf<QualityContext?>(null) }
@@ -729,6 +750,9 @@ private fun StbPlayRoot(
             return
         }
         val stream = allStreamFor(media) ?: return
+        if (selectedTab == StbPlayTab.CONTENT && stream.streamType != "live") {
+            focusedContentId = stream.id
+        }
         categoryPreloadJob?.cancel()
         val categoryIndex = if (selectedTab == StbPlayTab.LIVE) liveCategoryIndex else contentCategoryIndex
         val category = when (selectedTab) {
@@ -916,7 +940,7 @@ private fun StbPlayRoot(
             ?: "${categoryVod.size} titles loaded",
         hasMore = selectedVodCatalog?.hasMore == true,
         loadingMore = selectedVodCatalog?.loading == true,
-        emptyMessage = selectedVodCatalog?.error ?: "Try another category or load more titles."
+        emptyMessage = selectedVodCatalog?.error ?: "Try another category or refresh the portal."
     )
     val favouritesState = StbPlayLibraryState(items = favoriteStreams.map(::toUi))
     val settingsState = StbPlaySettingsState(
@@ -936,8 +960,31 @@ private fun StbPlayRoot(
         analyticsEnabled = analyticsEnabled,
         lastRefreshText = lastRefreshAt.toDateTimeText(),
         updateText = updateText,
-        updateAvailableVersion = updateInfo?.version
+        updateAvailableVersion = updateInfo?.version,
+        licenseStatus = licenseStatus,
+        licenseBusy = licenseBusy
     )
+
+    LaunchedEffect(portalReady, storedSettings.url) {
+        if (portalReady) {
+            platformLicenseClient.heartbeat(storedSettings.url)?.let { licenseStatus = it }
+        }
+    }
+
+    fun activatePlatformKey(key: String) {
+        if (licenseBusy) return
+        licenseBusy = true
+        licenseStatus = "Checking key…"
+        scope.launch {
+            try {
+                licenseStatus = platformLicenseClient.activate(key, storedSettings.url)
+            } catch (error: Exception) {
+                licenseStatus = error.message ?: "Could not verify this key. Try again."
+            } finally {
+                licenseBusy = false
+            }
+        }
+    }
 
     fun loadVodCategory(categoryId: String?) {
         val key = categoryId ?: "all"
@@ -998,7 +1045,10 @@ private fun StbPlayRoot(
                 uiLiveCategories.getOrNull(index)?.let(::loadLiveCategory)
             }
             StbPlayTab.CONTENT -> {
-                if (contentCategoryIndex != index) scope.launch { contentGridState.scrollToItem(0) }
+                if (contentCategoryIndex != index) {
+                    focusedContentId = null
+                    scope.launch { contentGridState.scrollToItem(0) }
+                }
                 contentCategoryIndex = index
                 contentCategories.getOrNull(index)?.id
                     ?.takeIf { it != "all" && it !in vodCatalogs }
@@ -1169,9 +1219,11 @@ private fun StbPlayRoot(
                     contentState = contentState,
                     favouritesState = favouritesState,
                     settingsState = settingsState,
+                    onActivateLicense = ::activatePlatformKey,
                     selectedTab = selectedTab,
                     liveChannelListState = liveChannelListState,
                     focusedLiveChannelId = focusedLiveChannelId,
+                    focusedContentId = focusedContentId,
                     contentGridState = contentGridState,
                     onTabSelected = { tab ->
                         if (tab != selectedTab) {

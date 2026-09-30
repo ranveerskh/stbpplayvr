@@ -32,6 +32,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -42,6 +45,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.itemsIndexed as indexedGridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -76,7 +80,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,6 +92,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -122,6 +133,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collect
 import java.text.Normalizer
 import java.util.PriorityQueue
 import java.util.Locale
@@ -244,7 +256,9 @@ data class StbPlaySettingsState(
     val analyticsEnabled: Boolean = true,
     val lastRefreshText: String = "Not refreshed yet",
     val updateText: String = "Check whether a newer STB Play version is available.",
-    val updateAvailableVersion: String? = null
+    val updateAvailableVersion: String? = null,
+    val licenseStatus: String = "No key activated",
+    val licenseBusy: Boolean = false
 )
 
 @Composable
@@ -254,9 +268,11 @@ fun StbPlayApp(
     contentState: StbPlayLibraryState,
     favouritesState: StbPlayLibraryState,
     settingsState: StbPlaySettingsState,
+    onActivateLicense: (String) -> Unit,
     selectedTab: StbPlayTab,
     liveChannelListState: LazyListState,
     focusedLiveChannelId: String?,
+    focusedContentId: String?,
     contentGridState: LazyGridState,
     onTabSelected: (StbPlayTab) -> Unit,
     onLoadMoreContent: () -> Unit,
@@ -300,19 +316,21 @@ fun StbPlayApp(
     }
 
     if (searchOpen) {
-        StbPlaySearchScreen(
-            catalog = searchCatalog,
-            searchRemote = searchRemote,
-            onSearchResults = onSearchResults,
-            toUi = searchMedia,
-            scope = selectedTab,
-            hasMore = selectedTab == StbPlayTab.CONTENT && contentState.hasMore,
-            loadingMore = contentState.loadingMore,
-            onLoadMore = onLoadMoreContent,
-            onMediaClick = { media -> searchOpen = false; onSearchVisibilityChanged(false); onMediaClick(media) },
-            onToggleFavorite = onToggleFavorite,
-            onBack = { searchOpen = false; onSearchVisibilityChanged(false) }
-        )
+        Box(Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
+            StbPlaySearchScreen(
+                catalog = searchCatalog,
+                searchRemote = searchRemote,
+                onSearchResults = onSearchResults,
+                toUi = searchMedia,
+                scope = selectedTab,
+                hasMore = selectedTab == StbPlayTab.CONTENT && contentState.hasMore,
+                loadingMore = contentState.loadingMore,
+                onLoadMore = onLoadMoreContent,
+                onMediaClick = { media -> searchOpen = false; onSearchVisibilityChanged(false); onMediaClick(media) },
+                onToggleFavorite = onToggleFavorite,
+                onBack = { searchOpen = false; onSearchVisibilityChanged(false) }
+            )
+        }
         return
     }
 
@@ -340,6 +358,7 @@ fun StbPlayApp(
                 StbPlayTab.CONTENT -> ContentBrowserScreen(
                     state = contentState,
                     gridState = contentGridState,
+                    focusedContentId = focusedContentId,
                     onLoadMore = onLoadMoreContent,
                     onCategorySelected = { onCategorySelected(StbPlayTab.CONTENT, it) },
                     onMediaClick = onMediaClick,
@@ -352,6 +371,7 @@ fun StbPlayApp(
                 )
                 StbPlayTab.SETTINGS -> StbPlaySettingsScreen(
                     state = settingsState,
+                    onActivateLicense = onActivateLicense,
                     onRefresh = onRefresh,
                     onClearCache = onClearCache,
                     onClearHistory = onClearHistory,
@@ -373,7 +393,7 @@ fun StbPlayApp(
             }
     }
     if (compactLayout) {
-        Column(modifier = Modifier.fillMaxSize().background(Navy)) {
+        Column(modifier = Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
             StbPlayHeader(
                 selectedTab = selectedTab,
                 onSearchClick = { searchOpen = true; onSearchVisibilityChanged(true) },
@@ -383,10 +403,10 @@ fun StbPlayApp(
             PhoneBottomNavigation(selectedTab, onTabSelected)
         }
     } else {
-        Row(modifier = Modifier.fillMaxSize().background(Navy)) {
+        Row(modifier = Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
             StbPlayNavigationRail(
                 selectedTab = selectedTab,
-                collapsed = railCollapsed || selectedTab == StbPlayTab.CONTENT,
+                collapsed = railCollapsed,
                 compactTv = tvLayout,
                 onToggle = { if (selectedTab != StbPlayTab.CONTENT) railCollapsed = !railCollapsed },
                 onTabSelected = onTabSelected
@@ -507,10 +527,12 @@ private fun StbPlayNavigationRail(
 private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compactTv: Boolean, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     var showFocusLabel by remember { mutableStateOf(false) }
-    val initialFocus = if (selected) Modifier.questInitialFocus() else Modifier
+    // On TV, the selected navigation item and the first page control were both
+    // requesting initial focus. Let the page own initial focus on TV.
+    val initialFocus = if (selected && !compactTv) Modifier.questInitialFocus() else Modifier
     LaunchedEffect(collapsed, showFocusLabel) {
         if (collapsed && showFocusLabel) {
-            delay(1400)
+            delay(2_000)
             showFocusLabel = false
         }
     }
@@ -568,6 +590,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compac
                     .align(Alignment.CenterStart)
                     .offset(x = 68.dp)
                     .zIndex(3f)
+                    .widthIn(min = 100.dp)
                     .background(PanelSoft, RoundedCornerShape(8.dp))
                     .border(1.dp, Gold.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -652,7 +675,7 @@ private fun StbPlayHomeScreen(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = if (compact || denseTv) 14.dp else 30.dp, end = if (compact || denseTv) 14.dp else 30.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(if (compact || denseTv) 14.dp else 25.dp)
+        verticalArrangement = Arrangement.spacedBy(if (compact || denseTv) 11.dp else 22.dp)
     ) {
         state.portalWarning?.let { warning ->
             item { PortalConnectionWarning(warning, onRefresh, onEditPortal) }
@@ -708,54 +731,50 @@ private fun RotatingHero(
     QuestSurface(
         onClick = { onMediaClick(item) },
         modifier = Modifier
+            .then(if (denseTv) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth()
-            .height(if (isCompactAndroidLayout()) 250.dp else if (denseTv) 220.dp else 330.dp)
+        .height(if (isCompactAndroidLayout()) 205.dp else if (denseTv) 230.dp else 290.dp)
             .onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
     ) {
-        Box(Modifier.fillMaxSize()) {
-            ArtworkImage(
-                imageUrl = item.imageUrl,
-                title = item.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                requestHeaders = item.imageHeaders,
-                fallbackText = null
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(listOf(Color(0xF8070707), Color(0xB8070707), Color.Transparent))
-                )
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(listOf(Color.Transparent, Color(0xE8070707)))
-                )
-            )
+        Row(Modifier.fillMaxSize().padding(if (isCompactAndroidLayout() || denseTv) 10.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(
-                modifier = Modifier.align(Alignment.BottomStart).padding(if (isCompactAndroidLayout() || denseTv) 16.dp else 28.dp).widthIn(max = 590.dp),
-                verticalArrangement = Arrangement.spacedBy(if (denseTv) 5.dp else 8.dp)
+                modifier = Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp, horizontal = if (isCompactAndroidLayout()) 5.dp else 12.dp),
+                verticalArrangement = Arrangement.spacedBy(if (isCompactAndroidLayout() || denseTv) 5.dp else 8.dp)
             ) {
-                Text(item.badge ?: item.streamType.uppercase(), color = Color(0xFFF6D896), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text(item.title, color = PosterWhite, fontSize = if (isCompactAndroidLayout() || denseTv) 22.sp else 30.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.badge ?: item.streamType.uppercase(), color = Color(0xFFF6D896), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(item.title, color = PosterWhite, fontSize = if (isCompactAndroidLayout() || denseTv) 20.sp else 28.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 item.description?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, color = Color(0xFFD3DBE6), fontSize = 13.sp, maxLines = if (denseTv) 1 else 2, overflow = TextOverflow.Ellipsis)
+                    Text(it, color = Color(0xFFD3DBE6), fontSize = 12.sp, maxLines = if (isCompactAndroidLayout()) 2 else 3, overflow = TextOverflow.Ellipsis)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    QuestButton(
+                Spacer(Modifier.weight(1f))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!denseTv) QuestButton(
                         onClick = { onMediaClick(item) },
+                        modifier = Modifier.height(38.dp),
                         colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)
-                    ) { Text("Play now", fontWeight = FontWeight.Bold) }
-                    HeaderAction(
-                        if (item.isFavorite) "Saved" else "Add to favourites",
-                        onClick = { onToggleFavorite(item) }
-                    )
+                    ) { Text("Play", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    else Text("Select to play", color = Muted, fontSize = 11.sp)
+                    FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
                 }
             }
-            if (heroes.size > 1) {
-                Text("${index + 1} / ${heroes.size}", color = White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopEnd).padding(18.dp))
+            Box(
+                Modifier.width(if (isCompactAndroidLayout()) 112.dp else if (denseTv) 155.dp else 190.dp)
+                    .fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(Color(0xFF101319))
+            ) {
+                ArtworkImage(
+                    imageUrl = item.imageUrl,
+                    title = item.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    requestHeaders = item.imageHeaders,
+                    fallbackText = null
+                )
+                if (heroes.size > 1) {
+                    Text("${index + 1} / ${heroes.size}", color = White, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).padding(7.dp))
+                }
             }
         }
     }
@@ -833,8 +852,35 @@ private fun LiveTvScreen(
     val categoryListState = rememberLazyListState(
         initialFirstVisibleItemIndex = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
     )
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
+    val categoryScope = rememberCoroutineScope()
+    val initialCategoryFocusRequested = remember { mutableStateOf(false) }
+    LaunchedEffect(state.categories.size) {
+        if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
+            categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+            withFrameNanos { }
+            if (focusedChannelId.isNullOrBlank() || state.items.none { it.id == focusedChannelId }) {
+                selectedCategoryFocusRequester.requestFocus()
+            }
+            initialCategoryFocusRequested.value = true
+        }
+    }
+    LaunchedEffect(state.selectedCategory, state.categories.size) {
+        if (state.categories.isNotEmpty()) {
+            categoryListState.animateScrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+        }
+    }
+    fun focusSelectedCategory() {
+        if (state.categories.isEmpty()) return
+        val selected = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
+        categoryScope.launch {
+            if (state.categories.isNotEmpty()) categoryListState.scrollToItem(selected)
+            withFrameNanos { }
+            selectedCategoryFocusRequester.requestFocus()
+        }
+    }
     Row(modifier = Modifier.fillMaxSize().padding(start = if (denseTv) 14.dp else 24.dp, end = if (denseTv) 16.dp else 30.dp, bottom = if (denseTv) 14.dp else 28.dp)) {
-        CategorySidebar(state.categories, state.selectedCategory, categoryListState, onCategorySelected)
+        CategorySidebar(state.categories, state.selectedCategory, categoryListState, selectedCategoryFocusRequester, onCategorySelected)
         Spacer(modifier = Modifier.width(if (denseTv) 12.dp else 24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -860,7 +906,8 @@ private fun LiveTvScreen(
                             channel,
                             { onMediaClick(channel) },
                             { onToggleFavorite(channel) },
-                            initialFocus = channel.id == initialChannelFocusId
+                            initialFocus = channel.id == initialChannelFocusId,
+                            onReturnToCategory = if (denseTv) ({ focusSelectedCategory() }) else null
                         )
                     }
                 }
@@ -870,7 +917,13 @@ private fun LiveTvScreen(
 }
 
 @Composable
-private fun CategorySidebar(categories: List<UiCategory>, selected: Int, listState: LazyListState, onSelected: (Int) -> Unit) {
+private fun CategorySidebar(
+    categories: List<UiCategory>,
+    selected: Int,
+    listState: LazyListState,
+    selectedFocusRequester: FocusRequester,
+    onSelected: (Int) -> Unit
+) {
     val denseTv = isTelevisionLayout()
     Column(
         modifier = Modifier.width(if (denseTv) 170.dp else 210.dp).fillMaxHeight()
@@ -882,7 +935,7 @@ private fun CategorySidebar(categories: List<UiCategory>, selected: Int, listSta
         Text("Categories", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(if (denseTv) 2.dp else 6.dp)) {
             indexedColumnItems(categories, key = { _, category -> category.id }, contentType = { _, _ -> "category" }) { index, category ->
-                CategorySidebarItem(category, index == selected) { onSelected(index) }
+                CategorySidebarItem(category, index == selected, if (index == selected) selectedFocusRequester else null) { onSelected(index) }
             }
         }
     }
@@ -940,12 +993,12 @@ private fun CompactCategorySelector(categories: List<UiCategory>, selected: Int,
 }
 
 @Composable
-private fun CategorySidebarItem(category: UiCategory, selected: Boolean, onClick: () -> Unit) {
+private fun CategorySidebarItem(category: UiCategory, selected: Boolean, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
     val denseTv = isTelevisionLayout()
     var focused by remember { mutableStateOf(false) }
     QuestSurface(
         onClick = onClick,
-        modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier)
+        modifier = Modifier.then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
             .fillMaxWidth().height(if (denseTv) 48.dp else 58.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
@@ -970,13 +1023,20 @@ private fun LiveChannelRow(
     item: UiMedia,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
-    initialFocus: Boolean = false
+    initialFocus: Boolean = false,
+    onReturnToCategory: (() -> Unit)? = null
 ) {
     Row(Modifier.fillMaxWidth().height(78.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuestSurface(
             onClick = onClick,
-            modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).weight(1f).fillMaxHeight(),
+            modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
+                .onPreviewKeyEvent { event ->
+                    if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                        onReturnToCategory()
+                        true
+                    } else false
+                }.weight(1f).fillMaxHeight(),
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(13.dp)),
             colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Color(0xFF292929)),
             border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
@@ -1007,26 +1067,108 @@ private fun LiveChannelRow(
 }
 
 @Composable
+private fun AutoLoadMoreForGrid(
+    gridState: LazyGridState,
+    itemCount: Int,
+    prefetchDistance: Int,
+    hasMore: Boolean,
+    loading: Boolean,
+    resetKey: String,
+    onLoadMore: () -> Unit
+) {
+    val latestItemCount by rememberUpdatedState(itemCount)
+    val latestPrefetchDistance by rememberUpdatedState(prefetchDistance)
+    val latestHasMore by rememberUpdatedState(hasMore)
+    val latestLoading by rememberUpdatedState(loading)
+    val loadMore by rememberUpdatedState(onLoadMore)
+    var lastRequestedItemCount by remember(gridState, resetKey) { mutableIntStateOf(-1) }
+    var lastRequestedVisibleIndex by remember(gridState, resetKey) { mutableIntStateOf(-1) }
+    var requestInFlight by remember(gridState, resetKey) { mutableStateOf(false) }
+
+    LaunchedEffect(gridState, resetKey) {
+        snapshotFlow {
+            val itemCountNow = latestItemCount
+            val lastVisibleIndex = gridState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.index } ?: -1
+            val nearEnd = itemCountNow == 0 ||
+                lastVisibleIndex >= (itemCountNow - latestPrefetchDistance).coerceAtLeast(0)
+            Triple(lastVisibleIndex, itemCountNow, latestHasMore && !latestLoading && nearEnd)
+        }.collect { (lastVisibleIndex, itemCountNow, shouldLoad) ->
+            if (latestLoading) {
+                requestInFlight = true
+                return@collect
+            }
+            val pageCompleted = requestInFlight
+            val newContentOrScroll = itemCountNow > lastRequestedItemCount ||
+                lastVisibleIndex > lastRequestedVisibleIndex || pageCompleted
+            if (shouldLoad && newContentOrScroll) {
+                lastRequestedItemCount = itemCountNow
+                lastRequestedVisibleIndex = lastVisibleIndex
+                requestInFlight = true
+                loadMore()
+            }
+        }
+    }
+}
+
+@Composable
 private fun ContentBrowserScreen(
     state: StbPlayLibraryState,
     gridState: LazyGridState,
+    focusedContentId: String?,
     onLoadMore: () -> Unit,
     onCategorySelected: (Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit
 ) {
+    val selectedCategoryKey = state.categories.getOrNull(state.selectedCategory)?.id ?: state.selectedCategory.toString()
+    AutoLoadMoreForGrid(
+        gridState = gridState,
+        itemCount = state.items.size,
+        prefetchDistance = if (isTelevisionLayout()) 14 else 10,
+        hasMore = state.hasMore,
+        loading = state.loading || state.loadingMore,
+        resetKey = selectedCategoryKey,
+        onLoadMore = onLoadMore
+    )
     if (isCompactAndroidLayout()) {
-        ContentBrowserCompact(state, gridState, onLoadMore, onCategorySelected, onMediaClick, onToggleFavorite)
+        ContentBrowserCompact(state, gridState, focusedContentId, onCategorySelected, onMediaClick, onToggleFavorite)
         return
     }
     val denseTv = isTelevisionLayout()
-    val categoryListState = rememberLazyListState(
-        initialFirstVisibleItemIndex = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
-    )
-    // Paging is user initiated. Auto-prefetch here re-fired after each page while
-    // the grid remained near its end, making Adult Only's Load More control flash.
+    val categoryListState = rememberLazyListState()
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
+    val categoryScope = rememberCoroutineScope()
+    val initialCategoryFocusRequested = remember { mutableStateOf(false) }
+    LaunchedEffect(state.categories.size) {
+        if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
+            categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+            withFrameNanos { }
+            if (focusedContentId.isNullOrBlank() || state.items.none { it.id == focusedContentId }) {
+                selectedCategoryFocusRequester.requestFocus()
+            }
+            initialCategoryFocusRequested.value = true
+        }
+    }
+    LaunchedEffect(state.selectedCategory, state.categories.size) {
+        if (state.categories.isNotEmpty()) {
+            categoryListState.animateScrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+        }
+    }
+    LaunchedEffect(selectedCategoryKey, focusedContentId) {
+        val restoreIndex = focusedContentId?.let { id -> state.items.indexOfFirst { it.id == id } } ?: -1
+        gridState.scrollToItem(restoreIndex.takeIf { it >= 0 } ?: 0)
+    }
+    fun focusSelectedCategory() {
+        if (state.categories.isEmpty()) return
+        val selected = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
+        categoryScope.launch {
+            if (state.categories.isNotEmpty()) categoryListState.scrollToItem(selected)
+            withFrameNanos { }
+            selectedCategoryFocusRequester.requestFocus()
+        }
+    }
     Row(modifier = Modifier.fillMaxSize().padding(start = if (denseTv) 14.dp else 24.dp, end = if (denseTv) 16.dp else 30.dp, bottom = if (denseTv) 14.dp else 28.dp)) {
-        CategorySidebar(state.categories, state.selectedCategory, categoryListState, onCategorySelected)
+        CategorySidebar(state.categories, state.selectedCategory, categoryListState, selectedCategoryFocusRequester, onCategorySelected)
         Spacer(modifier = Modifier.width(if (denseTv) 12.dp else 24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Column(verticalArrangement = Arrangement.spacedBy(if (denseTv) 5.dp else 11.dp)) {
@@ -1037,12 +1179,7 @@ private fun ContentBrowserScreen(
                             fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(modifier = Modifier.weight(1f))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(state.totalItemsText.ifBlank { "${state.items.size} titles" }, color = Muted, fontSize = 12.sp)
-                        if (state.hasMore) QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
-                            Text(if (state.loadingMore) "Loading…" else "Load more")
-                        }
-                    }
+                    Text(state.totalItemsText.ifBlank { "${state.items.size} titles" }, color = Muted, fontSize = 12.sp)
                 }
             }
             Spacer(modifier = Modifier.height(if (denseTv) 9.dp else 17.dp))
@@ -1052,9 +1189,7 @@ private fun ContentBrowserScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("No titles in this category", color = White, fontSize = 20.sp)
                         Text(state.emptyMessage, color = Muted, fontSize = 13.sp)
-                        if (state.hasMore) QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
-                            Text(if (state.loadingMore) "Loading…" else "Load more titles")
-                        }
+                        if (state.loadingMore) Text("Loading more titles…", color = Muted, fontSize = 12.sp)
                     }
                 }
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -1068,15 +1203,17 @@ private fun ContentBrowserScreen(
                         horizontalArrangement = Arrangement.spacedBy(if (denseTv) 8.dp else 12.dp),
                         verticalArrangement = Arrangement.spacedBy(if (denseTv) 10.dp else 16.dp)
                     ) {
-                        gridItems(state.items, key = { "${it.streamType}:${it.id}" },
-                            contentType = { if (it.portrait) "poster" else "landscape" }) { media ->
-                            MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
+                        indexedGridItems(state.items, key = { _, item -> "${item.streamType}:${item.id}" },
+                            contentType = { _, item -> if (item.portrait) "poster" else "landscape" }) { index, media ->
+                            MediaCard(
+                                media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true,
+                                initialFocus = media.id == focusedContentId,
+                                onReturnToCategory = if (denseTv && index % columns == 0) ({ focusSelectedCategory() }) else null
+                            )
                         }
-                        if (state.hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        if (state.loadingMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                             Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
-                                    Text(if (state.loadingMore) "Loading…" else "Load more titles")
-                                }
+                                Text("Loading more titles…", color = Muted, fontSize = 12.sp)
                             }
                         }
                     }
@@ -1090,7 +1227,7 @@ private fun ContentBrowserScreen(
 private fun ContentBrowserCompact(
     state: StbPlayLibraryState,
     gridState: LazyGridState,
-    onLoadMore: () -> Unit,
+    focusedContentId: String?,
     onCategorySelected: (Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit
@@ -1119,13 +1256,11 @@ private fun ContentBrowserCompact(
                 ) {
                     gridItems(state.items, key = { "${it.streamType}:${it.id}" },
                         contentType = { if (it.portrait) "poster" else "landscape" }) { media ->
-                        MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
+                        MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true, initialFocus = media.id == focusedContentId)
                     }
-                    if (state.hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                    if (state.loadingMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                         Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                            QuestButton(onClick = onLoadMore, enabled = !state.loadingMore) {
-                                Text(if (state.loadingMore) "Loading…" else "Load more titles")
-                            }
+                            Text("Loading more titles…", color = Muted, fontSize = 12.sp)
                         }
                     }
                 }
@@ -1168,11 +1303,14 @@ private fun MediaCard(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     onRemoveHistory: (() -> Unit)? = null,
-    compactGrid: Boolean = false
+    compactGrid: Boolean = false,
+    initialFocus: Boolean = false,
+    onReturnToCategory: (() -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
-    val width = if (item.portrait) (if (denseTv) 142.dp else 166.dp) else (if (denseTv) 205.dp else 235.dp)
-    val height = if (item.portrait) (if (denseTv) 202.dp else 235.dp) else (if (denseTv) 120.dp else 138.dp)
+    val compact = isCompactAndroidLayout()
+    val width = if (item.portrait) (if (denseTv) 142.dp else if (compact) 132.dp else 166.dp) else (if (denseTv) 205.dp else if (compact) 190.dp else 235.dp)
+    val height = if (item.portrait) (if (denseTv) 202.dp else if (compact) 190.dp else 235.dp) else (if (denseTv) 120.dp else if (compact) 112.dp else 138.dp)
     val cardModifier = if (compactGrid) {
         Modifier.fillMaxWidth().aspectRatio(width.value / height.value)
     } else {
@@ -1181,7 +1319,13 @@ private fun MediaCard(
     Box(cardModifier) {
       QuestSurface(
         onClick = onClick,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.then(if (initialFocus && denseTv) Modifier.questInitialFocus() else Modifier)
+            .fillMaxSize().onPreviewKeyEvent { event ->
+            if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                onReturnToCategory()
+                true
+            } else false
+        },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
@@ -1227,7 +1371,7 @@ private fun MediaCard(
           item.isFavorite,
           onToggleFavorite,
           Modifier.align(Alignment.TopEnd).padding(if (compactGrid) 4.dp else 6.dp),
-          if (compactGrid) 34.dp else 40.dp
+          if (compactGrid || compact) 34.dp else 40.dp
       )
     }
 }
@@ -1256,6 +1400,7 @@ private fun ProgressBar(progress: Float, modifier: Modifier = Modifier) {
 @Composable
 private fun StbPlaySettingsScreen(
     state: StbPlaySettingsState,
+    onActivateLicense: (String) -> Unit,
     onRefresh: () -> Unit,
     onClearCache: () -> Unit,
     onClearHistory: () -> Unit,
@@ -1329,7 +1474,7 @@ private fun StbPlaySettingsScreen(
                     }
                 }
             }
-            SettingsPage.SUBSCRIPTION -> item { SubscriptionCard(state) }
+            SettingsPage.SUBSCRIPTION -> item { SubscriptionCard(state, onActivateLicense) }
             SettingsPage.SOURCES -> item {
                 SettingsSection("Content sources") {
                     if (state.profiles.isEmpty()) Text("No portals saved yet.", color = Muted, fontSize = 13.sp)
@@ -1410,7 +1555,6 @@ private fun StbPlaySettingsScreen(
             SettingsPage.ABOUT -> item {
                 SettingsSection("About") {
                     Text("STB Play does not provide subscriptions, channels, movies or streams. Use only content sources you are authorized to access.", color = White, fontSize = 13.sp)
-                    Text("Privacy questions and support: github.com/ranveerskh/stbpplayvr/issues", color = Muted, fontSize = 12.sp)
                     WideAction("Share STB Play", onShare, Modifier.fillMaxWidth())
                 }
             }
@@ -1458,15 +1602,79 @@ private fun SettingsMenuRow(icon: ImageVector, title: String, subtitle: String? 
 }
 
 @Composable
-private fun SubscriptionCard(state: StbPlaySettingsState) {
-    Column(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(PanelSoft).padding(19.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        Text("Subscription", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        Text(state.subscriptionPlan, color = White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        val details = listOf(state.subscriptionStatus, state.expiryText).filter { it.isNotBlank() }.joinToString(" · ")
-        Text(details.ifBlank { "Subscription details are reported by the portal when available." }, color = Muted, fontSize = 12.sp)
+private fun SubscriptionCard(state: StbPlaySettingsState, onActivateLicense: (String) -> Unit) {
+    var showUpgradeDialog by remember { mutableStateOf(false) }
+    var activationKey by remember { mutableStateOf("") }
+    var activationMessage by remember { mutableStateOf("") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SettingsSection("STB Play demo trial") {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Free 1-month trial", color = White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Text("ACTIVE", color = Good, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(
+                "Demo access remains available alongside optional key activation. Verification problems will not block portal playback.",
+                color = Muted, fontSize = 12.sp
+            )
+            Text("License: ${state.licenseStatus}", color = if (state.licenseBusy) GoldLight else Muted, fontSize = 12.sp)
+            WideAction("Upgrade / enter activation key", {
+                activationMessage = ""
+                showUpgradeDialog = true
+            }, Modifier.fillMaxWidth())
+        }
+
+        SettingsSection("Portal subscription") {
+            Text(state.subscriptionPlan, color = White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            val details = listOf(state.subscriptionStatus, state.expiryText).filter { it.isNotBlank() }.joinToString(" · ")
+            Text(details.ifBlank { "Subscription details are reported by the portal when available." }, color = Muted, fontSize = 12.sp)
+        }
+    }
+
+    if (showUpgradeDialog) Dialog(onDismissRequest = { showUpgradeDialog = false }) {
+        Surface(
+            modifier = Modifier.widthIn(min = 320.dp, max = 520.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = SurfaceDefaults.colors(containerColor = Panel)
+        ) {
+            Column(
+                Modifier.padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Upgrade STB Play", color = GoldLight, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "Enter a key generated by your STB Play website. Activation is optional; the demo trial and portal playback stay available if verification is offline.",
+                    color = White, fontSize = 13.sp
+                )
+                BasicTextField(
+                    value = activationKey,
+                    onValueChange = { activationKey = it.take(80); activationMessage = "" },
+                    modifier = Modifier.fillMaxWidth().height(50.dp).questInitialFocus().background(Navy, RoundedCornerShape(9.dp))
+                        .border(1.dp, Gold.copy(alpha = 0.65f), RoundedCornerShape(9.dp)).padding(horizontal = 13.dp, vertical = 15.dp),
+                    singleLine = true,
+                    textStyle = TextStyle(color = White, fontSize = 14.sp),
+                    decorationBox = { inner ->
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                            if (activationKey.isBlank()) Text("Activation key", color = Muted, fontSize = 14.sp)
+                            inner()
+                        }
+                    }
+                )
+                if (activationMessage.isNotBlank()) Text(activationMessage, color = GoldLight, fontSize = 12.sp)
+                Text("License status: ${state.licenseStatus}", color = Muted, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PrimaryAction(if (state.licenseBusy) "Checking…" else "Activate key") {
+                        if (state.licenseBusy) return@PrimaryAction
+                        if (activationKey.isBlank()) activationMessage = "Enter your activation key first."
+                        else {
+                            activationMessage = ""
+                            onActivateLicense(activationKey)
+                        }
+                    }
+                    WideAction("Close", { showUpgradeDialog = false })
+                }
+            }
+        }
     }
 }
 
@@ -1511,7 +1719,12 @@ private fun PreferenceRow(title: String, value: String, onClick: () -> Unit) {
         colors = ClickableSurfaceDefaults.colors(containerColor = Navy, focusedContainerColor = Gold.copy(alpha = 0.18f)),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
     ) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (isCompactAndroidLayout()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(value, color = GoldLight, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+        } else Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Text(value, color = GoldLight, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

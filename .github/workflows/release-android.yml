@@ -61,5 +61,5 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --clobber
           else
-            gh release create "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --target "$GITHUB_SHA" --title "STB Play ${RELEASE_TAG#v}" --notes "Adult mode remains available. Returning users open Home directly while the portal reconnects; portal and playback recovery messages are clearer, and Back navigation is easier to use. Install within 14 days of publication."
+            gh release create "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --target "$GITHUB_SHA" --title "STB Play ${RELEASE_TAG#v}" --notes "This update improves browsing, remote focus, settings layout, and player controls across supported devices."
           fi
