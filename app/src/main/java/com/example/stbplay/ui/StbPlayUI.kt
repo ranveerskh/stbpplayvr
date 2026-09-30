@@ -32,6 +32,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -309,19 +312,21 @@ fun StbPlayApp(
     }
 
     if (searchOpen) {
-        StbPlaySearchScreen(
-            catalog = searchCatalog,
-            searchRemote = searchRemote,
-            onSearchResults = onSearchResults,
-            toUi = searchMedia,
-            scope = selectedTab,
-            hasMore = selectedTab == StbPlayTab.CONTENT && contentState.hasMore,
-            loadingMore = contentState.loadingMore,
-            onLoadMore = onLoadMoreContent,
-            onMediaClick = { media -> searchOpen = false; onSearchVisibilityChanged(false); onMediaClick(media) },
-            onToggleFavorite = onToggleFavorite,
-            onBack = { searchOpen = false; onSearchVisibilityChanged(false) }
-        )
+        Box(Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
+            StbPlaySearchScreen(
+                catalog = searchCatalog,
+                searchRemote = searchRemote,
+                onSearchResults = onSearchResults,
+                toUi = searchMedia,
+                scope = selectedTab,
+                hasMore = selectedTab == StbPlayTab.CONTENT && contentState.hasMore,
+                loadingMore = contentState.loadingMore,
+                onLoadMore = onLoadMoreContent,
+                onMediaClick = { media -> searchOpen = false; onSearchVisibilityChanged(false); onMediaClick(media) },
+                onToggleFavorite = onToggleFavorite,
+                onBack = { searchOpen = false; onSearchVisibilityChanged(false) }
+            )
+        }
         return
     }
 
@@ -382,7 +387,7 @@ fun StbPlayApp(
             }
     }
     if (compactLayout) {
-        Column(modifier = Modifier.fillMaxSize().background(Navy)) {
+        Column(modifier = Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
             StbPlayHeader(
                 selectedTab = selectedTab,
                 onSearchClick = { searchOpen = true; onSearchVisibilityChanged(true) },
@@ -392,7 +397,7 @@ fun StbPlayApp(
             PhoneBottomNavigation(selectedTab, onTabSelected)
         }
     } else {
-        Row(modifier = Modifier.fillMaxSize().background(Navy)) {
+        Row(modifier = Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
             StbPlayNavigationRail(
                 selectedTab = selectedTab,
                 collapsed = railCollapsed || selectedTab == StbPlayTab.CONTENT,
