@@ -1079,6 +1079,7 @@ private fun AutoLoadMoreForGrid(
     val loadMore by rememberUpdatedState(onLoadMore)
     var lastRequestedItemCount by remember(gridState, resetKey) { mutableIntStateOf(-1) }
     var lastRequestedVisibleIndex by remember(gridState, resetKey) { mutableIntStateOf(-1) }
+    var requestInFlight by remember(gridState, resetKey) { mutableStateOf(false) }
 
     LaunchedEffect(gridState, resetKey) {
         snapshotFlow {
@@ -1088,11 +1089,17 @@ private fun AutoLoadMoreForGrid(
                 lastVisibleIndex >= (itemCountNow - latestPrefetchDistance).coerceAtLeast(0)
             Triple(lastVisibleIndex, itemCountNow, latestHasMore && !latestLoading && nearEnd)
         }.collect { (lastVisibleIndex, itemCountNow, shouldLoad) ->
+            if (latestLoading) {
+                requestInFlight = true
+                return@collect
+            }
+            val pageCompleted = requestInFlight
             val newContentOrScroll = itemCountNow > lastRequestedItemCount ||
-                lastVisibleIndex > lastRequestedVisibleIndex
+                lastVisibleIndex > lastRequestedVisibleIndex || pageCompleted
             if (shouldLoad && newContentOrScroll) {
                 lastRequestedItemCount = itemCountNow
                 lastRequestedVisibleIndex = lastVisibleIndex
+                requestInFlight = true
                 loadMore()
             }
         }
