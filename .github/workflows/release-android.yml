@@ -61,5 +61,5 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --clobber
           else
-            gh release create "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --target "$GITHUB_SHA" --title "STB Play ${RELEASE_TAG#v}" --notes "This update keeps the app header, search, and bottom navigation clear of system bars on newer Android phones."
+            gh release create "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --target "$GITHUB_SHA" --title "STB Play ${RELEASE_TAG#v}" --notes "This update makes the home screen more compact, sharpens the featured artwork layout, and refreshes the app automatically after installation."
           fi
