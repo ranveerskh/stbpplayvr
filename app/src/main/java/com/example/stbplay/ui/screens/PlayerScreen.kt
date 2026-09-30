@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.core.view.WindowCompat
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -49,6 +51,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -64,6 +69,8 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -94,6 +101,7 @@ import com.example.stbplay.data.StalkerPlaybackResolver
 import com.example.stbplay.ui.questInitialFocus
 import com.example.stbplay.data.SubtitlePreference
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 @Composable
 fun PlaybackRoute(
@@ -317,12 +325,13 @@ private fun NativePlayerScreen(
     }
     var playerControlsVisible by remember(playbackUrl) { mutableStateOf(false) }
     var controlsInteraction by remember(playbackUrl) { mutableIntStateOf(0) }
+    var pointerInsidePlayer by remember(playbackUrl) { mutableStateOf(false) }
     fun revealPlayerControls() {
         playerControlsVisible = true
         controlsInteraction++
     }
-    LaunchedEffect(controlsInteraction, playerControlsVisible) {
-        if (playerControlsVisible) {
+    LaunchedEffect(controlsInteraction, playerControlsVisible, pointerInsidePlayer) {
+        if (playerControlsVisible && !pointerInsidePlayer) {
             delay(3_000)
             playerControlsVisible = false
         }
@@ -405,6 +414,9 @@ private fun NativePlayerScreen(
                     isFocusable = true
                     isFocusableInTouchMode = true
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    if (isMetaQuest) post {
+                        expandSeekTouchTarget((72f * resources.displayMetrics.density).roundToInt())
+                    }
                     setOnKeyListener { _, keyCode, event ->
                         when (keyCode) {
                             KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B -> {
@@ -453,13 +465,29 @@ private fun NativePlayerScreen(
                         }
                         false
                     }
+                    setOnHoverListener { _, event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_HOVER_ENTER -> {
+                                pointerInsidePlayer = true
+                                revealPlayerControls()
+                            }
+                            MotionEvent.ACTION_HOVER_MOVE -> {
+                                pointerInsidePlayer = true
+                            }
+                            MotionEvent.ACTION_HOVER_EXIT -> {
+                                pointerInsidePlayer = false
+                                controlsInteraction++
+                            }
+                        }
+                        false
+                    }
                     post { requestFocus() }
                 }
             },
             update = { if (it.player !== activePlayer) it.player = activePlayer }
         ) }
         if (playerControlsVisible && playerError == null) {
-            if (!isAndroidTv) Row(
+            if (!isAndroidTv && !isMetaQuest) Row(
                 modifier = Modifier.align(Alignment.TopStart).padding(if (compactLayout) 12.dp else 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -497,7 +525,29 @@ private fun NativePlayerScreen(
                 onClick = { episodePickerVisible = true; revealPlayerControls() },
                 modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)
             ) { Text("Episodes") }
-            if (showChannelStepButtons && (compactLayout || isMetaQuest)) {
+            if (isMetaQuest) {
+                Row(
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 112.dp)
+                        .background(Color(0x99070707), RoundedCornerShape(12.dp)).padding(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    QuestButton(
+                        onClick = { revealPlayerControls(); onBack() },
+                        modifier = Modifier.widthIn(min = 92.dp).height(52.dp),
+                        colors = ButtonDefaults.colors(containerColor = Color(0xAA070707), contentColor = Color.White)
+                    ) { Text("← Back", fontSize = 15.sp) }
+                    if (showChannelStepButtons) {
+                        ChannelStepControl(Icons.Filled.SkipPrevious, "Previous channel", {
+                            onChannelStep(-1); revealPlayerControls()
+                        }, cornerRadius = 7.dp)
+                        ChannelStepControl(Icons.Filled.SkipNext, "Next channel", {
+                            onChannelStep(1); revealPlayerControls()
+                        }, cornerRadius = 7.dp)
+                    }
+                }
+            }
+            if (showChannelStepButtons && compactLayout && !isMetaQuest) {
                 if (compactLayout && !isMetaQuest) {
                     Row(
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)
@@ -538,20 +588,40 @@ private fun NativePlayerScreen(
                     }
                 }
             }
-            if (!isAndroidTv && (!compactLayout || isMetaQuest)) {
+            if (isMetaQuest) {
+                MetaVolumeControl(
+                    volumePercent = volumePercent,
+                    onVolumeChange = { value ->
+                        volumePercent = value.coerceIn(0, 100)
+                        activePlayer.volume = volumePercent / 100f
+                        revealPlayerControls()
+                    },
+                    onMuteToggle = {
+                        if (volumePercent == 0) {
+                            volumePercent = 35
+                            activePlayer.volume = 0.35f
+                        } else {
+                            volumePercent = 0
+                            activePlayer.volume = 0f
+                        }
+                        revealPlayerControls()
+                    },
+                    onMaxVolume = {
+                        volumePercent = 100
+                        activePlayer.volume = 1f
+                        revealPlayerControls()
+                    },
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 14.dp)
+                )
+            }
+            if (!isAndroidTv && !isMetaQuest && !compactLayout) {
                 Row(
-                    modifier = Modifier.align(Alignment.TopEnd).padding(if (isMetaQuest) 12.dp else 18.dp)
+                    modifier = Modifier.align(Alignment.TopEnd).padding(18.dp)
                         .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
                         .background(Color(0xCC070707)).padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (compactLayout) {
-                        CompositionLocalProvider(LocalContentColor provides Color.White) {
-                            MediaRouteButton(modifier = Modifier.size(44.dp))
-                        }
-                        Text("Cast", color = Color.White)
-                    }
                     Text("Volume $volumePercent%", color = Color.White)
                     QuestButton(onClick = { adjustVolume(-10); revealPlayerControls() }) { Text("−") }
                     QuestButton(onClick = { adjustVolume(10); revealPlayerControls() }) { Text("+") }
@@ -617,6 +687,70 @@ private fun ChannelStepControl(
             tint = Color.White,
             modifier = Modifier.size(if (focused) 32.dp else 30.dp)
         )
+    }
+}
+
+@Composable
+private fun MetaVolumeControl(
+    volumePercent: Int,
+    onVolumeChange: (Int) -> Unit,
+    onMuteToggle: () -> Unit,
+    onMaxVolume: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.background(Color(0x99070707), RoundedCornerShape(12.dp)).padding(7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        QuestButton(
+            onClick = onMaxVolume,
+            modifier = Modifier.width(54.dp).height(40.dp),
+            colors = ButtonDefaults.colors(containerColor = Color(0xAA070707), contentColor = Color.White)
+        ) { Icon(Icons.Filled.VolumeUp, contentDescription = "Maximum volume", tint = Color.White) }
+        Box(
+            modifier = Modifier.width(54.dp).height(150.dp)
+                .background(Color(0xFF202020), RoundedCornerShape(10.dp))
+                .pointerInput(Unit) {
+                    detectTapGestures { point ->
+                        onVolumeChange((100f * (1f - point.y / size.height)).roundToInt())
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures { change, _ ->
+                        onVolumeChange((100f * (1f - change.position.y / size.height)).roundToInt())
+                        change.consume()
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier.width(17.dp).fillMaxHeight().padding(vertical = 7.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                (9 downTo 0).forEach { level ->
+                    Box(
+                        Modifier.fillMaxWidth().weight(1f)
+                            .background(
+                                if ((level + 1) * 10 <= volumePercent) Color(0xFFFFD36B)
+                                else Color.White.copy(alpha = 0.25f),
+                                RoundedCornerShape(3.dp)
+                            )
+                    )
+                }
+            }
+        }
+        QuestButton(
+            onClick = onMuteToggle,
+            modifier = Modifier.width(54.dp).height(42.dp),
+            colors = ButtonDefaults.colors(containerColor = Color(0xAA070707), contentColor = Color.White)
+        ) {
+            Icon(
+                if (volumePercent == 0) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                contentDescription = if (volumePercent == 0) "Unmute" else "Mute",
+                tint = Color.White
+            )
+        }
     }
 }
 

@@ -269,6 +269,7 @@ fun StbPlayApp(
     selectedTab: StbPlayTab,
     liveChannelListState: LazyListState,
     focusedLiveChannelId: String?,
+    focusedContentId: String?,
     contentGridState: LazyGridState,
     onTabSelected: (StbPlayTab) -> Unit,
     onLoadMoreContent: () -> Unit,
@@ -354,6 +355,7 @@ fun StbPlayApp(
                 StbPlayTab.CONTENT -> ContentBrowserScreen(
                     state = contentState,
                     gridState = contentGridState,
+                    focusedContentId = focusedContentId,
                     onLoadMore = onLoadMoreContent,
                     onCategorySelected = { onCategorySelected(StbPlayTab.CONTENT, it) },
                     onMediaClick = onMediaClick,
@@ -400,7 +402,7 @@ fun StbPlayApp(
         Row(modifier = Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
             StbPlayNavigationRail(
                 selectedTab = selectedTab,
-                collapsed = railCollapsed || selectedTab == StbPlayTab.CONTENT,
+                collapsed = railCollapsed,
                 compactTv = tvLayout,
                 onToggle = { if (selectedTab != StbPlayTab.CONTENT) railCollapsed = !railCollapsed },
                 onTabSelected = onTabSelected
@@ -521,10 +523,12 @@ private fun StbPlayNavigationRail(
 private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compactTv: Boolean, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     var showFocusLabel by remember { mutableStateOf(false) }
-    val initialFocus = if (selected) Modifier.questInitialFocus() else Modifier
+    // On TV, the selected navigation item and the first page control were both
+    // requesting initial focus. Let the page own initial focus on TV.
+    val initialFocus = if (selected && !compactTv) Modifier.questInitialFocus() else Modifier
     LaunchedEffect(collapsed, showFocusLabel) {
         if (collapsed && showFocusLabel) {
-            delay(1400)
+            delay(2_000)
             showFocusLabel = false
         }
     }
@@ -582,6 +586,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compac
                     .align(Alignment.CenterStart)
                     .offset(x = 68.dp)
                     .zIndex(3f)
+                    .widthIn(min = 100.dp)
                     .background(PanelSoft, RoundedCornerShape(8.dp))
                     .border(1.dp, Gold.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -722,6 +727,7 @@ private fun RotatingHero(
     QuestSurface(
         onClick = { onMediaClick(item) },
         modifier = Modifier
+            .then(if (denseTv) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth()
         .height(if (isCompactAndroidLayout()) 205.dp else if (denseTv) 230.dp else 290.dp)
             .onFocusChanged { focused = it.isFocused },
@@ -741,11 +747,12 @@ private fun RotatingHero(
                 }
                 Spacer(Modifier.weight(1f))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    QuestButton(
+                    if (!denseTv) QuestButton(
                         onClick = { onMediaClick(item) },
                         modifier = Modifier.height(38.dp),
                         colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)
                     ) { Text("Play", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    else Text("Select to play", color = Muted, fontSize = 11.sp)
                     FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
                 }
             }
@@ -848,7 +855,9 @@ private fun LiveTvScreen(
         if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
             categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
             withFrameNanos { }
-            selectedCategoryFocusRequester.requestFocus()
+            if (focusedChannelId.isNullOrBlank() || state.items.none { it.id == focusedChannelId }) {
+                selectedCategoryFocusRequester.requestFocus()
+            }
             initialCategoryFocusRequested.value = true
         }
     }
@@ -1094,6 +1103,7 @@ private fun AutoLoadMoreForGrid(
 private fun ContentBrowserScreen(
     state: StbPlayLibraryState,
     gridState: LazyGridState,
+    focusedContentId: String?,
     onLoadMore: () -> Unit,
     onCategorySelected: (Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
@@ -1110,7 +1120,7 @@ private fun ContentBrowserScreen(
         onLoadMore = onLoadMore
     )
     if (isCompactAndroidLayout()) {
-        ContentBrowserCompact(state, gridState, onCategorySelected, onMediaClick, onToggleFavorite)
+        ContentBrowserCompact(state, gridState, focusedContentId, onCategorySelected, onMediaClick, onToggleFavorite)
         return
     }
     val denseTv = isTelevisionLayout()
@@ -1122,7 +1132,9 @@ private fun ContentBrowserScreen(
         if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
             categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
             withFrameNanos { }
-            selectedCategoryFocusRequester.requestFocus()
+            if (focusedContentId.isNullOrBlank() || state.items.none { it.id == focusedContentId }) {
+                selectedCategoryFocusRequester.requestFocus()
+            }
             initialCategoryFocusRequested.value = true
         }
     }
@@ -1131,7 +1143,10 @@ private fun ContentBrowserScreen(
             categoryListState.animateScrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
         }
     }
-    LaunchedEffect(selectedCategoryKey) { gridState.scrollToItem(0) }
+    LaunchedEffect(selectedCategoryKey, focusedContentId) {
+        val restoreIndex = focusedContentId?.let { id -> state.items.indexOfFirst { it.id == id } } ?: -1
+        gridState.scrollToItem(restoreIndex.takeIf { it >= 0 } ?: 0)
+    }
     fun focusSelectedCategory() {
         if (state.categories.isEmpty()) return
         val selected = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
@@ -1181,6 +1196,7 @@ private fun ContentBrowserScreen(
                             contentType = { _, item -> if (item.portrait) "poster" else "landscape" }) { index, media ->
                             MediaCard(
                                 media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true,
+                                initialFocus = media.id == focusedContentId,
                                 onReturnToCategory = if (denseTv && index % columns == 0) ({ focusSelectedCategory() }) else null
                             )
                         }
@@ -1200,6 +1216,7 @@ private fun ContentBrowserScreen(
 private fun ContentBrowserCompact(
     state: StbPlayLibraryState,
     gridState: LazyGridState,
+    focusedContentId: String?,
     onCategorySelected: (Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit
@@ -1228,7 +1245,7 @@ private fun ContentBrowserCompact(
                 ) {
                     gridItems(state.items, key = { "${it.streamType}:${it.id}" },
                         contentType = { if (it.portrait) "poster" else "landscape" }) { media ->
-                        MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true)
+                        MediaCard(media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true, initialFocus = media.id == focusedContentId)
                     }
                     if (state.loadingMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                         Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
@@ -1276,6 +1293,7 @@ private fun MediaCard(
     onToggleFavorite: () -> Unit,
     onRemoveHistory: (() -> Unit)? = null,
     compactGrid: Boolean = false,
+    initialFocus: Boolean = false,
     onReturnToCategory: (() -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
@@ -1290,7 +1308,8 @@ private fun MediaCard(
     Box(cardModifier) {
       QuestSurface(
         onClick = onClick,
-        modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+        modifier = Modifier.then(if (initialFocus && denseTv) Modifier.questInitialFocus() else Modifier)
+            .fillMaxSize().onPreviewKeyEvent { event ->
             if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
                 onReturnToCategory()
                 true
@@ -1685,7 +1704,12 @@ private fun PreferenceRow(title: String, value: String, onClick: () -> Unit) {
         colors = ClickableSurfaceDefaults.colors(containerColor = Navy, focusedContainerColor = Gold.copy(alpha = 0.18f)),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
     ) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (isCompactAndroidLayout()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(value, color = GoldLight, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+        } else Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Text(value, color = GoldLight, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

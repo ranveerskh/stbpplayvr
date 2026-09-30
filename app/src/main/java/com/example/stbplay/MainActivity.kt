@@ -383,6 +383,7 @@ private fun StbPlayRoot(
     var liveCategoryIndex by remember { mutableStateOf(0) }
     var contentCategoryIndex by remember { mutableStateOf(0) }
     var focusedLiveChannelId by remember { mutableStateOf<String?>(null) }
+    var focusedContentId by remember { mutableStateOf<String?>(null) }
     var selectedMovie by remember { mutableStateOf<PortalStream?>(null) }
     var selectedSeries by remember { mutableStateOf<PortalStream?>(null) }
     var qualityContext by remember { mutableStateOf<QualityContext?>(null) }
@@ -745,6 +746,9 @@ private fun StbPlayRoot(
             return
         }
         val stream = allStreamFor(media) ?: return
+        if (selectedTab == StbPlayTab.CONTENT && stream.streamType != "live") {
+            focusedContentId = stream.id
+        }
         categoryPreloadJob?.cancel()
         val categoryIndex = if (selectedTab == StbPlayTab.LIVE) liveCategoryIndex else contentCategoryIndex
         val category = when (selectedTab) {
@@ -1014,7 +1018,10 @@ private fun StbPlayRoot(
                 uiLiveCategories.getOrNull(index)?.let(::loadLiveCategory)
             }
             StbPlayTab.CONTENT -> {
-                if (contentCategoryIndex != index) scope.launch { contentGridState.scrollToItem(0) }
+                if (contentCategoryIndex != index) {
+                    focusedContentId = null
+                    scope.launch { contentGridState.scrollToItem(0) }
+                }
                 contentCategoryIndex = index
                 contentCategories.getOrNull(index)?.id
                     ?.takeIf { it != "all" && it !in vodCatalogs }
@@ -1188,6 +1195,7 @@ private fun StbPlayRoot(
                     selectedTab = selectedTab,
                     liveChannelListState = liveChannelListState,
                     focusedLiveChannelId = focusedLiveChannelId,
+                    focusedContentId = focusedContentId,
                     contentGridState = contentGridState,
                     onTabSelected = { tab ->
                         if (tab != selectedTab) {
