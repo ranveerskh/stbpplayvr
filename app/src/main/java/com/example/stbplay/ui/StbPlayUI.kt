@@ -402,6 +402,7 @@ fun StbPlayApp(
         Column(modifier = Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
             StbPlayHeader(
                 selectedTab = selectedTab,
+                themePreference = settingsState.themePreference,
                 onSearchClick = { searchOpen = true; onSearchVisibilityChanged(true) },
                 compact = true
             )
@@ -420,6 +421,7 @@ fun StbPlayApp(
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 StbPlayHeader(
                     selectedTab = selectedTab,
+                    themePreference = settingsState.themePreference,
                     onSearchClick = { searchOpen = true; onSearchVisibilityChanged(true) },
                     denseTv = tvLayout
                 )
@@ -499,9 +501,9 @@ private fun StbPlayNavigationRail(
                 contentAlignment = if (collapsed) Alignment.Center else Alignment.CenterStart
             ) {
                 if (collapsed) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = "STB PLAY", tint = GoldLight, modifier = Modifier.size(26.dp))
+                    Image(painterResource(R.drawable.icon_blue), "STB Play", contentScale = ContentScale.Fit, modifier = Modifier.size(32.dp))
                 } else {
-                    Text("STB PLAY", color = Gold, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                    Image(painterResource(R.drawable.icon_blue), "STB Play", contentScale = ContentScale.Fit, modifier = Modifier.width(52.dp).height(42.dp))
                 }
             }
         }
@@ -609,6 +611,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compac
 @Composable
 private fun StbPlayHeader(
     selectedTab: StbPlayTab,
+    themePreference: ThemePreference,
     onSearchClick: () -> Unit,
     compact: Boolean = false,
     denseTv: Boolean = false
@@ -631,7 +634,12 @@ private fun StbPlayHeader(
                 fontSize = if (compact || denseTv) 18.sp else 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
-            Text("STB PLAY", color = GoldLight, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Image(
+                painter = painterResource(themePreference.iconResource()),
+                contentDescription = "STB Play logo",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(if (compact || denseTv) 27.dp else 32.dp)
+            )
         }
         Spacer(modifier = Modifier.weight(1f))
         HeaderAction(if (compact) "⌕" else "Search", onSearchClick, modifier = Modifier.width(if (compact) 44.dp else if (denseTv) 92.dp else 120.dp))
