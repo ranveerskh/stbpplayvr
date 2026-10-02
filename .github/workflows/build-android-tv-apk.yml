@@ -1,6 +1,8 @@
 name: Build STB PLAY Android TV APK
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
   push:
     branches: [main]
