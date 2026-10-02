@@ -2,7 +2,7 @@
 
 Effective date: September 30, 2026
 
-Policy version: 2
+Policy version: 3
 
 ## 1. What STB Play does
 
@@ -30,6 +30,8 @@ If you choose Cast, Google Cast and the receiver you select participate in playb
 
 If you enter a STB Play license key, the app sends that key, a persistent Android device identifier, platform, app version, and the portal hostname to the STB Play license service over HTTPS to activate or check the license. The service uses one-way SHA-256 hashes as key and device record identifiers. It stores the portal hostname, platform, app version, and registration/last-seen timestamps for license-device administration. It does not require your portal password, MAC address, full portal URL, or watched titles for license checks. License-device records are marked to expire 12 months after their last activity.
 
+Provider pairing is a separate, optional action. When you choose “Link with provider,” the app sends its persistent Android device identifier, platform, and the active portal MAC address over HTTPS to request a short-lived pairing code. The service stores a one-way hash of the device identifier and the MAC address with the pairing/assignment so your chosen provider can identify the device, assign an authorized portal profile, and manage its app license. The assigned provider and STB Play administrators can view the hashed Device ID and MAC in their authorized dashboards. The service does not use these fields for optional device counts or advertising. If pairing is completed, the app stores the assigned portal URL on the device and sends the device identifier, pairing token, platform, and app version on startup or when you refresh the portal so provider profile changes can be synchronized. You can close a pending pairing request; the app attempts to revoke its code, and an unrevoked code expires after 10 minutes.
+
 ## 6. Optional device counts
 
 Device-count sharing is optional and off by default on new installs. If enabled, the app sends its Android device identifier, platform, and app version to the STB Play service so the service can estimate installations and recently active devices. This request does not include your portal details or viewing history. The service uses a hashed device reference with first/last activity dates; count records are marked to expire after 12 months without activity. Turn off “Share optional device counts” in Settings to stop future requests. STB Play does not include an advertising SDK.
@@ -40,7 +42,7 @@ Internet and network-state access support connections to your portal, media host
 
 ## 8. Retention and choices
 
-Local data remains on the device until you remove it or uninstall the app. You can remove portal profiles, clear catalogue cache and watch history, and disable optional device counts in Settings. The service applies a 12-month inactivity-expiry marker to usage and license-device records; the cloud service's configured retention controls determine when marked records are deleted. Information already sent to a portal, media host, Google, Firebase, or GitHub is subject to that service's own controls.
+Local data remains on the device until you remove it or uninstall the app. You can remove portal profiles, clear catalogue cache and watch history, and disable optional device counts in Settings. Provider assignment data remains associated with the assigned device until the provider or administrator changes or disables the assignment; pairing codes expire after 10 minutes. The service applies a 12-month inactivity-expiry marker to usage and license-device records; the cloud service's configured retention controls determine when marked records are deleted. Information already sent to a portal, media host, Google, Firebase, or GitHub is subject to that service's own controls.
 
 ## 9. Policy changes and contact
 
