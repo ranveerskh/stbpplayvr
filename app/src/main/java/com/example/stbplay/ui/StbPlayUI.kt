@@ -1363,7 +1363,7 @@ private fun StbPlaySettingsScreen(
             SettingsPage.PRIVACY -> item {
                 SettingsSection("Privacy policy") {
                     Text("STB Play stores your portal address, MAC, parental PIN, favourites, playback progress and preferences on this device. The app connects directly to the portal and media or artwork hosts you choose. Those services can receive your device network address and requests. A portal may use HTTP, which is not encrypted.", color = White, fontSize = 13.sp)
-                    Text("The app checks GitHub for releases. Casting uses the Cast service if you choose it. If you activate a license key, the app sends the key, app version and a pseudonymous device ID to the STB PLAY license service for registration and expiry checks. The key is stored encrypted in private app storage. Portal address, MAC, catalogue and viewing history are not sent to that service. No advertising or analytics SDK is included.", color = White, fontSize = 13.sp)
+                    Text("The app checks GitHub for releases. Casting uses the Cast service if you choose it. STB Play has no account server, advertising SDK or analytics SDK. Data stays on the device until you remove it or uninstall the app; the app does not back it up to Android cloud backup.", color = White, fontSize = 13.sp)
                     Text("Permissions: Internet and network state connect to your portal; notifications announce available updates if allowed; install packages opens the Android installer when you request an update. No camera, microphone, contacts or location permission is requested.", color = White, fontSize = 13.sp)
                     Text("Use Content & storage to erase cached catalogues and watch history. Remove saved portals in Content sources. Uninstalling clears remaining local app data.", color = Muted, fontSize = 12.sp)
                     WideAction("Full privacy policy online", { uriHandler.openUri("https://github.com/ranveerskh/stbpplayvr/blob/main/PRIVACY_POLICY.md") }, Modifier.fillMaxWidth())
@@ -1476,7 +1476,7 @@ private fun SubscriptionCard(
                     PrimaryAction(if (state.appLicenseBusy) "Verifying…" else "Activate") {
                         if (!state.appLicenseBusy && enteredKey.isNotBlank()) onActivateAppLicense(enteredKey)
                     }
-                    WideAction("Cancel") { if (!state.appLicenseBusy) showKeyDialog = false }
+                    WideAction("Cancel", onClick = { if (!state.appLicenseBusy) showKeyDialog = false })
                 }
             }
         }
