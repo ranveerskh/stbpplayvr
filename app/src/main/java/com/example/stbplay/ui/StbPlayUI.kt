@@ -251,6 +251,7 @@ data class StbPlaySettingsState(
     val expiryText: String = "",
     val licenseName: String = "Demo trial",
     val licenseExpiryText: String = "",
+    val providerMac: String = "",
     val liveCount: Int = 0,
     val movieCount: Int = 0,
     val seriesCount: Int = 0,
@@ -1648,6 +1649,25 @@ private fun SubscriptionCard(state: StbPlaySettingsState, onActivateLicense: (St
                 activationMessage = ""
                 showUpgradeDialog = true
             }, Modifier.fillMaxWidth())
+        }
+
+        SettingsSection("Share with your provider") {
+            Text("Your portal MAC", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(
+                state.providerMac.ifBlank { "No portal MAC is available yet." },
+                color = White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text("Copy this MAC and send it to your authorized provider if they are setting up your service. This does not connect or configure a portal automatically.", color = Muted, fontSize = 12.sp)
+            if (state.providerMac.isNotBlank()) {
+                val context = LocalContext.current
+                WideAction("Copy MAC for provider", onClick = {
+                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("STB Play portal MAC", state.providerMac))
+                    android.widget.Toast.makeText(context, "Portal MAC copied.", android.widget.Toast.LENGTH_SHORT).show()
+                }, modifier = Modifier.fillMaxWidth())
+            }
         }
 
         SettingsSection("Portal subscription") {
