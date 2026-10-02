@@ -45,6 +45,7 @@ class SettingsManager(private val context: Context) {
     private val keyFavoritesPrefix = "favorite_ids_"
     private val keyProgressPrefix = "vod_progress_"
     private val keyPlayer = stringPreferencesKey("player_preference")
+    private val keyAndroidBoxVideoCompatibility = booleanPreferencesKey("android_box_video_compatibility")
     private val keyTheme = stringPreferencesKey("theme_preference")
     private val keySubtitles = stringPreferencesKey("subtitle_preference")
     private val keyLanguage = stringPreferencesKey("catalogue_language")
@@ -105,6 +106,11 @@ class SettingsManager(private val context: Context) {
     val playerPreference: Flow<PlayerPreference> = context.dataStore.data.map {
         runCatching { PlayerPreference.valueOf(it[keyPlayer] ?: PlayerPreference.AUTO.name) }
             .getOrDefault(PlayerPreference.AUTO)
+    }
+
+    /** Use SurfaceView first on Android TV/boxes that render HEVC as green or blue. */
+    val androidBoxVideoCompatibility: Flow<Boolean> = context.dataStore.data.map {
+        it[keyAndroidBoxVideoCompatibility] ?: false
     }
 
     val themePreference: Flow<ThemePreference> = context.dataStore.data.map {
@@ -238,6 +244,10 @@ class SettingsManager(private val context: Context) {
 
     suspend fun setPlayerPreference(value: PlayerPreference) {
         context.dataStore.edit { it[keyPlayer] = value.name }
+    }
+
+    suspend fun setAndroidBoxVideoCompatibility(enabled: Boolean) {
+        context.dataStore.edit { it[keyAndroidBoxVideoCompatibility] = enabled }
     }
 
     suspend fun setThemePreference(value: ThemePreference) {
