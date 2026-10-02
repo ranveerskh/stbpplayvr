@@ -223,6 +223,12 @@ data class StbPlaySettingsState(
     val subscriptionPlan: String = "Subscription",
     val subscriptionStatus: String = "",
     val expiryText: String = "",
+    val appLicenseStatus: String = "No STB PLAY key activated",
+    val appLicenseExpiry: String = "",
+    val appLicenseMessage: String = "",
+    val appLicenseKeyHint: String = "",
+    val appLicenseRegistered: Boolean = false,
+    val appLicenseBusy: Boolean = false,
     val liveCount: Int = 0,
     val movieCount: Int = 0,
     val seriesCount: Int = 0,
@@ -266,6 +272,8 @@ fun StbPlayApp(
     onCatalogueLanguageChanged: (String) -> Unit,
     onAnalyticsChanged: (Boolean) -> Unit,
     onChangePin: () -> Unit,
+    onActivateAppLicense: (String) -> Unit,
+    onCheckAppLicense: () -> Unit,
     onCheckUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onShare: () -> Unit,
@@ -344,6 +352,8 @@ fun StbPlayApp(
                     onCatalogueLanguageChanged = onCatalogueLanguageChanged,
                     onAnalyticsChanged = onAnalyticsChanged,
                     onChangePin = onChangePin,
+                    onActivateAppLicense = onActivateAppLicense,
+                    onCheckAppLicense = onCheckAppLicense,
                     onCheckUpdates = onCheckUpdates,
                     onDownloadUpdate = onDownloadUpdate,
                     onShare = onShare
@@ -1229,6 +1239,8 @@ private fun StbPlaySettingsScreen(
     onCatalogueLanguageChanged: (String) -> Unit,
     onAnalyticsChanged: (Boolean) -> Unit,
     onChangePin: () -> Unit,
+    onActivateAppLicense: (String) -> Unit,
+    onCheckAppLicense: () -> Unit,
     onCheckUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onShare: () -> Unit
@@ -1285,7 +1297,7 @@ private fun StbPlaySettingsScreen(
                     }
                 }
             }
-            SettingsPage.SUBSCRIPTION -> item { SubscriptionCard(state) }
+            SettingsPage.SUBSCRIPTION -> item { SubscriptionCard(state, onActivateAppLicense, onCheckAppLicense) }
             SettingsPage.SOURCES -> item {
                 SettingsSection("Content sources") {
                     if (state.profiles.isEmpty()) Text("No portals saved yet.", color = Muted, fontSize = 13.sp)
@@ -1351,7 +1363,7 @@ private fun StbPlaySettingsScreen(
             SettingsPage.PRIVACY -> item {
                 SettingsSection("Privacy policy") {
                     Text("STB Play stores your portal address, MAC, parental PIN, favourites, playback progress and preferences on this device. The app connects directly to the portal and media or artwork hosts you choose. Those services can receive your device network address and requests. A portal may use HTTP, which is not encrypted.", color = White, fontSize = 13.sp)
-                    Text("The app checks GitHub for releases. Casting uses the Cast service if you choose it. STB Play has no account server, advertising SDK or analytics SDK. Data stays on the device until you remove it or uninstall the app; the app does not back it up to Android cloud backup.", color = White, fontSize = 13.sp)
+                    Text("The app checks GitHub for releases. Casting uses the Cast service if you choose it. If you activate a license key, the app sends the key, app version and a pseudonymous device ID to the STB PLAY license service for registration and expiry checks. The key is stored encrypted in private app storage. Portal address, MAC, catalogue and viewing history are not sent to that service. No advertising or analytics SDK is included.", color = White, fontSize = 13.sp)
                     Text("Permissions: Internet and network state connect to your portal; notifications announce available updates if allowed; install packages opens the Android installer when you request an update. No camera, microphone, contacts or location permission is requested.", color = White, fontSize = 13.sp)
                     Text("Use Content & storage to erase cached catalogues and watch history. Remove saved portals in Content sources. Uninstalling clears remaining local app data.", color = Muted, fontSize = 12.sp)
                     WideAction("Full privacy policy online", { uriHandler.openUri("https://github.com/ranveerskh/stbpplayvr/blob/main/PRIVACY_POLICY.md") }, Modifier.fillMaxWidth())
@@ -1408,15 +1420,66 @@ private fun SettingsMenuRow(icon: ImageVector, title: String, subtitle: String? 
 }
 
 @Composable
-private fun SubscriptionCard(state: StbPlaySettingsState) {
+private fun SubscriptionCard(
+    state: StbPlaySettingsState,
+    onActivateAppLicense: (String) -> Unit,
+    onCheckAppLicense: () -> Unit
+) {
+    var showKeyDialog by remember { mutableStateOf(false) }
+    var enteredKey by remember { mutableStateOf("") }
+    LaunchedEffect(state.appLicenseMessage, state.appLicenseBusy) {
+        if (state.appLicenseMessage == "Key activated successfully." && !state.appLicenseBusy) showKeyDialog = false
+    }
     Column(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(PanelSoft).padding(19.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Subscription", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text("Portal subscription", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Text(state.subscriptionPlan, color = White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         val details = listOf(state.subscriptionStatus, state.expiryText).filter { it.isNotBlank() }.joinToString(" · ")
-        Text(details.ifBlank { "Subscription details are reported by the portal when available." }, color = Muted, fontSize = 12.sp)
+        Text(details.ifBlank { "Subscription details are reported by your portal when available." }, color = Muted, fontSize = 12.sp)
+        Spacer(Modifier.height(8.dp))
+        Text("STB PLAY license", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(state.appLicenseStatus, color = if (state.appLicenseRegistered) Good else Muted, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        if (state.appLicenseExpiry.isNotBlank()) Text(state.appLicenseExpiry, color = Muted, fontSize = 12.sp)
+        if (state.appLicenseKeyHint.isNotBlank()) Text("Key ending " + state.appLicenseKeyHint, color = Muted, fontSize = 12.sp)
+        if (state.appLicenseMessage.isNotBlank()) Text(state.appLicenseMessage, color = if (state.appLicenseRegistered) Good else Danger, fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PrimaryAction(if (state.appLicenseRegistered) "Replace key" else "Activate key") { showKeyDialog = true }
+            WideAction(if (state.appLicenseBusy) "Checking…" else "Check status", onCheckAppLicense)
+        }
+    }
+    if (showKeyDialog) Dialog(onDismissRequest = { if (!state.appLicenseBusy) showKeyDialog = false }) {
+        Surface(
+            modifier = Modifier.widthIn(min = 340.dp, max = 520.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = SurfaceDefaults.colors(containerColor = Panel)
+        ) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                Text("Activate STB PLAY key", color = GoldLight, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text("Enter the license key created for this device. Your existing portal and saved settings stay on this device.", color = Muted, fontSize = 13.sp)
+                BasicTextField(
+                    value = enteredKey,
+                    onValueChange = { enteredKey = it.filter { ch -> ch.isLetterOrDigit() || ch == '-' }.take(80).uppercase() },
+                    modifier = Modifier.questInitialFocus().fillMaxWidth().height(52.dp)
+                        .background(Navy, RoundedCornerShape(10.dp))
+                        .border(1.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 14.dp, vertical = 15.dp),
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii
+                    ),
+                    textStyle = TextStyle(color = White, fontSize = 15.sp)
+                )
+                if (state.appLicenseMessage.isNotBlank()) Text(state.appLicenseMessage, color = if (state.appLicenseRegistered) Good else Danger, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PrimaryAction(if (state.appLicenseBusy) "Verifying…" else "Activate") {
+                        if (!state.appLicenseBusy && enteredKey.isNotBlank()) onActivateAppLicense(enteredKey)
+                    }
+                    WideAction("Cancel") { if (!state.appLicenseBusy) showKeyDialog = false }
+                }
+            }
+        }
     }
 }
 
