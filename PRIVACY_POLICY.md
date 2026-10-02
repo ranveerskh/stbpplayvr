@@ -16,7 +16,7 @@ The app displays catalogues, ratings, categories, and labels supplied by the sou
 
 ## 3. Information stored on your device
 
-STB Play stores portal profiles and settings, portal address, MAC address, parental PIN, favourites, watch history and playback progress, catalogue cache, and preferences in local app storage. This is not an encrypted password vault. Remove saved portal profiles or clear catalogue/history in Settings, or uninstall the app to remove local app data. Android backup is disabled. Settings can copy the portal MAC and pseudonymous STB PLAY Device ID to your clipboard if you choose to share both with your provider; copying them does not itself activate or configure a portal. The app also lets you copy the configured portal MAC to your clipboard if you choose to share it with your provider; that action does not send it to STB Play.
+STB Play stores portal profiles and settings, portal address, MAC address, parental PIN, favourites, watch history and playback progress, catalogue cache, and preferences in local app storage. This is not an encrypted password vault. Remove saved portal profiles or clear catalogue/history in Settings, or uninstall the app to remove local app data. Android backup is disabled. Settings displays the portal MAC and pseudonymous STB PLAY Device ID so you can choose to screenshot and share them with your provider; the app does not send them together through this display. The app also lets you copy the configured portal MAC to your clipboard if you choose to share it with your provider; that action does not send it to STB Play.
 
 Portal-expiry reminders are scheduled locally from the expiry date reported by your source. Viewing history is not sent to create these reminders.
 
