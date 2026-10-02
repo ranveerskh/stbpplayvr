@@ -58,6 +58,7 @@ private val SetupOnAccent: Color @Composable get() = LocalStbPalette.current.onA
 fun SetupScreen(
     initialSettings: PortalSettings = PortalSettings(),
     onSave: (PortalSettings) -> Unit,
+    onProviderPair: ((PortalSettings) -> Unit)? = null,
     onCancel: (() -> Unit)? = null
 ) {
     var name by remember(initialSettings.id) { mutableStateOf(initialSettings.name) }
@@ -151,6 +152,44 @@ fun SetupScreen(
             }
             if (phoneLayout) Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { actionContent() }
             else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { actionContent() }
+
+            onProviderPair?.let { pair ->
+                Spacer(modifier = Modifier.height(10.dp))
+                QuestButton(
+                    onClick = {
+                        val normalMac = mac.trim().uppercase()
+                        error = when {
+                            !Regex("^[0-9A-F]{2}(:[0-9A-F]{2}){5}$").matches(normalMac) ->
+                                "Enter a valid MAC address before provider pairing."
+                            pin.isNotBlank() && pin.length !in 4..8 -> "Enter a parental PIN with 4 to 8 digits."
+                            else -> null
+                        }
+                        if (error == null) pair(
+                            PortalSettings(
+                                id = initialSettings.id,
+                                name = name.trim().ifBlank { "My device" },
+                                url = url.trim().trimEnd('/'),
+                                mac = normalMac,
+                                pin = pin
+                            )
+                        )
+                    },
+                    modifier = actionModifier,
+                    colors = ButtonDefaults.colors(
+                        containerColor = LocalStbPalette.current.panelSoft,
+                        contentColor = SetupText,
+                        focusedContainerColor = SetupGoldLight,
+                        focusedContentColor = SetupOnAccent
+                    )
+                ) { Text("Link with provider", fontWeight = FontWeight.SemiBold) }
+                Text(
+                    "This sends the device ID and portal MAC to STB Play so your provider can assign an authorized portal. Manual setup remains available above.",
+                    color = SetupMuted,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(max = 560.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(19.dp))
             Text(
