@@ -113,6 +113,7 @@ fun PlaybackRoute(
     sessionCookie: String = "",
     playerPreference: PlayerPreference = PlayerPreference.AUTO,
     subtitlePreference: SubtitlePreference = SubtitlePreference.AUTO,
+    androidBoxVideoCompatibility: Boolean = false,
     onProgress: (positionMs: Long, durationMs: Long) -> Unit = { _, _ -> },
     onPlaybackStarted: () -> Unit = {},
     onPlaybackFailure: (String) -> Unit = {},
@@ -170,6 +171,7 @@ fun PlaybackRoute(
             sessionCookie = sessionCookie,
             playerPreference = playerPreference,
             subtitlePreference = subtitlePreference,
+            androidBoxVideoCompatibility = androidBoxVideoCompatibility,
             allowSeeking = request.kind != StalkerContentKind.LIVE,
             title = request.title,
             resumeFraction = request.resumeFraction,
@@ -196,6 +198,7 @@ private fun NativePlayerScreen(
     sessionCookie: String,
     playerPreference: PlayerPreference,
     subtitlePreference: SubtitlePreference,
+    androidBoxVideoCompatibility: Boolean,
     allowSeeking: Boolean,
     title: String,
     resumeFraction: Float,
@@ -234,7 +237,7 @@ private fun NativePlayerScreen(
     // replace the player/cast controls with the TV layout.
     val compactLayout = configuration.smallestScreenWidthDp < 900 && !isAndroidTv
     // Match the working v1.8.37 TV path: prefer TextureView first, then try SurfaceView if needed.
-    val preferTextureSurface = compactLayout || isAndroidTv
+    val preferTextureSurface = (compactLayout || isAndroidTv) && !(isAndroidTv && androidBoxVideoCompatibility)
     val player = remember(playbackUrl, portalUiUrl, token, sessionCookie, subtitlePreference, resumeFraction) {
         val headers = mutableMapOf(
             "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 MAG254",
