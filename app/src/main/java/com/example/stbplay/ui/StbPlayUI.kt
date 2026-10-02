@@ -126,6 +126,7 @@ import androidx.tv.material3.Text
 import androidx.media3.cast.MediaRouteButton
 import androidx.media3.common.util.UnstableApi
 import com.example.stbplay.data.PlayerPreference
+import com.example.stbplay.data.ProviderPairingSession
 import com.example.stbplay.data.ParentalMode
 import com.example.stbplay.data.SubtitlePreference
 import com.example.stbplay.data.ThemePreference
@@ -255,6 +256,7 @@ data class StbPlaySettingsState(
     val movieCount: Int = 0,
     val seriesCount: Int = 0,
     val playerPreference: PlayerPreference = PlayerPreference.AUTO,
+    val androidBoxVideoCompatibility: Boolean = false,
     val themePreference: ThemePreference = ThemePreference.BLUE,
     val parentalMode: ParentalMode = ParentalMode.ALL_CONTENT,
     val subtitlePreference: SubtitlePreference = SubtitlePreference.AUTO,
@@ -293,7 +295,9 @@ fun StbPlayApp(
     onEditPortal: (PortalSettings) -> Unit,
     onUsePortal: (PortalSettings) -> Unit,
     onDeletePortal: (PortalSettings) -> Unit,
+    onProviderPair: (PortalSettings) -> Unit,
     onPlayerPreferenceChanged: (PlayerPreference) -> Unit,
+    onAndroidBoxVideoCompatibilityChanged: (Boolean) -> Unit,
     onThemePreferenceChanged: (ThemePreference) -> Unit,
     onSubtitlePreferenceChanged: (SubtitlePreference) -> Unit,
     onCatalogueLanguageChanged: (String) -> Unit,
@@ -385,7 +389,9 @@ fun StbPlayApp(
                     onEditPortal = onEditPortal,
                     onUsePortal = onUsePortal,
                     onDeletePortal = onDeletePortal,
+                    onProviderPair = onProviderPair,
                     onPlayerPreferenceChanged = onPlayerPreferenceChanged,
+                    onAndroidBoxVideoCompatibilityChanged = onAndroidBoxVideoCompatibilityChanged,
                     onThemePreferenceChanged = onThemePreferenceChanged,
                     onSubtitlePreferenceChanged = onSubtitlePreferenceChanged,
                     onCatalogueLanguageChanged = onCatalogueLanguageChanged,
@@ -1422,7 +1428,9 @@ private fun StbPlaySettingsScreen(
     onEditPortal: (PortalSettings) -> Unit,
     onUsePortal: (PortalSettings) -> Unit,
     onDeletePortal: (PortalSettings) -> Unit,
+    onProviderPair: (PortalSettings) -> Unit,
     onPlayerPreferenceChanged: (PlayerPreference) -> Unit,
+    onAndroidBoxVideoCompatibilityChanged: (Boolean) -> Unit,
     onThemePreferenceChanged: (ThemePreference) -> Unit,
     onSubtitlePreferenceChanged: (SubtitlePreference) -> Unit,
     onCatalogueLanguageChanged: (String) -> Unit,
@@ -1496,6 +1504,10 @@ private fun StbPlaySettingsScreen(
                         PortalProfileRow(profile, profile.id == state.activeProfileId,
                             { onUsePortal(profile) }, { onEditPortal(profile) }, { onDeletePortal(profile) })
                     }
+                    state.profiles.firstOrNull { it.id == state.activeProfileId }?.let { activeProfile ->
+                        WideAction("Link active device with a provider", { onProviderPair(activeProfile) }, Modifier.fillMaxWidth())
+                        Text("Your provider can assign a portal profile and manage this device after you share the pairing code.", color = Muted, fontSize = 12.sp)
+                    }
                     WideAction("Add portal", onAddPortal)
                 }
             }
@@ -1503,6 +1515,16 @@ private fun StbPlaySettingsScreen(
                 SettingsSection("Playback") {
                     PreferenceRow("Default player", state.playerPreference.displayName()) { onPlayerPreferenceChanged(state.playerPreference.next()) }
                     PreferenceRow("Audio & subtitles", state.subtitlePreference.displayName()) { onSubtitlePreferenceChanged(state.subtitlePreference.next()) }
+                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Android box video compatibility", color = White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text("Try this if H.265 video has a green or blue picture. It switches the video surface on Android TV/boxes.", color = Muted, fontSize = 12.sp)
+                        }
+                        Switch(
+                            checked = state.androidBoxVideoCompatibility,
+                            onCheckedChange = onAndroidBoxVideoCompatibilityChanged
+                        )
+                    }
                     Text("Auto uses the internal player first and offers VLC when playback fails, if installed.", color = Muted, fontSize = 12.sp)
                 }
             }
@@ -1563,6 +1585,7 @@ private fun StbPlaySettingsScreen(
                     Text("Portal profiles, portal address, MAC address, parental PIN, favourites, playback history/progress, cached catalogue data and preferences are stored in local app storage. They are not sent to STB Play for basic usage counts. Protect the device; local app storage is not an encrypted password vault.", color = White, fontSize = 13.sp)
                     Text("The app connects directly to your portal and to media/artwork hosts supplied by it. Those services receive network requests and may see your IP address and portal credentials required for playback. HTTP portals do not encrypt that connection. Their privacy practices apply. Casting uses Google Cast and the receiver you select; update checks and downloads use GitHub.", color = White, fontSize = 13.sp)
                     Text("If you activate a STB Play key, the app sends the key, Android device identifier, platform, app version and portal hostname over HTTPS for validation. The service stores hashed key/device references plus the portal hostname and activity details; it does not need your portal password, MAC address, full portal URL or viewing history.", color = White, fontSize = 13.sp)
+                    Text("If you choose Link with provider, the app sends its Android device identifier and active portal MAC over HTTPS to request a short-lived pairing code. STB Play stores a hashed device reference and the MAC with the assignment. Your assigned provider and STB Play administrators can see the Device ID and MAC in their dashboards and use them to assign an authorized portal profile. If paired, the app syncs the portal profile on startup or when you refresh. This is separate from optional device counts.", color = White, fontSize = 13.sp)
                     Text("Optional device counts are off unless you enable them here. When enabled, the app sends its Android device identifier, platform and app version to the STB Play service; it does not send portal details or viewing history for this count. The service uses a hashed device reference and activity dates, with records marked to expire after 12 months without activity. Turn this off any time to stop future count requests.", color = White, fontSize = 13.sp)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
@@ -1583,6 +1606,47 @@ private fun StbPlaySettingsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun ProviderPairingDialog(
+    session: ProviderPairingSession?,
+    status: String,
+    onDismiss: () -> Unit
+) {
+    if (session == null) return
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.widthIn(min = 300.dp, max = 540.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = SurfaceDefaults.colors(containerColor = Panel)
+        ) {
+            Column(
+                Modifier.padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Link this device with your provider", color = GoldLight, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("Send this code and the two device details to your provider. The code expires at ${java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(session.expiresAtMillis))}.", color = White, fontSize = 13.sp)
+                PairingValue("Pairing code", session.pairingCode)
+                PairingValue("Device ID", session.deviceReference)
+                PairingValue("Portal MAC", session.portalMac)
+                Text(status, color = GoldLight, fontSize = 13.sp)
+                Text("Your provider sees the Device ID and MAC in their panel after pairing. Portal setup stays manual unless your provider assigns a profile. Canceling revokes the code when online; otherwise it expires automatically.", color = Muted, fontSize = 12.sp)
+                PrimaryAction("Cancel pairing", onDismiss)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PairingValue(label: String, value: String) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Navy).padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(label, color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text(value, color = White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -2041,9 +2105,10 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
                     PolicySection("3. Data saved on this device", "The app saves portal profiles and settings, portal address, MAC address, parental PIN, favourites, watch history and progress, catalogue cache and preferences in local app storage. This is not an encrypted password vault. Remove saved portals or clear history/cache in Settings, or uninstall the app to remove local app data. Android backup is disabled.")
                     PolicySection("4. Connections to portals and other services", "The app contacts the portal you add to sign in, load its catalogue, and request playback links; it then contacts stream and artwork hosts supplied by that source. Those services can receive your network address and requests, and the portal receives the credentials needed to authenticate you. A portal using HTTP does not encrypt that traffic. The source operator’s own privacy and service terms apply. If you use Cast, Google Cast and your selected receiver participate in playback. Update checks and downloads use GitHub.")
                     PolicySection("5. STB Play key and license service", "If you activate a STB Play key, the app sends the entered key, Android device identifier, app platform/version and portal hostname over HTTPS for license verification. The service keeps hashed key and device references together with the portal hostname and registration/activity details. It does not need your portal password, MAC address, full portal URL or watched titles for license checks. The license service and its cloud host process these requests under their own security and retention settings.")
-                    PolicySection("6. Optional device counts", "Device-count sharing is optional and off by default for new installs. If enabled in Settings, the app sends its Android device identifier, platform and app version to the STB Play service to estimate installs and recently active devices. The request excludes portal details and viewing history. Device references are hashed by the service; count records are marked to expire after 12 months without activity. You can turn this option off at any time in Settings. No advertising SDK is included.")
-                    PolicySection("7. Notifications and permissions", "Internet and network access are used for your selected portal, streams, Cast, updates and license service. Notifications may announce an update or a local portal-expiry reminder if you grant permission. Android asks separately before installing an update you choose. STB Play does not request camera, microphone, contacts or location access.")
-                    PolicySection("8. Changes and third parties", "Portal operators, media hosts, Google, Firebase and GitHub are separate services and handle their own connection data under their policies. STB Play cannot control their availability or practices. The full privacy policy is published in Settings and in the app’s policy document; a revised policy may be shown again when its version changes.")
+                    PolicySection("6. Optional provider pairing", "Only if you choose Link with provider, the app sends its Android device identifier, platform and active portal MAC over HTTPS to request a 10-minute pairing code. The service stores a hashed device reference and the MAC with the pairing and assignment. The assigned provider and STB Play administrators can view both values in their authorized dashboards and use them to assign an authorized portal profile and app license. After pairing, the app sends its device identifier, pairing token, platform and app version on startup or when you refresh to receive provider profile updates. Pairing data is not used for advertising or optional device counts. You can cancel the request; the app attempts to revoke the code, which expires after 10 minutes if revocation cannot reach the service.")
+                    PolicySection("7. Optional device counts", "Device-count sharing is optional and off by default for new installs. If enabled in Settings, the app sends its Android device identifier, platform and app version to the STB Play service to estimate installs and recently active devices. The request excludes portal details and viewing history. Device references are hashed by the service; count records are marked to expire after 12 months without activity. You can turn this option off at any time in Settings. No advertising SDK is included.")
+                    PolicySection("8. Notifications and permissions", "Internet and network access are used for your selected portal, streams, Cast, updates and license service. Notifications may announce an update or a local portal-expiry reminder if you grant permission. Android asks separately before installing an update you choose. STB Play does not request camera, microphone, contacts or location access.")
+                    PolicySection("9. Changes and third parties", "Portal operators, media hosts, Google, Firebase and GitHub are separate services and handle their own connection data under their policies. STB Play cannot control their availability or practices. The full privacy policy is published in Settings and in the app’s policy document; a revised policy may be shown again when its version changes.")
                 }
                 QuestButton(
                     onClick = { agreed = !agreed },
