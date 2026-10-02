@@ -24,6 +24,21 @@ data class PlatformLicenseDetails(
     val hasKey: Boolean = false
 )
 
+data class ProviderPairingSession(
+    val pairingCode: String,
+    val deviceReference: String,
+    val portalMac: String,
+    val expiresAtMillis: Long
+)
+
+data class ProviderPairingStatus(
+    val pending: Boolean,
+    val portalName: String = "",
+    val portalUrl: String = "",
+    val licenseLabel: String = "",
+    val licenseExpiresAtMillis: Long? = null
+)
+
 /** Optional connection to the STB Play registration service. Failures never gate playback. */
 class PlatformLicenseClient(context: Context) {
     private val appContext = context.applicationContext
@@ -68,8 +83,100 @@ class PlatformLicenseClient(context: Context) {
         }
     }
 
+    /** Starts an explicit provider pairing request; the server stores only a hash of the device ID. */
+    suspend fun startProviderPairing(portalMac: String): ProviderPairingSession = withContext(Dispatchers.IO) {
+        val normalizedMac = portalMac.trim().uppercase()
+        require(MAC_PATTERN.matches(normalizedMac)) { "Enter a valid portal MAC address before pairing." }
+        val response = post("/api/pairing/start", JSONObject()
+            .put("deviceId", deviceId())
+            .put("platform", "android")
+            .put("portalMac", normalizedMac))
+        val code = response.optString("pairingCode").uppercase()
+        val token = response.optString("deviceToken")
+        val expiry = parseTime(response.optString("expiresAt"))
+        require(code.matches(Regex("^[A-F0-9]{12}$")) && token.isNotBlank() && expiry != null) {
+            "The pairing service returned an incomplete response. Try again."
+        }
+        saveEncryptedSecret(token, PAIRING_TOKEN_CIPHER, PAIRING_TOKEN_IV)
+        preferences.edit()
+            .putString(PAIRING_CODE, code)
+            .putString(PAIRING_MAC, normalizedMac)
+            .putLong(PAIRING_EXPIRY, expiry)
+            .apply()
+        ProviderPairingSession(code, displayDeviceReference(), normalizedMac, expiry)
+    }
+
+    fun pendingProviderPairing(): ProviderPairingSession? {
+        val code = preferences.getString(PAIRING_CODE, null) ?: return null
+        val mac = preferences.getString(PAIRING_MAC, null) ?: return null
+        val expiry = preferences.getLong(PAIRING_EXPIRY, 0L)
+        return ProviderPairingSession(code, displayDeviceReference(), mac, expiry)
+    }
+
+    /** Polls the one-time request. A successful response securely promotes its token for later profile sync. */
+    suspend fun checkProviderPairing(session: ProviderPairingSession): ProviderPairingStatus = withContext(Dispatchers.IO) {
+        val token = readEncryptedSecret(PAIRING_TOKEN_CIPHER, PAIRING_TOKEN_IV)
+            ?: throw IllegalStateException("Pairing session was cleared. Start a new request.")
+        val response = post("/api/pairing/status", JSONObject()
+            .put("deviceId", deviceId())
+            .put("pairingCode", session.pairingCode)
+            .put("deviceToken", token))
+        if (response.optString("state") != "completed") return@withContext ProviderPairingStatus(pending = true)
+        val portal = response.optJSONObject("portal")
+            ?: throw IllegalStateException("The provider assignment did not include a portal profile.")
+        val portalUrl = portal.optString("url")
+        if (portalUrl.isBlank()) throw IllegalStateException("The provider assignment did not include a portal URL.")
+        saveEncryptedSecret(token, DEVICE_TOKEN_CIPHER, DEVICE_TOKEN_IV)
+        saveLicenseInfo(response)
+        clearPairingRequest()
+        ProviderPairingStatus(
+            pending = false,
+            portalName = portal.optString("name").ifBlank { "Provider portal" },
+            portalUrl = portalUrl,
+            licenseLabel = response.optString("licenseLabel").ifBlank { "Provider-managed license" },
+            licenseExpiresAtMillis = parseTime(response.optString("licenseExpiresAt"))
+        )
+    }
+
+    /** Pulls provider portal changes on app startup. Offline sync never blocks manual portal playback. */
+    suspend fun syncProviderAssignment(): ProviderPairingStatus? = withContext(Dispatchers.IO) {
+        val token = readEncryptedSecret(DEVICE_TOKEN_CIPHER, DEVICE_TOKEN_IV) ?: return@withContext null
+        val response = post("/api/device/sync", JSONObject()
+            .put("deviceId", deviceId())
+            .put("deviceToken", token)
+            .put("platform", "android")
+            .put("appVersion", com.example.stbplay.BuildConfig.VERSION_NAME))
+        if (!response.optBoolean("registered")) return@withContext null
+        val portal = response.optJSONObject("portal") ?: return@withContext null
+        val portalUrl = portal.optString("url")
+        if (portalUrl.isBlank()) return@withContext null
+        saveLicenseInfo(response)
+        ProviderPairingStatus(
+            pending = false,
+            portalName = portal.optString("name").ifBlank { "Provider portal" },
+            portalUrl = portalUrl,
+            licenseLabel = response.optString("licenseLabel").ifBlank { "Provider-managed license" },
+            licenseExpiresAtMillis = parseTime(response.optString("licenseExpiresAt"))
+        )
+    }
+
+    suspend fun cancelProviderPairing(session: ProviderPairingSession? = pendingProviderPairing()) = withContext(Dispatchers.IO) {
+        val token = readEncryptedSecret(PAIRING_TOKEN_CIPHER, PAIRING_TOKEN_IV)
+        if (session != null && !token.isNullOrBlank()) {
+            runCatching {
+                post("/api/pairing/cancel", JSONObject()
+                    .put("deviceId", deviceId())
+                    .put("pairingCode", session.pairingCode)
+                    .put("deviceToken", token))
+            }
+        }
+        clearPairingRequest()
+    }
+
+    fun displayDeviceReference(): String = sha256(deviceId())
+
     fun currentLicense(): PlatformLicenseDetails {
-        val hasKey = preferences.contains(KEY_CIPHER)
+        val hasKey = preferences.getBoolean(LICENSE_ACTIVE, preferences.contains(KEY_CIPHER))
         return PlatformLicenseDetails(
             label = preferences.getString(LICENSE_LABEL, null) ?: if (hasKey) "STB Play license" else "No license key",
             expiresAtMillis = preferences.getLong(LICENSE_EXPIRY, -1L).takeIf { it > 0L },
@@ -83,6 +190,7 @@ class PlatformLicenseClient(context: Context) {
         preferences.edit()
             .putString(LICENSE_LABEL, response.optString("licenseLabel").takeIf { it.isNotBlank() && it != "null" } ?: "STB Play license")
             .putLong(LICENSE_EXPIRY, expires ?: -1L)
+            .putBoolean(LICENSE_ACTIVE, true)
             .apply()
     }
 
@@ -125,6 +233,40 @@ class PlatformLicenseClient(context: Context) {
         id
     }
 
+    private fun sha256(value: String): String = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    private fun parseTime(value: String): Long? = value.takeIf { it.isNotBlank() && it != "null" }
+        ?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+
+    private fun saveEncryptedSecret(value: String, cipherKey: String, ivKey: String) {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey())
+        val encrypted = Base64.encodeToString(cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+        preferences.edit()
+            .putString(cipherKey, encrypted)
+            .putString(ivKey, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .apply()
+    }
+
+    private fun readEncryptedSecret(cipherKey: String, ivKey: String): String? = runCatching {
+        val encrypted = preferences.getString(cipherKey, null) ?: return null
+        val iv = Base64.decode(preferences.getString(ivKey, null), Base64.NO_WRAP)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, iv))
+        String(cipher.doFinal(Base64.decode(encrypted, Base64.NO_WRAP)), Charsets.UTF_8)
+    }.getOrNull()
+
+    private fun clearPairingRequest() {
+        preferences.edit()
+            .remove(PAIRING_CODE)
+            .remove(PAIRING_MAC)
+            .remove(PAIRING_EXPIRY)
+            .remove(PAIRING_TOKEN_CIPHER)
+            .remove(PAIRING_TOKEN_IV)
+            .apply()
+    }
+
     private fun saveKey(key: String) {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey())
@@ -165,8 +307,17 @@ class PlatformLicenseClient(context: Context) {
         private const val KEY_IV = "license_key_iv"
         private const val LICENSE_LABEL = "license_label"
         private const val LICENSE_EXPIRY = "license_expiry"
+        private const val LICENSE_ACTIVE = "license_active"
+        private const val PAIRING_CODE = "provider_pairing_code"
+        private const val PAIRING_MAC = "provider_pairing_mac"
+        private const val PAIRING_EXPIRY = "provider_pairing_expiry"
+        private const val PAIRING_TOKEN_CIPHER = "provider_pairing_token_cipher"
+        private const val PAIRING_TOKEN_IV = "provider_pairing_token_iv"
+        private const val DEVICE_TOKEN_CIPHER = "provider_device_token_cipher"
+        private const val DEVICE_TOKEN_IV = "provider_device_token_iv"
         private const val KEY_ALIAS = "stb_platform_license_aes"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
+        private val MAC_PATTERN = Regex("^[0-9A-F]{2}(:[0-9A-F]{2}){5}$")
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }
