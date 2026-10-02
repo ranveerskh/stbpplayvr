@@ -52,6 +52,7 @@ import com.example.stbplay.data.UpdateInfo
 import com.example.stbplay.data.UpdateCheckWorker
 import com.example.stbplay.data.UpdateManager
 import com.example.stbplay.data.PlatformLicenseClient
+import com.example.stbplay.data.ProviderPairingSession
 import com.example.stbplay.data.PortalExpiryReminderWorker
 import com.example.stbplay.data.model.PortalCategory
 import com.example.stbplay.data.model.PortalEpisode
@@ -62,6 +63,7 @@ import com.example.stbplay.domain.model.PortalSettings
 import com.example.stbplay.ui.ChangePinPrompt
 import com.example.stbplay.ui.FirstStartDisclaimer
 import com.example.stbplay.ui.PinPrompt
+import com.example.stbplay.ui.ProviderPairingDialog
 import com.example.stbplay.ui.StbPlayApp
 import com.example.stbplay.ui.StbPlayHomeState
 import com.example.stbplay.ui.StbPlayLibraryState
@@ -83,6 +85,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import java.text.DateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -337,6 +340,9 @@ private fun StbPlayRoot(
     val appContext = LocalContext.current.applicationContext
     val platformLicenseClient = remember(appContext) { PlatformLicenseClient(appContext) }
     var platformLicense by remember { mutableStateOf(platformLicenseClient.currentLicense()) }
+    var providerPairing by remember { mutableStateOf<ProviderPairingSession?>(null) }
+    var providerPairingStatus by remember { mutableStateOf("Waiting for your provider to assign a portal.") }
+    var providerPairingBusy by remember { mutableStateOf(false) }
     val catalogCache = remember(appContext) { CatalogCacheStore(appContext) }
     val contentGridState = rememberLazyGridState()
     val liveChannelListState = rememberLazyListState()
@@ -349,6 +355,7 @@ private fun StbPlayRoot(
     val favoriteIds by settingsManager.favoriteIds.collectAsState(initial = emptySet())
     val progressById by settingsManager.vodProgress.collectAsState(initial = emptyMap())
     val playerPreference by settingsManager.playerPreference.collectAsState(initial = PlayerPreference.AUTO)
+    val androidBoxVideoCompatibility by settingsManager.androidBoxVideoCompatibility.collectAsState(initial = false)
     val subtitlePreference by settingsManager.subtitlePreference.collectAsState(initial = com.example.stbplay.data.SubtitlePreference.AUTO)
     val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
     val parentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
@@ -620,6 +627,96 @@ private fun StbPlayRoot(
         }
     }
 
+    fun startProviderPairing(target: PortalSettings) {
+        if (providerPairingBusy) return
+        val prepared = target.normalized().withStableId()
+        providerPairingBusy = true
+        scope.launch {
+            try {
+                settingsManager.upsertPortal(prepared)
+                providerPairingStatus = "Creating a secure, one-time pairing code…"
+                val session = platformLicenseClient.startProviderPairing(prepared.mac)
+                providerPairing = session
+                providerPairingStatus = "Waiting for your provider to assign a portal."
+            } catch (error: Exception) {
+                android.widget.Toast.makeText(
+                    appContext,
+                    error.message ?: "Could not start provider pairing. Try again.",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                providerPairingBusy = false
+            }
+        }
+    }
+
+    suspend fun syncAssignedPortal(input: PortalSettings): PortalSettings {
+        val assignment = runCatching { platformLicenseClient.syncProviderAssignment() }.getOrNull() ?: return input
+        platformLicense = platformLicenseClient.currentLicense()
+        licenseStatus = "Provider portal synced."
+        val updated = input.copy(name = assignment.portalName, url = assignment.portalUrl).normalized()
+        if (updated.name != input.name || updated.url != input.url) settingsManager.upsertPortal(updated)
+        return updated
+    }
+
+    fun refreshPortal(input: PortalSettings, keepHomeVisible: Boolean = false) {
+        scope.launch {
+            val latest = syncAssignedPortal(input)
+            startConnection(latest, keepHomeVisible)
+        }
+    }
+
+    LaunchedEffect(settingsLoaded) {
+        if (settingsLoaded) {
+            platformLicense = platformLicenseClient.currentLicense()
+            platformLicenseClient.pendingProviderPairing()?.let {
+                providerPairing = it
+                providerPairingStatus = if (it.expiresAtMillis <= System.currentTimeMillis())
+                    "This pairing code expired. Close it and request a new code."
+                else "Waiting for your provider to assign a portal."
+            }
+        }
+    }
+
+    LaunchedEffect(providerPairing?.pairingCode) {
+        val session = providerPairing ?: return@LaunchedEffect
+        while (isActive) {
+            if (session.expiresAtMillis <= System.currentTimeMillis()) {
+                providerPairingStatus = "This pairing code expired. Close it and request a new code."
+                break
+            }
+            delay(3_000)
+            val status = runCatching { platformLicenseClient.checkProviderPairing(session) }
+            val assignment = status.getOrNull()
+            if (assignment == null) {
+                val message = status.exceptionOrNull()?.message.orEmpty()
+                if (message.contains("expir", ignoreCase = true)) {
+                    providerPairingStatus = "This pairing code expired. Close it and request a new code."
+                    break
+                }
+                providerPairingStatus = "Still waiting for your provider. Connection will retry automatically."
+                continue
+            }
+            if (assignment.pending) {
+                providerPairingStatus = "Waiting for your provider to select a portal profile…"
+                continue
+            }
+            val current = settingsManager.portalSettings.first()
+            val assignedPortal = current.copy(
+                name = assignment.portalName,
+                url = assignment.portalUrl,
+                mac = session.portalMac
+            ).normalized().withStableId()
+            settingsManager.upsertPortal(assignedPortal)
+            platformLicense = platformLicenseClient.currentLicense()
+            licenseStatus = "Provider license active."
+            providerPairingStatus = "Portal assigned. Connecting…"
+            providerPairing = null
+            startConnection(assignedPortal)
+            break
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(settingsLoaded, disclaimerAcknowledged, storedSettings.id, storedSettings.url, storedSettings.mac) {
         if (!settingsLoaded) return@LaunchedEffect
         if (!disclaimerAcknowledged) return@LaunchedEffect
@@ -628,7 +725,11 @@ private fun StbPlayRoot(
             return@LaunchedEffect
         }
         val key = portalKey(storedSettings)
-        if (!connecting && autoConnectKey != key) startConnection(storedSettings, keepHomeVisible = true)
+        if (connecting || autoConnectKey == key) return@LaunchedEffect
+        val connectionSettings = syncAssignedPortal(storedSettings)
+        if (!connecting && autoConnectKey != portalKey(connectionSettings)) {
+            startConnection(connectionSettings, keepHomeVisible = true)
+        }
     }
 
     fun allStreamFor(media: UiMedia): PortalStream? = (liveStreams + movieStreams + seriesStreams + remoteSearchStreams)
@@ -976,6 +1077,7 @@ private fun StbPlayRoot(
         movieCount = movieStreams.size,
         seriesCount = seriesStreams.size,
         playerPreference = playerPreference,
+        androidBoxVideoCompatibility = androidBoxVideoCompatibility,
         themePreference = themePreference,
         parentalMode = parentalMode,
         subtitlePreference = subtitlePreference,
@@ -1150,6 +1252,7 @@ private fun StbPlayRoot(
                     token = portalRepository.getHandshakeToken(),
                     sessionCookie = portalRepository.getSessionCookie(),
                     playerPreference = playerPreference,
+                    androidBoxVideoCompatibility = androidBoxVideoCompatibility,
                     subtitlePreference = subtitlePreference,
                     onProgress = { position, duration ->
                         if (currentRequest.kind != StalkerContentKind.LIVE) scope.launch { settingsManager.saveProgress(currentRequest.contentId, position, duration) }
@@ -1233,6 +1336,7 @@ private fun StbPlayRoot(
                         editingPortal = null
                         startConnection(prepared)
                     },
+                    onProviderPair = ::startProviderPairing,
                     onCancel = if (profiles.isNotEmpty()) ({ editingPortal = null; screen = AppScreen.APP }) else null
                 )
                 screen == AppScreen.LOADING -> LoadingScreen(
@@ -1275,7 +1379,7 @@ private fun StbPlayRoot(
                     onMediaClick = ::requestMedia,
                     onToggleFavorite = ::setFavorite,
                     onRemoveHistory = { media -> scope.launch { settingsManager.removeFromHistory(media.id) } },
-                    onRefresh = { startConnection(storedSettings) },
+                    onRefresh = { refreshPortal(storedSettings) },
                     onClearCache = {
                         categoryPreloadJob?.cancel()
                         liveStreams = emptyList(); movieStreams = emptyList(); seriesStreams = emptyList()
@@ -1296,7 +1400,9 @@ private fun StbPlayRoot(
                         loadingProgress = 0.04f
                     },
                     onDeletePortal = { profile -> scope.launch { settingsManager.deletePortal(profile.id) } },
+                    onProviderPair = ::startProviderPairing,
                     onPlayerPreferenceChanged = { preference -> scope.launch { settingsManager.setPlayerPreference(preference) } },
+                    onAndroidBoxVideoCompatibilityChanged = { enabled -> scope.launch { settingsManager.setAndroidBoxVideoCompatibility(enabled) } },
                     onThemePreferenceChanged = { preference -> scope.launch { settingsManager.setThemePreference(preference) } },
                     onSubtitlePreferenceChanged = { preference -> scope.launch { settingsManager.setSubtitlePreference(preference) } },
                     onCatalogueLanguageChanged = { language -> scope.launch { settingsManager.setCatalogueLanguage(language) } },
@@ -1397,6 +1503,16 @@ private fun StbPlayRoot(
                     onCancel = { changingPin = false }
                 )
             }
+            ProviderPairingDialog(
+                session = providerPairing,
+                status = providerPairingStatus,
+                onDismiss = {
+                    val session = providerPairing
+                    scope.launch { platformLicenseClient.cancelProviderPairing(session) }
+                    providerPairing = null
+                    providerPairingStatus = "Waiting for your provider to assign a portal."
+                }
+            )
             promptUpdate?.takeIf { !it.isOverdue(currentTime) || BuildConfig.BUILD_TYPE != "release" }?.let { available ->
                 if (playRequest == null && screen == AppScreen.APP) UpdateNotice(
                     info = available, required = false, status = updateText,
@@ -1415,7 +1531,7 @@ private fun StbPlayRoot(
     }
 }
 
-private const val REQUIRED_POLICY_VERSION = 2
+private const val REQUIRED_POLICY_VERSION = 3
 
 private fun PortalStream.toUiMedia(
     portrait: Boolean,
