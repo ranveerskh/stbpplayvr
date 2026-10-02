@@ -42,6 +42,7 @@ import com.example.stbplay.data.CatalogSnapshot
 import com.example.stbplay.data.CachedVodCatalog
 import com.example.stbplay.data.SettingsManager
 import com.example.stbplay.data.LauncherIconManager
+import com.example.stbplay.data.AppLicenseManager
 import com.example.stbplay.data.StalkerContentKind
 import com.example.stbplay.data.StalkerPlayRequest
 import com.example.stbplay.data.ThemePreference
@@ -310,6 +311,8 @@ private fun StbPlayRoot(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
     val catalogCache = remember(appContext) { CatalogCacheStore(appContext) }
+    val appLicenseManager = remember(appContext) { AppLicenseManager(appContext) }
+    val appLicenseState by appLicenseManager.state.collectAsState()
     val contentGridState = rememberLazyGridState()
     val liveChannelListState = rememberLazyListState()
     val storedSettings by settingsManager.portalSettings.collectAsState(initial = PortalSettings())
@@ -396,6 +399,12 @@ private fun StbPlayRoot(
         }
     }
 
+    LaunchedEffect(appLicenseManager) {
+        while (isActive) {
+            appLicenseManager.refresh()
+            delay(TimeUnit.HOURS.toMillis(12))
+        }
+    }
     LaunchedEffect(Unit) {
         updateInfo?.takeIf(updateManager::shouldPrompt)?.let { promptUpdate = it }
         checkUpdates()
@@ -802,6 +811,12 @@ private fun StbPlayRoot(
         subscriptionPlan = subscription.plan,
         subscriptionStatus = subscription.status,
         expiryText = subscription.toExpiryText().orEmpty(),
+        appLicenseStatus = appLicenseState.statusText,
+        appLicenseExpiry = appLicenseState.expiryText,
+        appLicenseMessage = appLicenseState.message,
+        appLicenseKeyHint = appLicenseState.keyHint,
+        appLicenseRegistered = appLicenseState.registered,
+        appLicenseBusy = appLicenseState.busy,
         liveCount = liveStreams.size,
         movieCount = movieStreams.size,
         seriesCount = seriesStreams.size,
@@ -1075,6 +1090,8 @@ private fun StbPlayRoot(
                     onCatalogueLanguageChanged = { language -> scope.launch { settingsManager.setCatalogueLanguage(language) } },
                     onAnalyticsChanged = { enabled -> scope.launch { settingsManager.setAnalyticsEnabled(enabled) } },
                     onChangePin = { changingPin = true },
+                    onActivateAppLicense = { key -> scope.launch { appLicenseManager.activate(key) } },
+                    onCheckAppLicense = { scope.launch { appLicenseManager.refresh(force = true) } },
                     onCheckUpdates = { checkUpdates(manual = true) },
                     onDownloadUpdate = {
                         val info = updateInfo
