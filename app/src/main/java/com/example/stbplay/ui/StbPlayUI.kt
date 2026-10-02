@@ -1596,7 +1596,7 @@ private fun StbPlaySettingsScreen(
                     }
                     Text("Internet/network access connects to selected services. Notifications are used for updates and locally scheduled portal-expiry reminders if you allow them. The app requests permission to open an APK installer only when you choose an update. It does not request camera, microphone, contacts or location access.", color = White, fontSize = 13.sp)
                     Text("Use Content & storage to erase cached catalogues and watch history. Remove saved portals in Content sources. Uninstalling clears remaining local app data.", color = Muted, fontSize = 12.sp)
-                    WideAction("Full privacy policy online", { uriHandler.openUri("https://github.com/ranveerskh/stbpplayvr/blob/v1.9.10/PRIVACY_POLICY.md") }, Modifier.fillMaxWidth())
+                    WideAction("Full privacy policy online", { uriHandler.openUri("https://github.com/ranveerskh/stbpplayvr/blob/test/2.0.2/PRIVACY_POLICY.md") }, Modifier.fillMaxWidth())
                 }
             }
             SettingsPage.ABOUT -> item {
