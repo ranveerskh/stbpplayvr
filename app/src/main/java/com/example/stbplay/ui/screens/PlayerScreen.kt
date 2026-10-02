@@ -236,7 +236,7 @@ private fun NativePlayerScreen(
     // Use the device's stable short-side width so rotating a phone into fullscreen does not
     // replace the player/cast controls with the TV layout.
     val compactLayout = configuration.smallestScreenWidthDp < 900 && !isAndroidTv
-    // Match the working v1.8.37 TV path: prefer TextureView first, then try SurfaceView if needed.
+    // Keep TextureView first by default; the opt-in box compatibility setting starts with SurfaceView.
     val preferTextureSurface = (compactLayout || isAndroidTv) && !(isAndroidTv && androidBoxVideoCompatibility)
     val player = remember(playbackUrl, portalUiUrl, token, sessionCookie, subtitlePreference, resumeFraction) {
         val headers = mutableMapOf(
