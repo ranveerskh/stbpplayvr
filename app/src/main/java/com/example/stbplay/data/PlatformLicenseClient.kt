@@ -118,6 +118,11 @@ class PlatformLicenseClient(context: Context) {
         }
     }
 
+    /** Pseudonymous stable identifier matching the service's hashed device record key. */
+    fun providerDeviceId(): String = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(deviceId().toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+
     private fun deviceId(): String = preferences.getString(DEVICE_ID, null) ?: run {
         val id = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
             ?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()

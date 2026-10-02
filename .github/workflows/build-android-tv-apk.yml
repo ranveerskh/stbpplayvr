@@ -1,6 +1,8 @@
 name: Build STB PLAY Android TV APK
 
 on:
+  pull_request:
+    branches: [release/2.0.1]
   workflow_dispatch:
   push:
     branches: [main, update-v1.9, work/1.9.5]
@@ -38,6 +40,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: STB-PLAY-Android-v1.9.7-debug-APK
+          name: STB-PLAY-Android-v2.0.2-debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

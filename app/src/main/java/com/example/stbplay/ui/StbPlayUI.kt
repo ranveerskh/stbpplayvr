@@ -251,6 +251,8 @@ data class StbPlaySettingsState(
     val expiryText: String = "",
     val licenseName: String = "Demo trial",
     val licenseExpiryText: String = "",
+    val providerMac: String = "",
+    val providerDeviceId: String = "",
     val liveCount: Int = 0,
     val movieCount: Int = 0,
     val seriesCount: Int = 0,
@@ -1560,7 +1562,7 @@ private fun StbPlaySettingsScreen(
             SettingsPage.PRIVACY -> item {
                 SettingsSection("Privacy policy") {
                     Text("STB Play is a player only; it does not supply portals, accounts, subscriptions, channels, movies, series or streams. Add only a portal and content you are authorized to access. You are responsible for complying with local law and your provider’s terms.", color = White, fontSize = 13.sp)
-                    Text("Portal profiles, portal address, MAC address, parental PIN, favourites, playback history/progress, cached catalogue data and preferences are stored in local app storage. They are not sent to STB Play for basic usage counts. Protect the device; local app storage is not an encrypted password vault.", color = White, fontSize = 13.sp)
+                    Text("Portal profiles, portal address, MAC address, parental PIN, favourites, playback history/progress, cached catalogue data and preferences are stored in local app storage. They are not sent to STB Play for basic usage counts. Protect the device; local app storage is not an encrypted password vault. Settings can display your portal MAC and STB PLAY Device ID so you can screenshot and share them with your provider.", color = White, fontSize = 13.sp)
                     Text("The app connects directly to your portal and to media/artwork hosts supplied by it. Those services receive network requests and may see your IP address and portal credentials required for playback. HTTP portals do not encrypt that connection. Their privacy practices apply. Casting uses Google Cast and the receiver you select; update checks and downloads use GitHub.", color = White, fontSize = 13.sp)
                     Text("If you activate a STB Play key, the app sends the key, Android device identifier, platform, app version and portal hostname over HTTPS for validation. The service stores hashed key/device references plus the portal hostname and activity details; it does not need your portal password, MAC address, full portal URL or viewing history.", color = White, fontSize = 13.sp)
                     Text("Optional device counts are off unless you enable them here. When enabled, the app sends its Android device identifier, platform and app version to the STB Play service; it does not send portal details or viewing history for this count. The service uses a hashed device reference and activity dates, with records marked to expire after 12 months without activity. Turn this off any time to stop future count requests.", color = White, fontSize = 13.sp)
@@ -1648,6 +1650,20 @@ private fun SubscriptionCard(state: StbPlaySettingsState, onActivateLicense: (St
                 activationMessage = ""
                 showUpgradeDialog = true
             }, Modifier.fillMaxWidth())
+        }
+
+        SettingsSection("Provider setup details") {
+            Text("Portal MAC · IPTV service", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(state.providerMac.ifBlank { "No portal MAC is available yet." }, color = White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text("STB PLAY Device ID · app/license linking", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(
+                state.providerDeviceId.chunked(32).joinToString("\n").ifBlank { "Device ID unavailable" },
+                color = White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text("These are different IDs. Take one screenshot of this section and send it to your authorized provider. This does not activate a portal by itself.", color = Muted, fontSize = 12.sp)
         }
 
         SettingsSection("Portal subscription") {

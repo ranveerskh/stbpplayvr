@@ -966,6 +966,8 @@ private fun StbPlayRoot(
         subscriptionStatus = subscription.status,
         expiryText = subscription.toExpiryText().orEmpty(),
         licenseName = if (platformLicense.hasKey) platformLicense.label else "Demo trial",
+        providerMac = storedSettings.mac,
+        providerDeviceId = platformLicenseClient.providerDeviceId(),
         licenseExpiryText = when {
             !platformLicense.hasKey -> "No STB Play key activated"
             licenseExpiryMillis == null -> "No expiry set"
