@@ -640,12 +640,6 @@ private fun StbPlayHeader(
                 fontSize = if (compact || denseTv) 18.sp else 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
-            Image(
-                painter = painterResource(themePreference.iconResource()),
-                contentDescription = "STB Play logo",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(if (compact || denseTv) 27.dp else 32.dp)
-            )
         }
         Spacer(modifier = Modifier.weight(1f))
         HeaderAction(if (compact) "⌕" else "Search", onSearchClick, modifier = Modifier.width(if (compact) 44.dp else if (denseTv) 92.dp else 120.dp))
