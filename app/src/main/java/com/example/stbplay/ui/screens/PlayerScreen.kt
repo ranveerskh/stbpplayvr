@@ -236,8 +236,14 @@ private fun NativePlayerScreen(
     // Use the device's stable short-side width so rotating a phone into fullscreen does not
     // replace the player/cast controls with the TV layout.
     val compactLayout = configuration.smallestScreenWidthDp < 900 && !isAndroidTv
-    // Keep TextureView first by default; the opt-in box compatibility setting starts with SurfaceView.
-    val preferTextureSurface = (compactLayout || isAndroidTv) && !(isAndroidTv && androidBoxVideoCompatibility)
+    val hasTouchscreen = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
+    val preferTextureSurface = shouldPreferTextureSurface(
+        compactLayout = compactLayout,
+        isAndroidTv = isAndroidTv,
+        isMetaQuest = isMetaQuest,
+        hasTouchscreen = hasTouchscreen,
+        androidBoxVideoCompatibility = androidBoxVideoCompatibility
+    )
     val player = remember(playbackUrl, portalUiUrl, token, sessionCookie, subtitlePreference, resumeFraction) {
         val headers = mutableMapOf(
             "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 MAG254",
@@ -880,4 +886,21 @@ private fun PlaybackErrorScreen(message: String, onRetry: () -> Unit, onBack: ()
             if (!isAndroidTv) QuestButton(onClick = onBack) { Text("Back") }
         }
     }
+}
+
+/**
+ * Keeps TextureView as the default on phones and supported TVs. The opt-in compatibility mode
+ * selects SurfaceView only for Android TV devices or touchless Android boxes; Quest stays on its
+ * existing TextureView layout.
+ */
+internal fun shouldPreferTextureSurface(
+    compactLayout: Boolean,
+    isAndroidTv: Boolean,
+    isMetaQuest: Boolean,
+    hasTouchscreen: Boolean,
+    androidBoxVideoCompatibility: Boolean
+): Boolean {
+    val isAndroidTvOrTouchlessBox = isAndroidTv || (!hasTouchscreen && !isMetaQuest)
+    val useCompatibilitySurface = androidBoxVideoCompatibility && isAndroidTvOrTouchlessBox
+    return (compactLayout || isAndroidTv) && !useCompatibilitySurface
 }
