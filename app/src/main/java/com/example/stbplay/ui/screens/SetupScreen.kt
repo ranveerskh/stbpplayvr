@@ -76,7 +76,9 @@ fun SetupScreen(
                 .align(Alignment.Center)
                 .fillMaxWidth()
                 .widthIn(max = 800.dp)
-                .then(if (phoneLayout) Modifier.imePadding().verticalScroll(rememberScrollState()).padding(18.dp) else Modifier.padding(42.dp)),
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState())
+                .then(if (phoneLayout) Modifier.imePadding().padding(18.dp) else Modifier.padding(horizontal = 42.dp, vertical = 24.dp)),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("STB PLAY", color = SetupGold, fontSize = if (phoneLayout) 32.sp else 46.sp, fontWeight = FontWeight.ExtraBold)
@@ -101,60 +103,17 @@ fun SetupScreen(
                 Text(it, color = SetupError, fontSize = 13.sp, textAlign = TextAlign.Center)
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-            val actionModifier = if (phoneLayout) Modifier.fillMaxWidth() else Modifier
-            val actionContent: @Composable () -> Unit = {
-                QuestButton(
-                    onClick = {
-                        val normalUrl = url.trim().trimEnd('/')
-                        val normalMac = mac.trim().uppercase()
-                        error = when {
-                            name.trim().isBlank() -> "Enter a name for this portal."
-                            normalUrl.isBlank() -> "Enter the portal URL."
-                            !normalUrl.startsWith("http://", true) && !normalUrl.startsWith("https://", true) ->
-                                "Portal URL must start with http:// or https://."
-                            !Regex("^[0-9A-F]{2}(:[0-9A-F]{2}){5}$").matches(normalMac) ->
-                                "Enter a valid MAC address, for example 02:00:00:00:00:00."
-                            pin.length !in 4..8 -> "Enter a parental PIN with 4 to 8 digits."
-                            else -> null
-                        }
-                        if (error == null) {
-                            onSave(
-                                PortalSettings(
-                                    id = initialSettings.id,
-                                    name = name.trim(),
-                                    url = normalUrl,
-                                    mac = normalMac,
-                                    pin = pin
-                                )
-                            )
-                        }
-                    },
-                    modifier = if (phoneLayout) Modifier.fillMaxWidth() else Modifier.width(250.dp),
-                    colors = ButtonDefaults.colors(
-                        containerColor = SetupGold,
-                        contentColor = SetupOnAccent,
-                        focusedContainerColor = SetupGoldLight,
-                        focusedContentColor = SetupOnAccent
-                    )
-                ) { Text("Save & Connect", fontWeight = FontWeight.Bold) }
-
-                onCancel?.let { cancel ->
-                    QuestButton(
-                        onClick = cancel,
-                        modifier = actionModifier,
-                        colors = ButtonDefaults.colors(
-                            containerColor = LocalStbPalette.current.panelSoft,
-                            contentColor = SetupText
-                        )
-                    ) { Text("Cancel") }
-                }
-            }
-            if (phoneLayout) Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { actionContent() }
-            else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { actionContent() }
+            val actionModifier = if (phoneLayout) Modifier.fillMaxWidth() else Modifier.width(250.dp)
 
             onProviderPair?.let { pair ->
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    "Choose how to connect",
+                    color = SetupText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 QuestButton(
                     onClick = {
                         val normalMac = mac.trim().uppercase()
@@ -182,14 +141,68 @@ fun SetupScreen(
                         focusedContentColor = SetupOnAccent
                     )
                 ) { Text("Link with provider", fontWeight = FontWeight.SemiBold) }
+                Spacer(modifier = Modifier.height(5.dp))
                 Text(
-                    "This sends the device ID and portal MAC to STB Play so your provider can assign an authorized portal. Manual setup remains available above.",
+                    "Use this if your provider will assign your portal and license. Pairing starts now; you do not need to press Save & Connect first.",
                     color = SetupMuted,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.widthIn(max = 560.dp)
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("OR", color = SetupMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
             }
+
+            val actionContent: @Composable () -> Unit = {
+                QuestButton(
+                    onClick = {
+                        val normalUrl = url.trim().trimEnd('/')
+                        val normalMac = mac.trim().uppercase()
+                        error = when {
+                            name.trim().isBlank() -> "Enter a name for this portal."
+                            normalUrl.isBlank() -> "Enter the portal URL."
+                            !normalUrl.startsWith("http://", true) && !normalUrl.startsWith("https://", true) ->
+                                "Portal URL must start with http:// or https://."
+                            !Regex("^[0-9A-F]{2}(:[0-9A-F]{2}){5}$").matches(normalMac) ->
+                                "Enter a valid MAC address, for example 02:00:00:00:00:00."
+                            pin.length !in 4..8 -> "Enter a parental PIN with 4 to 8 digits."
+                            else -> null
+                        }
+                        if (error == null) {
+                            onSave(
+                                PortalSettings(
+                                    id = initialSettings.id,
+                                    name = name.trim(),
+                                    url = normalUrl,
+                                    mac = normalMac,
+                                    pin = pin
+                                )
+                            )
+                        }
+                    },
+                    modifier = actionModifier,
+                    colors = ButtonDefaults.colors(
+                        containerColor = SetupGold,
+                        contentColor = SetupOnAccent,
+                        focusedContainerColor = SetupGoldLight,
+                        focusedContentColor = SetupOnAccent
+                    )
+                ) { Text("Save & Connect", fontWeight = FontWeight.Bold) }
+
+                onCancel?.let { cancel ->
+                    QuestButton(
+                        onClick = cancel,
+                        modifier = actionModifier,
+                        colors = ButtonDefaults.colors(
+                            containerColor = LocalStbPalette.current.panelSoft,
+                            contentColor = SetupText
+                        )
+                    ) { Text("Cancel") }
+                }
+            }
+            if (phoneLayout) Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { actionContent() }
+            else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { actionContent() }
 
             Spacer(modifier = Modifier.height(19.dp))
             Text(
