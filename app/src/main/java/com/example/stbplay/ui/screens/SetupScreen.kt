@@ -287,7 +287,6 @@ fun SetupScreen(
 }
 
 @Composable
-@Composable
 private fun Modifier.bringIntoViewOnTvFocus(enabled: Boolean): Modifier {
     if (!enabled) return this
     val requester = remember { BringIntoViewRequester() }
