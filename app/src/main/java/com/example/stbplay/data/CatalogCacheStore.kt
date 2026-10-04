@@ -87,8 +87,8 @@ class CatalogCacheStore(context: Context) {
 
     suspend fun updateFavorite(profileId: String, stream: PortalStream, favorite: Boolean) {
         if (profileId.isBlank() || stream.id.isBlank()) return
-        favoritesMutex.withLock {
-            withContext(Dispatchers.IO) {
+        withContext(Dispatchers.IO) {
+            favoritesMutex.withLock {
                 runCatching {
                     val file = favoritesFileFor(profileId)
                     val existing = if (file.isFile) {
@@ -105,8 +105,8 @@ class CatalogCacheStore(context: Context) {
 
     suspend fun mergeKnownFavorites(profileId: String, favoriteIds: Set<String>, known: List<PortalStream>) {
         if (profileId.isBlank() || favoriteIds.isEmpty() || known.isEmpty()) return
-        favoritesMutex.withLock {
-            withContext(Dispatchers.IO) {
+        withContext(Dispatchers.IO) {
+            favoritesMutex.withLock {
                 runCatching {
                     val file = favoritesFileFor(profileId)
                     val existing = if (file.isFile) {
