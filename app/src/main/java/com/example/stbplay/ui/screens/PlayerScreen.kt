@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,9 +51,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -62,6 +69,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Icon
@@ -337,14 +346,39 @@ private fun NativePlayerScreen(
     var playerControlsVisible by remember(playbackUrl) { mutableStateOf(false) }
     var controlsInteraction by remember(playbackUrl) { mutableIntStateOf(0) }
     var pointerInsidePlayer by remember(playbackUrl) { mutableStateOf(false) }
+    var nativePlayerView by remember(playbackUrl) { mutableStateOf<SeekablePlayerView?>(null) }
+    val tvActionsFocusRequester = remember { FocusRequester() }
+    var tvActionsHaveFocus by remember(playbackUrl) { mutableStateOf(false) }
+    var tvActionsFocusRequests by remember(playbackUrl) { mutableIntStateOf(0) }
     fun revealPlayerControls() {
         playerControlsVisible = true
         controlsInteraction++
     }
-    LaunchedEffect(controlsInteraction, playerControlsVisible, pointerInsidePlayer) {
-        if (playerControlsVisible && !pointerInsidePlayer) {
+    fun focusTvTimeline() {
+        tvActionsHaveFocus = false
+        revealPlayerControls()
+        if (allowSeeking) nativePlayerView?.focusProgressBar() else nativePlayerView?.requestFocus()
+    }
+    fun focusTvActions() {
+        revealPlayerControls()
+        if (!hideTvLiveController) nativePlayerView?.showController()
+        tvActionsFocusRequests++
+    }
+    LaunchedEffect(tvActionsFocusRequests) {
+        if (isAndroidTv && tvActionsFocusRequests > 0) {
+            withFrameNanos { }
+            tvActionsFocusRequester.requestFocus()
+        }
+    }
+    LaunchedEffect(controlsInteraction, playerControlsVisible, pointerInsidePlayer, episodePickerVisible) {
+        if (playerControlsVisible && !pointerInsidePlayer && !episodePickerVisible) {
             delay(3_000)
             playerControlsVisible = false
+            if (isAndroidTv) {
+                nativePlayerView?.hideController()
+                if (tvActionsHaveFocus) nativePlayerView?.requestFocus()
+                tvActionsHaveFocus = false
+            }
         }
     }
 
@@ -406,7 +440,34 @@ private fun NativePlayerScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { event ->
+        if (!isAndroidTv || episodePickerVisible || playerError != null) return@onPreviewKeyEvent false
+        val nativeEvent = event.nativeKeyEvent
+        val action = tvPlaybackKeyAction(nativeEvent.keyCode, tvActionsHaveFocus, allowSeeking)
+        if (action == TvPlaybackKeyAction.NATIVE) {
+            if (nativeEvent.action == KeyEvent.ACTION_DOWN && nativeEvent.keyCode !in
+                setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B)) revealPlayerControls()
+            false
+        } else {
+            if (nativeEvent.action == KeyEvent.ACTION_DOWN && !nativeEvent.isCanceled) {
+                when (action) {
+                    TvPlaybackKeyAction.SEEK_BACK, TvPlaybackKeyAction.SEEK_FORWARD -> {
+                        seekByRemote(if (action == TvPlaybackKeyAction.SEEK_BACK) -1 else 1)
+                        focusTvTimeline()
+                    }
+                    TvPlaybackKeyAction.SHOW_ACTIONS -> focusTvActions()
+                    TvPlaybackKeyAction.SHOW_TIMELINE -> focusTvTimeline()
+                    TvPlaybackKeyAction.TOGGLE_PLAY_PAUSE -> {
+                        if (activePlayer.isPlaying) activePlayer.pause() else activePlayer.play()
+                        focusTvTimeline()
+                    }
+                    TvPlaybackKeyAction.REVEAL -> revealPlayerControls()
+                    TvPlaybackKeyAction.NATIVE -> Unit
+                }
+            }
+            true
+        }
+    }) {
         key(useAlternateSurface) { AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { viewContext ->
@@ -418,10 +479,14 @@ private fun NativePlayerScreen(
                 (playerLayout?.let { LayoutInflater.from(viewContext).inflate(it, null) as SeekablePlayerView }
                     ?: SeekablePlayerView(viewContext)).apply {
                     this.player = activePlayer
+                    nativePlayerView = this
+                    onShowActions = if (isAndroidTv) ({ focusTvActions() }) else null
                     onSeekDirection = if (allowSeeking) ({ direction ->
                         seekByRemote(direction)
-                        revealPlayerControls()
-                        showController()
+                        if (isAndroidTv) focusTvTimeline() else {
+                            revealPlayerControls()
+                            showController()
+                        }
                     }) else null
                     useController = !hideTvLiveController
                     if (hideTvLiveController) hideController()
@@ -590,15 +655,19 @@ private fun NativePlayerScreen(
                 if (isAndroidTv) {
                         Row(
                             modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp)
-                                .onFocusChanged { if (it.hasFocus) revealPlayerControls() },
+                                .onFocusChanged {
+                                    tvActionsHaveFocus = it.hasFocus
+                                    if (it.hasFocus) revealPlayerControls()
+                                },
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (episodeTitles.isNotEmpty()) QuestButton(
                                 onClick = { episodePickerVisible = true; revealPlayerControls() },
                                 modifier = Modifier.widthIn(min = 145.dp).height(48.dp)
+                                    .focusRequester(tvActionsFocusRequester)
+                                    .focusProperties { left = FocusRequester.Cancel; up = FocusRequester.Cancel }
                                     .onFocusChanged { if (it.isFocused) revealPlayerControls() }
-                                    .questInitialFocus()
                             ) { Text("Episodes") }
                             QuestButton(
                                 onClick = {
@@ -611,9 +680,14 @@ private fun NativePlayerScreen(
                                     ).show()
                                 },
                                 modifier = Modifier.widthIn(min = 145.dp).height(48.dp)
+                                    .then(if (episodeTitles.isEmpty()) Modifier.focusRequester(tvActionsFocusRequester) else Modifier)
+                                    .focusProperties {
+                                        right = FocusRequester.Cancel
+                                        up = FocusRequester.Cancel
+                                        if (episodeTitles.isEmpty()) left = FocusRequester.Cancel
+                                    }
                                     .onFocusChanged { if (it.isFocused) revealPlayerControls() }
-                                    .then(if (episodeTitles.isEmpty()) Modifier.questInitialFocus() else Modifier)
-                            ) { Text("Try VLC") }
+                            ) { Text("Not working? Play in VLC") }
                         }
                 } else if (episodeTitles.isNotEmpty()) QuestButton(
                     onClick = { episodePickerVisible = true; revealPlayerControls() },
@@ -734,23 +808,43 @@ private fun NativePlayerScreen(
             )
         }
         if (episodePickerVisible) {
+          fun closeEpisodePicker() {
+              episodePickerVisible = false
+              if (isAndroidTv) focusTvActions() else revealPlayerControls()
+          }
+          Dialog(onDismissRequest = { closeEpisodePicker() }) {
             Column(
-                modifier = Modifier.align(Alignment.Center).width(320.dp).heightIn(max = 470.dp)
+                modifier = Modifier.width(if (isAndroidTv) 520.dp else 320.dp).heightIn(max = 470.dp)
                     .background(Color(0xF5111111), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("Episodes", color = Color.White)
-                LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                LazyColumn(
+                    state = rememberLazyListState(initialFirstVisibleItemIndex = currentEpisodeIndex.coerceIn(0, (episodeTitles.size - 1).coerceAtLeast(0))),
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(if (isAndroidTv) 2.dp else 6.dp)
+                ) {
                     itemsIndexed(episodeTitles) { index, name ->
-                        QuestButton(onClick = { episodePickerVisible = false; onEpisodeSelected(index) },
+                        if (isAndroidTv) QuestSurface(
+                            onClick = { episodePickerVisible = false; onEpisodeSelected(index) },
+                            modifier = Modifier.fillMaxWidth().height(28.dp)
+                                .then(if (index == currentEpisodeIndex.coerceAtLeast(0)) Modifier.questInitialFocus() else Modifier),
+                            colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF202020), focusedContainerColor = Color(0xFF464646))
+                        ) {
+                            Box(Modifier.fillMaxSize().padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                                Text("${index + 1}. $name${if (index == currentEpisodeIndex) " • Playing" else ""}",
+                                    fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        } else QuestButton(onClick = { episodePickerVisible = false; onEpisodeSelected(index) },
                             modifier = Modifier.fillMaxWidth()) {
                             Text("${index + 1}. $name${if (index == currentEpisodeIndex) " • Playing" else ""}")
                         }
                     }
                 }
-                QuestButton(onClick = { episodePickerVisible = false }) { Text("Close") }
+                QuestButton(onClick = { closeEpisodePicker() }) { Text("Close") }
             }
+          }
         }
         playerError?.let { error ->
             Column(

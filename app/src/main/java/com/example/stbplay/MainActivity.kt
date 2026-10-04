@@ -56,6 +56,7 @@ import com.example.stbplay.data.ProviderPairingSession
 import com.example.stbplay.data.PortalExpiryReminderWorker
 import com.example.stbplay.data.model.PortalCategory
 import com.example.stbplay.data.model.PortalEpisode
+import com.example.stbplay.ui.screens.EpisodeResumePrompt
 import com.example.stbplay.data.model.PortalQualityOption
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.data.model.PortalSubscription
@@ -429,6 +430,9 @@ private fun StbPlayRoot(
     var playingSeries by remember { mutableStateOf<PortalStream?>(null) }
     var playingEpisodes by remember { mutableStateOf<List<PortalEpisode>>(emptyList()) }
     var playingEpisodeIndex by remember { androidx.compose.runtime.mutableIntStateOf(-1) }
+    var pendingEpisodePlayback by remember { mutableStateOf<QualityContext?>(null) }
+    var pendingEpisodeList by remember { mutableStateOf<List<PortalEpisode>>(emptyList()) }
+    var progressResetGeneration by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var pendingLockedMedia by remember { mutableStateOf<PortalStream?>(null) }
     var pendingCategory by remember { mutableStateOf<PendingCategory?>(null) }
     var pendingParentalMode by remember { mutableStateOf<ParentalMode?>(null) }
@@ -833,6 +837,24 @@ private fun StbPlayRoot(
             }.onFailure { qualityError = it.message ?: "Could not read provider quality options." }
             qualityLoading = false
         }
+    }
+
+    fun launchSeriesEpisode(choice: QualityContext, episodes: List<PortalEpisode>, resumeFraction: Float) {
+        val episode = choice.episode ?: return
+        playingSeries = choice.stream
+        playingEpisodes = episodes
+        playingEpisodeIndex = episodes.indexOfFirst { it.id == episode.id }
+        playRequest = null
+        startQualityChoice(choice.copy(resumeFraction = resumeFraction))
+    }
+
+    fun chooseSeriesEpisode(series: PortalStream, episode: PortalEpisode, episodes: List<PortalEpisode>) {
+        val progress = (progressById[episode.id] ?: 0f).coerceIn(0f, 1f)
+        val choice = QualityContext(episode.name, series, episode, resumeFraction = progress)
+        if (isAndroidTv && progress > 0f && progress < 0.95f) {
+            pendingEpisodeList = episodes
+            pendingEpisodePlayback = choice
+        } else launchSeriesEpisode(choice, episodes, 0f)
     }
 
     val allVod = remember(movieStreams, seriesStreams) {
@@ -1277,12 +1299,12 @@ private fun StbPlayRoot(
                     Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
                 playRequest != null -> {
                     val currentRequest = playRequest!!
-                    fun playEpisodeAt(index: Int) {
+                    val currentProgressGeneration = remember(currentRequest) { progressResetGeneration }
+                    fun playEpisodeAt(index: Int, promptForResume: Boolean = true) {
                         val series = playingSeries ?: return
                         val episode = playingEpisodes.getOrNull(index) ?: return
-                        playingEpisodeIndex = index
-                        playRequest = null
-                        startQualityChoice(QualityContext(episode.name, series, episode))
+                        if (promptForResume) chooseSeriesEpisode(series, episode, playingEpisodes)
+                        else launchSeriesEpisode(QualityContext(episode.name, series, episode), playingEpisodes, 0f)
                     }
                     androidx.compose.runtime.key(playbackSessionGeneration) { PlaybackRoute(
                     request = currentRequest,
@@ -1294,7 +1316,11 @@ private fun StbPlayRoot(
                     androidBoxVideoCompatibility = androidBoxVideoCompatibility,
                     subtitlePreference = subtitlePreference,
                     onProgress = { position, duration ->
-                        if (currentRequest.kind != StalkerContentKind.LIVE) scope.launch { settingsManager.saveProgress(currentRequest.contentId, position, duration) }
+                        if (currentRequest.kind != StalkerContentKind.LIVE && currentProgressGeneration == progressResetGeneration)
+                            scope.launch {
+                                if (currentProgressGeneration == progressResetGeneration)
+                                    settingsManager.saveProgress(currentRequest.contentId, position, duration)
+                            }
                     },
                     onPlaybackFailure = {
                         if (currentRequest.contentId !in recoveryAttemptedContentIds) {
@@ -1316,10 +1342,10 @@ private fun StbPlayRoot(
                     },
                     episodeTitles = if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE) playingEpisodes.map { it.name } else emptyList(),
                     currentEpisodeIndex = playingEpisodeIndex,
-                    onEpisodeSelected = ::playEpisodeAt,
+                    onEpisodeSelected = { playEpisodeAt(it) },
                     onPlaybackEnded = {
                         if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE && playingEpisodeIndex + 1 < playingEpisodes.size)
-                            playEpisodeAt(playingEpisodeIndex + 1)
+                            playEpisodeAt(playingEpisodeIndex + 1, promptForResume = false)
                     },
                     onChannelStep = ::stepLiveChannel,
                     onBack = {
@@ -1358,11 +1384,9 @@ private fun StbPlayRoot(
                         repository = portalRepository,
                         isFavorite = series.id in favoriteIds,
                         onToggleFavorite = { setFavorite(toUi(series)) },
+                        episodeProgress = if (isAndroidTv) progressById else emptyMap(),
                         onEpisodeClick = { episode, episodes ->
-                            playingSeries = series
-                            playingEpisodes = episodes
-                            playingEpisodeIndex = episodes.indexOfFirst { it.id == episode.id }
-                            startQualityChoice(QualityContext(episode.name, series, episode))
+                            chooseSeriesEpisode(series, episode, episodes)
                         },
                         onBack = { selectedSeries = null; startCategoryPreload(storedSettings) }
                     )
@@ -1513,6 +1537,26 @@ private fun StbPlayRoot(
                     expectedPin = storedSettings.pin,
                     onVerified = { pendingLockedMedia = null; openMedia(locked) },
                     onCancel = { pendingLockedMedia = null }
+                )
+            }
+            pendingEpisodePlayback?.let { choice ->
+                EpisodeResumePrompt(
+                    title = choice.title,
+                    onResume = {
+                        pendingEpisodePlayback = null
+                        launchSeriesEpisode(choice, pendingEpisodeList, choice.resumeFraction)
+                    },
+                    onStartOver = {
+                        // Ignore the old player's final callback when restarting
+                        // the same episode so it cannot restore the cleared point.
+                        progressResetGeneration++
+                        scope.launch {
+                            settingsManager.removeFromHistory(choice.episode!!.id)
+                            pendingEpisodePlayback = null
+                            launchSeriesEpisode(choice, pendingEpisodeList, 0f)
+                        }
+                    },
+                    onCancel = { pendingEpisodePlayback = null }
                 )
             }
             pendingCategory?.let { pending ->
