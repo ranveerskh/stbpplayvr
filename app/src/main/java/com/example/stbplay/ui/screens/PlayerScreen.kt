@@ -236,6 +236,7 @@ private fun NativePlayerScreen(
     // Use the device's stable short-side width so rotating a phone into fullscreen does not
     // replace the player/cast controls with the TV layout.
     val compactLayout = configuration.smallestScreenWidthDp < 900 && !isAndroidTv
+    val hideTvLiveController = isAndroidTv && showChannelStepButtons
     val hasTouchscreen = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
     val preferTextureSurface = shouldPreferTextureSurface(
         compactLayout = compactLayout,
@@ -422,7 +423,8 @@ private fun NativePlayerScreen(
                         revealPlayerControls()
                         showController()
                     }) else null
-                    useController = true
+                    useController = !hideTvLiveController
+                    if (hideTvLiveController) hideController()
                     controllerShowTimeoutMs = 3_000
                     keepScreenOn = true
                     isFocusable = true
@@ -436,7 +438,9 @@ private fun NativePlayerScreen(
                             }
                             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY,
                             KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                                if (event.action == KeyEvent.ACTION_UP) {
+                                if (hideTvLiveController) {
+                                    if (event.action == KeyEvent.ACTION_UP) revealPlayerControls()
+                                } else if (event.action == KeyEvent.ACTION_UP) {
                                     when (keyCode) {
                                         KeyEvent.KEYCODE_MEDIA_PLAY -> activePlayer.play()
                                         KeyEvent.KEYCODE_MEDIA_PAUSE -> activePlayer.pause()
@@ -495,7 +499,11 @@ private fun NativePlayerScreen(
                     post { requestFocus() }
                 }
             },
-            update = { if (it.player !== activePlayer) it.player = activePlayer }
+            update = {
+                if (it.player !== activePlayer) it.player = activePlayer
+                if (it.useController != !hideTvLiveController) it.useController = !hideTvLiveController
+                if (hideTvLiveController) it.hideController()
+            }
         ) }
         if (playerControlsVisible && playerError == null) {
             val phoneActionBar = compactLayout && !isMetaQuest && !isAndroidTv && phoneActivity != null
@@ -573,7 +581,37 @@ private fun NativePlayerScreen(
                         MediaRouteButton(modifier = Modifier.size(44.dp))
                     }
                 }
-                if (episodeTitles.isNotEmpty()) QuestButton(
+                if (isAndroidTv) {
+                    if (episodeTitles.isNotEmpty() || !showChannelStepButtons) {
+                        Row(
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp)
+                                .onFocusChanged { if (it.hasFocus) revealPlayerControls() },
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (episodeTitles.isNotEmpty()) QuestButton(
+                                onClick = { episodePickerVisible = true; revealPlayerControls() },
+                                modifier = Modifier.widthIn(min = 145.dp).height(48.dp)
+                                    .onFocusChanged { if (it.isFocused) revealPlayerControls() }
+                                    .questInitialFocus()
+                            ) { Text("Episodes") }
+                            if (!showChannelStepButtons) QuestButton(
+                                onClick = {
+                                    revealPlayerControls()
+                                    if (launchVlc(context, playbackUrl, title)) activePlayer.pause()
+                                    else android.widget.Toast.makeText(
+                                        context,
+                                        "VLC could not open this stream.",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                modifier = Modifier.widthIn(min = 145.dp).height(48.dp)
+                                    .onFocusChanged { if (it.isFocused) revealPlayerControls() }
+                                    .then(if (episodeTitles.isEmpty()) Modifier.questInitialFocus() else Modifier)
+                            ) { Text("Try VLC") }
+                        }
+                    }
+                } else if (episodeTitles.isNotEmpty()) QuestButton(
                     onClick = { episodePickerVisible = true; revealPlayerControls() },
                     modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)
                 ) { Text("Episodes") }
@@ -680,6 +718,16 @@ private fun NativePlayerScreen(
                     QuestButton(onClick = { adjustVolume(10); revealPlayerControls() }) { Text("+") }
                 }
             }
+        }
+        if (isAndroidTv && showChannelStepButtons && playerError == null) {
+            Text(
+                text = title,
+                color = Color.White,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.TopStart).padding(18.dp)
+                    .background(Color(0xCC070707), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            )
         }
         if (episodePickerVisible) {
             Column(

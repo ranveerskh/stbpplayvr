@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.stbplay.domain.model.PortalSettings
+import com.example.stbplay.domain.model.generateStbPlayMac
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
@@ -40,6 +41,10 @@ class SettingsManager(private val context: Context) {
 
     private val keyPortals = stringPreferencesKey("portal_profiles_v2")
     private val keyActivePortal = stringPreferencesKey("active_portal_id")
+    private val keySharedDeviceMac = stringPreferencesKey("shared_device_mac")
+    private val isAndroidTvDevice = context.packageManager.hasSystemFeature(
+        android.content.pm.PackageManager.FEATURE_LEANBACK
+    )
     private val keyParentalPin = stringPreferencesKey("parental_pin")
     private val keyParentalMode = stringPreferencesKey("parental_mode")
     private val keyFavoritesPrefix = "favorite_ids_"
@@ -70,7 +75,8 @@ class SettingsManager(private val context: Context) {
         val active = profiles.firstOrNull { it.id == activeId } ?: profiles.firstOrNull()
         SettingsBootstrap(
             profiles = profiles,
-            activePortal = active?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty()) ?: PortalSettings(),
+            activePortal = active?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty())
+                ?: defaultPortal(prefs),
             disclaimerAcknowledged = prefs[keyDisclaimer] ?: false
         )
     }
@@ -79,7 +85,7 @@ class SettingsManager(private val context: Context) {
         val profiles = profilesFrom(prefs[keyPortals], prefs)
         val activeId = prefs[keyActivePortal].orEmpty()
         val active = profiles.firstOrNull { it.id == activeId } ?: profiles.firstOrNull()
-        active?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty()) ?: PortalSettings()
+        active?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty()) ?: defaultPortal(prefs)
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
@@ -139,13 +145,24 @@ class SettingsManager(private val context: Context) {
     suspend fun upsertPortal(settings: PortalSettings, makeActive: Boolean = true) {
         val prepared = settings.normalized().withStableId()
         context.dataStore.edit { prefs ->
-            val profiles = profilesFrom(prefs[keyPortals], prefs).toMutableList()
-            val index = profiles.indexOfFirst { it.id == prepared.id }
-            val profileOnly = prepared.copy(pin = "")
+            val existing = profilesFrom(prefs[keyPortals], prefs)
+            val sharedMac = if (isAndroidTvDevice) {
+                prepared.mac.takeIf(::isValidMac)
+                    ?: prefs[keySharedDeviceMac]?.takeIf(::isValidMac)
+                    ?: existing.firstOrNull()?.mac?.takeIf(::isValidMac)
+                    ?: generatedDeviceMac()
+            } else prepared.mac
+            val saved = prepared.copy(mac = sharedMac)
+            if (isAndroidTvDevice) prefs[keySharedDeviceMac] = sharedMac
+            val profiles = existing.map { profile ->
+                if (isAndroidTvDevice) profile.copy(mac = sharedMac) else profile
+            }.toMutableList()
+            val index = profiles.indexOfFirst { it.id == saved.id }
+            val profileOnly = saved.copy(pin = "")
             if (index >= 0) profiles[index] = profileOnly else profiles.add(profileOnly)
             prefs[keyPortals] = encodeProfiles(profiles)
-            if (makeActive) prefs[keyActivePortal] = prepared.id
-            if (prepared.pin.isNotBlank()) prefs[keyParentalPin] = prepared.pin
+            if (makeActive) prefs[keyActivePortal] = saved.id
+            if (saved.pin.isNotBlank()) prefs[keyParentalPin] = saved.pin
         }
     }
 
@@ -283,20 +300,44 @@ class SettingsManager(private val context: Context) {
         prefs: androidx.datastore.preferences.core.Preferences
     ): List<PortalSettings> {
         val parsed = parseProfiles(raw)
-        if (parsed.isNotEmpty()) return parsed
-        val oldUrl = prefs[legacyUrl].orEmpty().trim()
-        val oldMac = prefs[legacyMac].orEmpty().trim()
-        return if (oldUrl.isNotBlank() && oldMac.isNotBlank()) {
-            listOf(
-                PortalSettings(
-                    id = "legacy-${oldMac.replace(":", "").lowercase()}",
-                    name = prefs[legacyName].orEmpty().ifBlank { "Portal" },
-                    url = oldUrl,
-                    mac = oldMac
+        val profiles = if (parsed.isNotEmpty()) parsed else {
+            val oldUrl = prefs[legacyUrl].orEmpty().trim()
+            val oldMac = prefs[legacyMac].orEmpty().trim()
+            if (oldUrl.isNotBlank() && oldMac.isNotBlank()) {
+                listOf(
+                    PortalSettings(
+                        id = "legacy-${oldMac.replace(":", "").lowercase()}",
+                        name = prefs[legacyName].orEmpty().ifBlank { "Portal" },
+                        url = oldUrl,
+                        mac = oldMac
+                    )
                 )
-            )
-        } else emptyList()
+            } else emptyList()
+        }
+        if (!isAndroidTvDevice || profiles.isEmpty()) return profiles
+        val sharedMac = prefs[keySharedDeviceMac]?.takeIf(::isValidMac)
+            ?: profiles.firstOrNull()?.mac?.takeIf(::isValidMac)
+            ?: generatedDeviceMac()
+        return profiles.map { it.copy(mac = sharedMac) }
     }
+
+    private fun defaultPortal(prefs: androidx.datastore.preferences.core.Preferences): PortalSettings {
+        val mac = if (isAndroidTvDevice) {
+            prefs[keySharedDeviceMac]?.takeIf(::isValidMac) ?: generatedDeviceMac()
+        } else ""
+        return PortalSettings(mac = mac)
+    }
+
+    private fun generatedDeviceMac(): String {
+        val androidId = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
+        ).orEmpty()
+        return generateStbPlayMac(androidId)
+    }
+
+    private fun isValidMac(value: String): Boolean =
+        Regex("^[0-9A-F]{2}(:[0-9A-F]{2}){5}$").matches(value.trim().uppercase())
 
     private fun activeProfileId(prefs: androidx.datastore.preferences.core.Preferences): String {
         val profiles = profilesFrom(prefs[keyPortals], prefs)

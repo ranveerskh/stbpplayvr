@@ -338,6 +338,9 @@ private fun StbPlayRoot(
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
+    val isAndroidTv = remember(appContext) {
+        appContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    }
     val platformLicenseClient = remember(appContext) { PlatformLicenseClient(appContext) }
     var platformLicense by remember { mutableStateOf(platformLicenseClient.currentLicense()) }
     var providerPairing by remember { mutableStateOf<ProviderPairingSession?>(null) }
@@ -1390,7 +1393,13 @@ private fun StbPlayRoot(
                         }
                     },
                     onClearHistory = { scope.launch { settingsManager.clearWatchHistory() } },
-                    onAddPortal = { editingPortal = PortalSettings(pin = storedSettings.pin); screen = AppScreen.SETUP },
+                    onAddPortal = {
+                        editingPortal = PortalSettings(
+                            pin = storedSettings.pin,
+                            mac = if (isAndroidTv) storedSettings.mac else ""
+                        )
+                        screen = AppScreen.SETUP
+                    },
                     onEditPortal = { profile -> editingPortal = profile.copy(pin = storedSettings.pin); screen = AppScreen.SETUP },
                     onUsePortal = { profile ->
                         scope.launch { settingsManager.activatePortal(profile.id) }

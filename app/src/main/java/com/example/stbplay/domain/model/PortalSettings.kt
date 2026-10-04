@@ -1,5 +1,6 @@
 package com.example.stbplay.domain.model
 
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.UUID
 
@@ -25,11 +26,16 @@ data class PortalSettings(
     )
 }
 
-/** Creates a locally administered MAC address.  It is editable before save. */
-fun generateStbPlayMac(): String {
-    val random = SecureRandom()
-    return buildList {
-        add("02")
-        repeat(5) { add("%02X".format(random.nextInt(256))) }
-    }.joinToString(":")
+/** Creates an editable locally administered MAC address, stable per Android ID when supplied. */
+fun generateStbPlayMac(androidId: String? = null): String {
+    val suffix = if (androidId.isNullOrBlank()) {
+        ByteArray(5).also { SecureRandom().nextBytes(it) }
+    } else {
+        MessageDigest.getInstance("SHA-256")
+            .digest("stbplay:${androidId.trim()}".toByteArray(Charsets.UTF_8))
+            .copyOfRange(0, 5)
+    }
+    return (byteArrayOf(0x02.toByte()) + suffix).joinToString(":") { byte ->
+        "%02X".format(byte.toInt() and 0xFF)
+    }
 }
