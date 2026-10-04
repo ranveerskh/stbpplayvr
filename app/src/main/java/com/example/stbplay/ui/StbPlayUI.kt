@@ -1548,7 +1548,7 @@ private fun StbPlaySettingsScreen(
     var page by remember { mutableStateOf(SettingsPage.HOME) }
     val uriHandler = LocalUriHandler.current
     BackHandler(enabled = page != SettingsPage.HOME) { page = SettingsPage.HOME }
-    androidx.compose.runtime.key(page) {
+    androidx.compose.runtime.key(if (isTelevisionLayout()) page else Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = if (isCompactAndroidLayout()) 16.dp else 24.dp, vertical = 12.dp),

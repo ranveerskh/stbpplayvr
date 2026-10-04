@@ -370,8 +370,9 @@ private fun NativePlayerScreen(
             tvActionsFocusRequester.requestFocus()
         }
     }
-    LaunchedEffect(controlsInteraction, playerControlsVisible, pointerInsidePlayer, episodePickerVisible) {
-        if (playerControlsVisible && !pointerInsidePlayer && !episodePickerVisible) {
+    val keepTvEpisodeControlsVisible = isAndroidTv && episodePickerVisible
+    LaunchedEffect(controlsInteraction, playerControlsVisible, pointerInsidePlayer, keepTvEpisodeControlsVisible) {
+        if (playerControlsVisible && !pointerInsidePlayer && !keepTvEpisodeControlsVisible) {
             delay(3_000)
             playerControlsVisible = false
             if (isAndroidTv) {
@@ -812,16 +813,18 @@ private fun NativePlayerScreen(
               episodePickerVisible = false
               if (isAndroidTv) focusTvActions() else revealPlayerControls()
           }
-          Dialog(onDismissRequest = { closeEpisodePicker() }) {
+          val episodePickerContent: @Composable () -> Unit = {
             Column(
                 modifier = Modifier.width(if (isAndroidTv) 520.dp else 320.dp).heightIn(max = 470.dp)
+                    .then(if (isAndroidTv) Modifier else Modifier.align(Alignment.Center))
                     .background(Color(0xF5111111), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("Episodes", color = Color.White)
                 LazyColumn(
-                    state = rememberLazyListState(initialFirstVisibleItemIndex = currentEpisodeIndex.coerceIn(0, (episodeTitles.size - 1).coerceAtLeast(0))),
+                    state = rememberLazyListState(initialFirstVisibleItemIndex = if (isAndroidTv)
+                        currentEpisodeIndex.coerceIn(0, (episodeTitles.size - 1).coerceAtLeast(0)) else 0),
                     modifier = Modifier.weight(1f, fill = false),
                     verticalArrangement = Arrangement.spacedBy(if (isAndroidTv) 2.dp else 6.dp)
                 ) {
@@ -845,6 +848,8 @@ private fun NativePlayerScreen(
                 QuestButton(onClick = { closeEpisodePicker() }) { Text("Close") }
             }
           }
+          if (isAndroidTv) Dialog(onDismissRequest = { closeEpisodePicker() }) { episodePickerContent() }
+          else episodePickerContent()
         }
         playerError?.let { error ->
             Column(
