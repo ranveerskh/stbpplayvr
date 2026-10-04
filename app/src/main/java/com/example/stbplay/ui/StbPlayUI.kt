@@ -1,4 +1,4 @@
-@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
+@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.example.stbplay.ui
 
@@ -13,9 +13,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -108,6 +110,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -322,7 +325,8 @@ fun StbPlayApp(
     searchCatalog: List<PortalStream>,
     searchRemote: suspend (String, Int) -> VodCatalogBatch,
     onSearchResults: (List<PortalStream>) -> Unit,
-    searchMedia: (PortalStream) -> UiMedia
+    searchMedia: (PortalStream) -> UiMedia,
+    onHomeInteraction: () -> Unit = {}
 ) {
     var searchOpen by remember { mutableStateOf(false) }
     val tvLayout = isTelevisionLayout()
@@ -362,6 +366,7 @@ fun StbPlayApp(
                     onMediaClick = onMediaClick,
                     onToggleFavorite = onToggleFavorite,
                     onRemoveHistory = onRemoveHistory,
+                    onInteraction = onHomeInteraction,
                     onRefresh = onRefresh,
                     onEditPortal = {
                         settingsState.profiles.firstOrNull { it.id == settingsState.activeProfileId }
@@ -689,7 +694,8 @@ private fun StbPlayHomeScreen(
     onToggleFavorite: (UiMedia) -> Unit,
     onRemoveHistory: (UiMedia) -> Unit,
     onRefresh: () -> Unit,
-    onEditPortal: () -> Unit
+    onEditPortal: () -> Unit,
+    onInteraction: () -> Unit
 ) {
     if (state.loading) {
         LoadingContent("Loading your portal…")
@@ -697,7 +703,7 @@ private fun StbPlayHomeScreen(
     }
     val compact = isCompactAndroidLayout()
     val denseTv = isTelevisionLayout()
-    val visibleRows = state.rows.filter { it.items.isNotEmpty() }
+    val visibleRows = remember(state.rows) { state.rows.filter { it.items.isNotEmpty() } }
     val homeListState = rememberLazyListState()
     val homeScope = rememberCoroutineScope()
     val heroFocusRequester = remember { FocusRequester() }
@@ -715,57 +721,75 @@ private fun StbPlayHomeScreen(
         val row = visibleRows.getOrNull(index) ?: return
         val requester = rowFocusRequesters[row.id] ?: return
         navigationJob?.cancel()
+        val lazyIndex = firstRowLazyIndex + index
+        val rowState = rowListStates[row.id] ?: return
+        val alreadyVisible = homeListState.layoutInfo.visibleItemsInfo.any { it.index == lazyIndex }
+        if (alreadyVisible && rowState.firstVisibleItemIndex == 0 && rowState.firstVisibleItemScrollOffset == 0 &&
+            runCatching { requester.requestFocus() }.isSuccess) return
         navigationJob = homeScope.launch {
-            homeListState.scrollToItem(firstRowLazyIndex + index)
-            withFrameNanos { }
-            rowListStates[row.id]?.scrollToItem(0)
+            if (!alreadyVisible) {
+                homeListState.scrollToItem(lazyIndex)
+                withFrameNanos { }
+            }
+            if (rowState.firstVisibleItemIndex != 0 || rowState.firstVisibleItemScrollOffset != 0) rowState.scrollToItem(0)
             withFrameNanos { }
             runCatching { requester.requestFocus() }
         }
     }
     fun focusHomeHero() {
         navigationJob?.cancel()
+        val heroIndex = if (state.portalWarning != null) 1 else 0
+        if (homeListState.layoutInfo.visibleItemsInfo.any { it.index == heroIndex } &&
+            runCatching { heroFocusRequester.requestFocus() }.isSuccess) return
         navigationJob = homeScope.launch {
-            homeListState.scrollToItem(if (state.portalWarning != null) 1 else 0)
+            homeListState.scrollToItem(heroIndex)
             withFrameNanos { }
             runCatching { heroFocusRequester.requestFocus() }
         }
     }
-    LazyColumn(
-        state = homeListState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = if (compact || denseTv) 14.dp else 30.dp, end = if (compact || denseTv) 14.dp else 30.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(if (compact || denseTv) 11.dp else 22.dp)
-    ) {
-        state.portalWarning?.let { warning ->
-            item { PortalConnectionWarning(warning, onRefresh, onEditPortal) }
-        }
-        item {
-            if (state.heroes.isEmpty()) EmptyState("No content found", "Connect a portal with an active catalogue to start watching.")
-            else RotatingHero(
-                state.heroes,
-                onMediaClick,
-                onToggleFavorite,
-                focusRequester = heroFocusRequester,
-                onFocusDown = { focusHomeRow(0) }
-            )
-        }
-        state.expiryText?.takeIf { it.isNotBlank() }?.let { expiry ->
-            item { StatusPill(expiry, GoldLight) }
-        }
-        indexedColumnItems(visibleRows, key = { _, row -> row.id }) { index, row ->
-            MediaRow(
-                row,
-                onMediaClick,
-                onToggleFavorite,
-                onRemoveHistory,
-                listState = rowListStates[row.id],
-                firstCardFocusRequester = rowFocusRequesters[row.id],
-                onFocusDown = if (denseTv && index < visibleRows.lastIndex) ({ focusHomeRow(index + 1) }) else null,
-                onFocusUp = if (denseTv) ({ if (index == 0) focusHomeHero() else focusHomeRow(index - 1) }) else null
-            )
+    val homeContent: @Composable () -> Unit = {
+        LazyColumn(
+            state = homeListState,
+            modifier = Modifier.fillMaxSize().onPreviewKeyEvent {
+                if (denseTv && it.type == KeyEventType.KeyDown) onInteraction()
+                false
+            },
+            contentPadding = PaddingValues(start = if (compact || denseTv) 14.dp else 30.dp, end = if (compact || denseTv) 14.dp else 30.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact || denseTv) 11.dp else 22.dp)
+        ) {
+            state.portalWarning?.let { warning ->
+                item { PortalConnectionWarning(warning, onRefresh, onEditPortal) }
+            }
+            item {
+                if (state.heroes.isEmpty()) EmptyState("No content found", "Connect a portal with an active catalogue to start watching.")
+                else RotatingHero(
+                    state.heroes,
+                    onMediaClick,
+                    onToggleFavorite,
+                    focusRequester = heroFocusRequester,
+                    onFocusDown = { focusHomeRow(0) }
+                )
+            }
+            state.expiryText?.takeIf { it.isNotBlank() }?.let { expiry ->
+                item { StatusPill(expiry, GoldLight) }
+            }
+            indexedColumnItems(visibleRows, key = { _, row -> row.id }) { index, row ->
+                MediaRow(
+                    row,
+                    onMediaClick,
+                    onToggleFavorite,
+                    onRemoveHistory,
+                    listState = rowListStates[row.id],
+                    firstCardFocusRequester = rowFocusRequesters[row.id],
+                    staticTvCards = denseTv,
+                    onFocusDown = if (denseTv && index < visibleRows.lastIndex) ({ focusHomeRow(index + 1) }) else null,
+                    onFocusUp = if (denseTv) ({ if (index == 0) focusHomeHero() else focusHomeRow(index - 1) }) else null
+                )
+            }
         }
     }
+    if (denseTv) CompositionLocalProvider(LocalBringIntoViewSpec provides TvHomeBringIntoViewSpec) { homeContent() }
+    else homeContent()
 }
 
 @Composable
@@ -796,8 +820,8 @@ private fun RotatingHero(
     val denseTv = isTelevisionLayout()
     var index by remember(heroes.map { it.id }) { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(heroes.map { it.id }, focused) {
-        if (!focused && heroes.size > 1) {
+    LaunchedEffect(heroes.map { it.id }, focused, denseTv) {
+        if (!denseTv && !focused && heroes.size > 1) {
             while (true) {
                 delay(8_000)
                 index = (index + 1) % heroes.size
@@ -805,9 +829,7 @@ private fun RotatingHero(
         }
     }
     val item = heroes.getOrNull(index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))) ?: return
-    QuestSurface(
-        onClick = { onMediaClick(item) },
-        modifier = Modifier
+    val heroModifier = Modifier
             .focusRequester(focusRequester)
             .then(if (denseTv) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth()
@@ -818,11 +840,9 @@ private fun RotatingHero(
                     onFocusDown()
                     true
                 } else false
-            },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
-    ) {
+            }
+    val density = LocalDensity.current
+    val heroContent: @Composable BoxScope.() -> Unit = {
         Row(Modifier.fillMaxSize().padding(if (isCompactAndroidLayout() || denseTv) 10.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(
                 modifier = Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp, horizontal = if (isCompactAndroidLayout()) 5.dp else 12.dp),
@@ -841,7 +861,11 @@ private fun RotatingHero(
                         colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)
                     ) { Text("Play", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                     else Text("Select to play", color = Muted, fontSize = 11.sp)
-                    FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
+                    if (denseTv) TvHomeSurface({ onToggleFavorite(item) }, Modifier.size(32.dp)) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(if (item.isFavorite) "★" else "☆", color = GoldLight, fontSize = 19.sp)
+                        }
+                    } else FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
                 }
             }
             Box(
@@ -854,14 +878,24 @@ private fun RotatingHero(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                     requestHeaders = item.imageHeaders,
-                    fallbackText = null
+                    fallbackText = null,
+                    decodeWidthPx = if (denseTv) with(density) { 155.dp.roundToPx() } else null,
+                    decodeHeightPx = if (denseTv) with(density) { 210.dp.roundToPx() } else null
                 )
-                if (heroes.size > 1) {
+                if (!denseTv && heroes.size > 1) {
                     Text("${index + 1} / ${heroes.size}", color = White, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).padding(7.dp))
                 }
             }
         }
     }
+    if (denseTv) TvHomeSurface({ onMediaClick(item) }, heroModifier, content = heroContent)
+    else QuestSurface(
+        onClick = { onMediaClick(item) }, modifier = heroModifier,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
+        colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
+        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold))),
+        content = heroContent
+    )
 }
 
 @Composable
@@ -872,6 +906,7 @@ private fun MediaRow(
     onRemoveHistory: (UiMedia) -> Unit,
     listState: LazyListState? = null,
     firstCardFocusRequester: FocusRequester? = null,
+    staticTvCards: Boolean = false,
     onFocusDown: (() -> Unit)? = null,
     onFocusUp: (() -> Unit)? = null
 ) {
@@ -895,7 +930,15 @@ private fun MediaRow(
                 key = { _, media -> media.id },
                 contentType = { _, media -> if (media.portrait) "poster" else "landscape" }
             ) { index, media ->
-                MediaCard(
+                if (denseTv && staticTvCards) TvHomeMediaCard(
+                    item = media,
+                    onClick = { onMediaClick(media) },
+                    onToggleFavorite = { onToggleFavorite(media) },
+                    onRemoveHistory = if (row.id == "continue") ({ onRemoveHistory(media) }) else null,
+                    focusRequester = if (index == 0) firstCardFocusRequester else null,
+                    onFocusDown = onFocusDown,
+                    onFocusUp = onFocusUp
+                ) else MediaCard(
                     item = media,
                     onClick = { onMediaClick(media) },
                     onToggleFavorite = { onToggleFavorite(media) },
@@ -904,6 +947,68 @@ private fun MediaRow(
                     onFocusDown = onFocusDown,
                     onFocusUp = onFocusUp
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvHomeMediaCard(
+    item: UiMedia,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onRemoveHistory: (() -> Unit)?,
+    focusRequester: FocusRequester?,
+    onFocusDown: (() -> Unit)?,
+    onFocusUp: (() -> Unit)?
+) {
+    val width = if (item.portrait) 142.dp else 205.dp
+    val height = if (item.portrait) 202.dp else 120.dp
+    val footerHeight = if (item.portrait) 46.dp else 38.dp
+    val density = LocalDensity.current
+    Box(Modifier.width(width).height(height).onPreviewKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) false
+        else when {
+            event.key == Key.DirectionDown && onFocusDown != null -> { onFocusDown(); true }
+            event.key == Key.DirectionUp && onFocusUp != null -> { onFocusUp(); true }
+            else -> false
+        }
+    }) {
+        TvHomeSurface(
+            onClick,
+            Modifier.fillMaxSize().then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                ArtworkImage(
+                    imageUrl = item.imageUrl, title = item.title,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    requestHeaders = item.imageHeaders, fallbackColor = Gold,
+                    decodeWidthPx = with(density) { width.roundToPx() },
+                    decodeHeightPx = with(density) { (height - footerHeight).roundToPx() }
+                )
+                Box(Modifier.fillMaxWidth().height(footerHeight).background(Panel), contentAlignment = Alignment.CenterStart) {
+                    Text(item.title, color = White, fontSize = 12.sp, lineHeight = 14.sp,
+                        fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                }
+            }
+            item.badge?.let {
+                Text(it, color = GoldLight, fontSize = 9.sp, maxLines = 1,
+                    modifier = Modifier.align(Alignment.TopStart).background(Panel).padding(horizontal = 4.dp, vertical = 2.dp))
+            }
+            if (item.isLocked) StatusPill("PIN", GoldLight, Modifier.align(Alignment.TopCenter).padding(top = 4.dp))
+            if (item.progress > 0f) ProgressBar(item.progress, Modifier.align(Alignment.BottomCenter))
+        }
+        onRemoveHistory?.let { remove ->
+            TvHomeSurface(remove, Modifier.align(Alignment.TopStart).padding(4.dp).width(62.dp).height(24.dp)) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Remove", color = White, fontSize = 10.sp, maxLines = 1)
+                }
+            }
+        }
+        TvHomeSurface(onToggleFavorite, Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp)) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(if (item.isFavorite) "★" else "☆", color = GoldLight, fontSize = 19.sp)
             }
         }
     }

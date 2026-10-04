@@ -33,20 +33,31 @@ fun ArtworkImage(
     requestHeaders: Map<String, String> = emptyMap(),
     fallbackText: String? = title.trim().firstOrNull()?.uppercaseChar()?.toString(),
     fallbackTextSize: TextUnit = 35.sp,
-    fallbackColor: Color = Color(0xFFDDB32F)
+    fallbackColor: Color = Color(0xFFDDB32F),
+    decodeWidthPx: Int? = null,
+    decodeHeightPx: Int? = null
 ) {
     val context = LocalContext.current
     val isTelevision = remember(context) {
         context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
     }
     var retryCount by remember(imageUrl, requestHeaders) { mutableIntStateOf(0) }
-    val request = remember(imageUrl, requestHeaders, retryCount, isTelevision) {
+    val request = remember(imageUrl, requestHeaders, retryCount, isTelevision, decodeWidthPx, decodeHeightPx) {
         imageUrl?.trim()?.takeIf { it.isNotBlank() }?.let { url ->
             ImageRequest.Builder(context)
                 .data(url)
                 .crossfade(false)
-                .memoryCacheKey(if (retryCount == 0) url else "$url#tv-retry")
+                .memoryCacheKey(buildString {
+                    append(url)
+                    if (decodeWidthPx != null && decodeHeightPx != null) append("#home:${decodeWidthPx}x${decodeHeightPx}")
+                    if (retryCount != 0) append("#tv-retry")
+                })
                 .apply { if (isTelevision) allowHardware(false) }
+                .apply {
+                    if (decodeWidthPx != null && decodeHeightPx != null) {
+                        size(decodeWidthPx.coerceAtLeast(1), decodeHeightPx.coerceAtLeast(1))
+                    }
+                }
                 .apply {
                     requestHeaders.forEach { (name, value) -> addHeader(name, value) }
                 }
