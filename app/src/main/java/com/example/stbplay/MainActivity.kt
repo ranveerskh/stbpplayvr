@@ -63,6 +63,7 @@ import com.example.stbplay.domain.model.PortalSettings
 import com.example.stbplay.ui.ChangePinPrompt
 import com.example.stbplay.ui.FirstStartDisclaimer
 import com.example.stbplay.ui.PinPrompt
+import com.example.stbplay.ui.ProviderPinSetupPrompt
 import com.example.stbplay.ui.ProviderPairingDialog
 import com.example.stbplay.ui.StbPlayApp
 import com.example.stbplay.ui.StbPlayHomeState
@@ -344,6 +345,7 @@ private fun StbPlayRoot(
     val platformLicenseClient = remember(appContext) { PlatformLicenseClient(appContext) }
     var platformLicense by remember { mutableStateOf(platformLicenseClient.currentLicense()) }
     var providerPairing by remember { mutableStateOf<ProviderPairingSession?>(null) }
+    var providerPinSetup by remember { mutableStateOf<PortalSettings?>(null) }
     var providerPairingStatus by remember { mutableStateOf("Waiting for your provider to assign a portal.") }
     var providerPairingBusy by remember { mutableStateOf(false) }
     val catalogCache = remember(appContext) { CatalogCacheStore(appContext) }
@@ -389,6 +391,11 @@ private fun StbPlayRoot(
     var liveStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var movieStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var seriesStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
+    var localFavoriteStreams by remember(storedSettings.id) { mutableStateOf<List<PortalStream>>(emptyList()) }
+
+    LaunchedEffect(storedSettings.id) {
+        localFavoriteStreams = catalogCache.readFavorites(storedSettings.id)
+    }
     var remoteSearchStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var vodCatalogs by remember { mutableStateOf<Map<String, VodCatalogState>>(emptyMap()) }
     var categoryPreloadJob by remember { mutableStateOf<Job?>(null) }
@@ -710,18 +717,26 @@ private fun StbPlayRoot(
                 url = assignment.portalUrl,
                 mac = session.portalMac
             ).normalized().withStableId()
-            settingsManager.upsertPortal(assignedPortal)
             platformLicense = platformLicenseClient.currentLicense()
             licenseStatus = "Provider license active."
-            providerPairingStatus = "Portal assigned. Connecting…"
             providerPairing = null
-            startConnection(assignedPortal)
+            if (assignedPortal.pin.isBlank()) {
+                providerPairingStatus = "Portal assigned. Set a parental PIN to continue."
+                providerPinSetup = assignedPortal
+            } else {
+                settingsManager.upsertPortal(assignedPortal)
+                providerPairingStatus = "Portal assigned. Connecting…"
+                startConnection(assignedPortal)
+            }
             break
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(settingsLoaded, disclaimerAcknowledged, storedSettings.id, storedSettings.url, storedSettings.mac) {
+    androidx.compose.runtime.LaunchedEffect(
+        settingsLoaded, disclaimerAcknowledged, storedSettings.id, storedSettings.url, storedSettings.mac, providerPinSetup
+    ) {
         if (!settingsLoaded) return@LaunchedEffect
+        if (providerPinSetup != null) return@LaunchedEffect
         if (!disclaimerAcknowledged) return@LaunchedEffect
         if (storedSettings.url.isBlank() || storedSettings.mac.isBlank()) {
             if (!connecting) screen = AppScreen.SETUP
@@ -735,13 +750,25 @@ private fun StbPlayRoot(
         }
     }
 
-    fun allStreamFor(media: UiMedia): PortalStream? = (liveStreams + movieStreams + seriesStreams + remoteSearchStreams)
+    fun allStreamFor(media: UiMedia): PortalStream? = (liveStreams + movieStreams + seriesStreams + remoteSearchStreams + localFavoriteStreams)
         .firstOrNull { it.id == media.id && it.streamType == media.streamType }
         ?: vodCatalogs.values.asSequence().flatMap { it.items.asSequence() }
             .firstOrNull { it.id == media.id && it.streamType == media.streamType }
 
     fun setFavorite(media: UiMedia) {
-        scope.launch { settingsManager.setFavorite(media.id, media.id !in favoriteIds) }
+        val save = media.id !in favoriteIds
+        val stream = allStreamFor(media)
+        scope.launch {
+            settingsManager.setFavorite(media.id, save)
+            if (stream != null) {
+                catalogCache.updateFavorite(storedSettings.id, stream, save)
+                localFavoriteStreams = if (save) {
+                    (localFavoriteStreams.filterNot { it.streamType == stream.streamType && it.id == stream.id } + stream)
+                } else {
+                    localFavoriteStreams.filterNot { it.id == media.id }
+                }
+            }
+        }
     }
 
     fun launchPlayback(
@@ -993,8 +1020,17 @@ private fun StbPlayRoot(
     }
     val latestMovies = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "movie" }.take(18).toList() }
     val latestSeries = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "series" }.take(18).toList() }
-    val favoriteStreams = remember(liveStreams, allVod, favoriteIds, parentalMode, explicitAdultLiveCategoryIds, explicitAdultVodCategoryIds) {
-        (liveStreams + allVod).filter { stream ->
+    LaunchedEffect(storedSettings.id, favoriteIds, liveStreams, movieStreams, seriesStreams, vodCatalogs) {
+        val profileId = storedSettings.id
+        if (profileId.isNotBlank() && favoriteIds.isNotEmpty()) {
+            delay(250)
+            val known = liveStreams + movieStreams + seriesStreams + vodCatalogs.values.flatMap { it.items }
+            catalogCache.mergeKnownFavorites(profileId, favoriteIds, known)
+            localFavoriteStreams = catalogCache.readFavorites(profileId)
+        }
+    }
+    val favoriteStreams = remember(liveStreams, allVod, localFavoriteStreams, favoriteIds, parentalMode, explicitAdultLiveCategoryIds, explicitAdultVodCategoryIds) {
+        (liveStreams + allVod + localFavoriteStreams).filter { stream ->
             stream.id in favoriteIds && isAllowedInMode(
                 stream,
                 if (stream.streamType == "live") explicitAdultLiveCategoryIds else explicitAdultVodCategoryIds
@@ -1510,6 +1546,19 @@ private fun StbPlayRoot(
                         changingPin = false
                     },
                     onCancel = { changingPin = false }
+                )
+            }
+            providerPinSetup?.let { portal ->
+                ProviderPinSetupPrompt(
+                    onSave = { pin ->
+                        scope.launch {
+                            val pinnedPortal = portal.copy(pin = pin)
+                            settingsManager.upsertPortal(pinnedPortal)
+                            providerPinSetup = null
+                            startConnection(pinnedPortal)
+                        }
+                    },
+                    onCancel = { providerPinSetup = null }
                 )
             }
             ProviderPairingDialog(

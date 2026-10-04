@@ -431,6 +431,12 @@ private fun NativePlayerScreen(
                     isFocusableInTouchMode = true
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     setOnKeyListener { _, keyCode, event ->
+                        if (event.action == KeyEvent.ACTION_DOWN &&
+                            keyCode !in setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B)
+                        ) {
+                            revealPlayerControls()
+                            if (!hideTvLiveController) showController()
+                        }
                         when (keyCode) {
                             KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B -> {
                                 if (event.action == KeyEvent.ACTION_UP) onBack()
@@ -582,7 +588,6 @@ private fun NativePlayerScreen(
                     }
                 }
                 if (isAndroidTv) {
-                    if (episodeTitles.isNotEmpty() || !showChannelStepButtons) {
                         Row(
                             modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp)
                                 .onFocusChanged { if (it.hasFocus) revealPlayerControls() },
@@ -595,7 +600,7 @@ private fun NativePlayerScreen(
                                     .onFocusChanged { if (it.isFocused) revealPlayerControls() }
                                     .questInitialFocus()
                             ) { Text("Episodes") }
-                            if (!showChannelStepButtons) QuestButton(
+                            QuestButton(
                                 onClick = {
                                     revealPlayerControls()
                                     if (launchVlc(context, playbackUrl, title)) activePlayer.pause()
@@ -610,7 +615,6 @@ private fun NativePlayerScreen(
                                     .then(if (episodeTitles.isEmpty()) Modifier.questInitialFocus() else Modifier)
                             ) { Text("Try VLC") }
                         }
-                    }
                 } else if (episodeTitles.isNotEmpty()) QuestButton(
                     onClick = { episodePickerVisible = true; revealPlayerControls() },
                     modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)

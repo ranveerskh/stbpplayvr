@@ -51,6 +51,7 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.itemsIndexed as indexedGridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Close
@@ -110,6 +111,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -686,7 +688,26 @@ private fun StbPlayHomeScreen(
     }
     val compact = isCompactAndroidLayout()
     val denseTv = isTelevisionLayout()
+    val visibleRows = state.rows.filter { it.items.isNotEmpty() }
+    val homeListState = rememberLazyListState()
+    val homeScope = rememberCoroutineScope()
+    val rowFocusRequesters = remember(visibleRows.map { it.id }) {
+        if (denseTv) visibleRows.associate { it.id to FocusRequester() } else emptyMap()
+    }
+    val firstRowLazyIndex = (if (state.portalWarning != null) 1 else 0) + 1 +
+        (if (state.expiryText.isNullOrBlank()) 0 else 1)
+    fun focusHomeRow(index: Int) {
+        if (!denseTv) return
+        val row = visibleRows.getOrNull(index) ?: return
+        val requester = rowFocusRequesters[row.id] ?: return
+        homeScope.launch {
+            homeListState.animateScrollToItem(firstRowLazyIndex + index)
+            withFrameNanos { }
+            runCatching { requester.requestFocus() }
+        }
+    }
     LazyColumn(
+        state = homeListState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = if (compact || denseTv) 14.dp else 30.dp, end = if (compact || denseTv) 14.dp else 30.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact || denseTv) 11.dp else 22.dp)
@@ -696,13 +717,25 @@ private fun StbPlayHomeScreen(
         }
         item {
             if (state.heroes.isEmpty()) EmptyState("No content found", "Connect a portal with an active catalogue to start watching.")
-            else RotatingHero(state.heroes, onMediaClick, onToggleFavorite)
+            else RotatingHero(
+                state.heroes,
+                onMediaClick,
+                onToggleFavorite,
+                onFocusDown = { focusHomeRow(0) }
+            )
         }
         state.expiryText?.takeIf { it.isNotBlank() }?.let { expiry ->
             item { StatusPill(expiry, GoldLight) }
         }
-        columnItems(state.rows, key = { it.id }) { row ->
-            if (row.items.isNotEmpty()) MediaRow(row, onMediaClick, onToggleFavorite, onRemoveHistory)
+        indexedColumnItems(visibleRows, key = { _, row -> row.id }) { index, row ->
+            MediaRow(
+                row,
+                onMediaClick,
+                onToggleFavorite,
+                onRemoveHistory,
+                firstCardFocusRequester = rowFocusRequesters[row.id],
+                onFocusDown = if (denseTv) ({ focusHomeRow(index + 1) }) else null
+            )
         }
     }
 }
@@ -728,7 +761,8 @@ private fun PortalConnectionWarning(message: String, onRetry: () -> Unit, onEdit
 private fun RotatingHero(
     heroes: List<UiMedia>,
     onMediaClick: (UiMedia) -> Unit,
-    onToggleFavorite: (UiMedia) -> Unit
+    onToggleFavorite: (UiMedia) -> Unit,
+    onFocusDown: () -> Unit
 ) {
     val denseTv = isTelevisionLayout()
     var index by remember(heroes.map { it.id }) { mutableIntStateOf(0) }
@@ -748,7 +782,13 @@ private fun RotatingHero(
             .then(if (denseTv) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth()
         .height(if (isCompactAndroidLayout()) 205.dp else if (denseTv) 230.dp else 290.dp)
-            .onFocusChanged { focused = it.isFocused },
+            .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (denseTv && event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                    onFocusDown()
+                    true
+                } else false
+            },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
@@ -799,7 +839,9 @@ private fun MediaRow(
     row: UiMediaRow,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit,
-    onRemoveHistory: (UiMedia) -> Unit
+    onRemoveHistory: (UiMedia) -> Unit,
+    firstCardFocusRequester: FocusRequester? = null,
+    onFocusDown: (() -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -815,12 +857,18 @@ private fun MediaRow(
             horizontalArrangement = Arrangement.spacedBy(if (denseTv) 10.dp else 15.dp),
             contentPadding = PaddingValues(end = 22.dp)
         ) {
-            columnItems(row.items, key = { it.id }, contentType = { if (it.portrait) "poster" else "landscape" }) { media ->
+            indexedColumnItems(
+                row.items,
+                key = { _, media -> media.id },
+                contentType = { _, media -> if (media.portrait) "poster" else "landscape" }
+            ) { index, media ->
                 MediaCard(
                     item = media,
                     onClick = { onMediaClick(media) },
                     onToggleFavorite = { onToggleFavorite(media) },
-                    onRemoveHistory = if (row.id == "continue") ({ onRemoveHistory(media) }) else null
+                    onRemoveHistory = if (row.id == "continue") ({ onRemoveHistory(media) }) else null,
+                    focusRequester = if (index == 0) firstCardFocusRequester else null,
+                    onFocusDown = onFocusDown
                 )
             }
         }
@@ -1040,6 +1088,7 @@ private fun LiveChannelRow(
     initialFocus: Boolean = false,
     onReturnToCategory: (() -> Unit)? = null
 ) {
+    val denseTv = isTelevisionLayout()
     Row(Modifier.fillMaxWidth().height(78.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuestSurface(
@@ -1053,7 +1102,8 @@ private fun LiveChannelRow(
                 }.weight(1f).fillMaxHeight(),
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(13.dp)),
             colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Color(0xFF292929)),
-            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
+            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold))),
+            focusScale = if (denseTv) 1.03f else null
         ) {
             Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(102.dp).height(56.dp).clip(RoundedCornerShape(8.dp)).background(PanelSoft), contentAlignment = Alignment.Center) {
@@ -1302,11 +1352,17 @@ private fun FavouritesScreen(
         }
         item {
             if (channels.isEmpty()) EmptyInline("Favourite channels", "Use Save on any live channel to add it here.")
-            else MediaRow(UiMediaRow("favorite-channels", "Favourite channels", items = channels), onMediaClick, onToggleFavorite) { }
+            else MediaRow(
+                UiMediaRow("favorite-channels", "Favourite channels", items = channels),
+                onMediaClick, onToggleFavorite, onRemoveHistory = {}
+            )
         }
         item {
             if (titles.isEmpty()) EmptyInline("Favourite titles", "Use Add to favourites on a movie or series.")
-            else MediaRow(UiMediaRow("favorite-titles", "Favourite titles", items = titles), onMediaClick, onToggleFavorite) { }
+            else MediaRow(
+                UiMediaRow("favorite-titles", "Favourite titles", items = titles),
+                onMediaClick, onToggleFavorite, onRemoveHistory = {}
+            )
         }
     }
 }
@@ -1319,7 +1375,9 @@ private fun MediaCard(
     onRemoveHistory: (() -> Unit)? = null,
     compactGrid: Boolean = false,
     initialFocus: Boolean = false,
-    onReturnToCategory: (() -> Unit)? = null
+    onReturnToCategory: (() -> Unit)? = null,
+    focusRequester: FocusRequester? = null,
+    onFocusDown: (() -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
     val compact = isCompactAndroidLayout()
@@ -1330,10 +1388,19 @@ private fun MediaCard(
     } else {
         Modifier.width(width).height(height)
     }
-    Box(cardModifier) {
+    Box(
+        cardModifier.onPreviewKeyEvent { event ->
+            if (onFocusDown != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                onFocusDown()
+                true
+            } else false
+        }
+    ) {
       QuestSurface(
         onClick = onClick,
-        modifier = Modifier.then(if (initialFocus && denseTv) Modifier.questInitialFocus() else Modifier)
+        modifier = Modifier
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+            .then(if (initialFocus && denseTv) Modifier.questInitialFocus() else Modifier)
             .fillMaxSize().onPreviewKeyEvent { event ->
             if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
                 onReturnToCategory()
@@ -2184,6 +2251,46 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
 }
 
 @Composable
+fun ProviderPinSetupPrompt(onSave: (String) -> Unit, onCancel: () -> Unit) {
+    var next by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+    BackHandler(onBack = onCancel)
+    Box(Modifier.fillMaxSize().background(Color(0xD9070707)), contentAlignment = Alignment.Center) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 520.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = SurfaceDefaults.colors(containerColor = Panel)
+        ) {
+            Column(
+                Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Set parental PIN", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "Create a 4–8 digit PIN to protect parental settings and restricted content.",
+                    color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center
+                )
+                PinField("New PIN", next, initialFocus = true) { next = it; error = "" }
+                PinField("Confirm PIN", confirmation) { confirmation = it; error = "" }
+                if (error.isNotBlank()) Text(error, color = Danger, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PrimaryAction("Save PIN") {
+                        error = when {
+                            next.length !in 4..8 -> "PIN must have 4 to 8 digits."
+                            confirmation != next -> "The PIN entries do not match."
+                            else -> { onSave(next); "" }
+                        }
+                    }
+                    WideAction("Cancel", onCancel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () -> Unit) {
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
@@ -2225,6 +2332,7 @@ private fun PinField(label: String, value: String, initialFocus: Boolean = false
             modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
                 .fillMaxWidth().height(48.dp).background(Navy, RoundedCornerShape(10.dp)).border(1.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 13.dp),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             textStyle = TextStyle(color = White, fontSize = 16.sp)
         )
     }

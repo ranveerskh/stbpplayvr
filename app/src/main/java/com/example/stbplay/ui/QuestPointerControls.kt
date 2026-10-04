@@ -2,12 +2,15 @@
 
 package com.example.stbplay.ui
 
+import android.content.pm.PackageManager
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.ButtonColors
 import androidx.tv.material3.ButtonDefaults
@@ -32,11 +35,16 @@ fun QuestButton(
     colors: ButtonColors = ButtonDefaults.colors(),
     content: @Composable RowScope.() -> Unit
 ) {
+    val context = LocalContext.current
+    val isAndroidTv = remember(context) {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
     TvButton(
         onClick = onClick,
         modifier = modifier.questPointerTap(enabled, onClick),
         enabled = enabled,
         colors = colors,
+        scale = ButtonDefaults.scale(focusedScale = if (isAndroidTv) 1.01f else 1.1f),
         content = content
     )
 }
@@ -49,8 +57,14 @@ fun QuestSurface(
     shape: ClickableSurfaceShape = ClickableSurfaceDefaults.shape(),
     colors: ClickableSurfaceColors = ClickableSurfaceDefaults.colors(),
     border: ClickableSurfaceBorder = ClickableSurfaceDefaults.border(),
+    focusScale: Float? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val context = LocalContext.current
+    val isAndroidTv = remember(context) {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
+    val resolvedFocusScale = focusScale ?: if (isAndroidTv) 1.01f else 1.1f
     TvSurface(
         onClick = onClick,
         modifier = modifier.questPointerTap(enabled, onClick),
@@ -58,6 +72,7 @@ fun QuestSurface(
         shape = shape,
         colors = colors,
         border = border,
+        scale = ClickableSurfaceDefaults.scale(focusedScale = resolvedFocusScale),
         content = content
     )
 }
