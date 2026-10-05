@@ -334,7 +334,9 @@ fun StbPlayApp(
     onSearchResults: (List<PortalStream>) -> Unit,
     searchMedia: (PortalStream) -> UiMedia,
     onHomeInteraction: () -> Unit = {},
-    onMediaFocused: (StbPlayTab, UiMedia) -> Unit = { _, _ -> }
+    onMediaFocused: (StbPlayTab, UiMedia) -> Unit = { _, _ -> },
+    livePreviewActionsRequester: FocusRequester? = null,
+    livePreview: (@Composable (Modifier, () -> Unit) -> Unit)? = null
 ) {
     var searchOpen by remember { mutableStateOf(false) }
     val tvLayout = isTelevisionLayout()
@@ -389,7 +391,9 @@ fun StbPlayApp(
                     onCategorySelected = { onCategorySelected(StbPlayTab.LIVE, it) },
                     onMediaClick = onMediaClick,
                     onToggleFavorite = onToggleFavorite,
-                    onMediaFocused = { onMediaFocused(StbPlayTab.LIVE, it) }
+                    onMediaFocused = { onMediaFocused(StbPlayTab.LIVE, it) },
+                    previewActionsRequester = livePreviewActionsRequester,
+                    preview = livePreview
                 )
                 StbPlayTab.CONTENT -> ContentBrowserScreen(
                     state = contentState,
@@ -1062,7 +1066,9 @@ private fun LiveTvScreen(
     onCategorySelected: (Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit,
-    onMediaFocused: (UiMedia) -> Unit
+    onMediaFocused: (UiMedia) -> Unit,
+    previewActionsRequester: FocusRequester? = null,
+    preview: (@Composable (Modifier, () -> Unit) -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
     val channelFocusRequester = remember { FocusRequester() }
@@ -1161,9 +1167,24 @@ private fun LiveTvScreen(
                             initialFocus = !denseTv && channel.id == initialChannelFocusId,
                             focusRequester = if (denseTv && channel.id == focusedChannelId) channelFocusRequester else null,
                             onFocused = { onMediaFocused(channel) },
-                            onReturnToCategory = if (denseTv) ({ focusSelectedCategory() }) else null
+                            onReturnToCategory = if (denseTv) ({ focusSelectedCategory() }) else null,
+                            onEnterPreview = if (denseTv && preview != null) ({ previewActionsRequester?.requestFocus() }) else null
                         )
                     }
+                }
+            }
+        }
+        if (denseTv && preview != null) {
+            Spacer(Modifier.width(14.dp))
+            preview(Modifier.weight(0.95f).fillMaxHeight()) {
+                categoryScope.launch {
+                    val index = state.items.indexOfFirst { it.id == focusedChannelId }
+                    if (index >= 0) {
+                        if (channelListState.layoutInfo.visibleItemsInfo.none { it.index == index })
+                            channelListState.scrollToItem(index)
+                        withFrameNanos { }
+                        runCatching { channelFocusRequester.requestFocus() }
+                    } else focusSelectedCategory()
                 }
             }
         }
@@ -1296,7 +1317,8 @@ private fun LiveChannelRow(
     initialFocus: Boolean = false,
     onReturnToCategory: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
-    onFocused: () -> Unit = {}
+    onFocused: () -> Unit = {},
+    onEnterPreview: (() -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
     if (denseTv) {
@@ -1307,6 +1329,8 @@ private fun LiveChannelRow(
                 .onPreviewKeyEvent { event ->
                     if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
                         onReturnToCategory(); true
+                    } else if (onEnterPreview != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight) {
+                        onEnterPreview(); true
                     } else false
                 },
             containerColor = Panel

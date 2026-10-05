@@ -672,7 +672,7 @@ private fun NativePlayerScreen(
                 }
                 if (isAndroidTv) {
                         Row(
-                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp)
+                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
                                 .onFocusChanged {
                                     tvActionsHaveFocus = it.hasFocus
                                     if (it.hasFocus) revealPlayerControls()
@@ -697,7 +697,7 @@ private fun NativePlayerScreen(
                                         android.widget.Toast.LENGTH_SHORT
                                     ).show()
                                 },
-                                modifier = Modifier.widthIn(min = 145.dp).height(48.dp)
+                                modifier = Modifier.height(24.dp)
                                     .then(if (episodeTitles.isEmpty()) Modifier.focusRequester(tvActionsFocusRequester) else Modifier)
                                     .focusProperties {
                                         right = FocusRequester.Cancel
@@ -705,7 +705,7 @@ private fun NativePlayerScreen(
                                         if (episodeTitles.isEmpty()) left = FocusRequester.Cancel
                                     }
                                     .onFocusChanged { if (it.isFocused) revealPlayerControls() }
-                            ) { Text("Not working? Play in VLC") }
+                            ) { Text("Not working? Play in VLC", fontSize = 9.sp) }
                         }
                 } else if (episodeTitles.isNotEmpty()) QuestButton(
                     onClick = { episodePickerVisible = true; revealPlayerControls() },
@@ -1009,14 +1009,14 @@ private fun isVlcInstalled(context: Context): Boolean = try {
     false
 }
 
-private fun SubtitlePreference.languageCode(): String? = when (this) {
+internal fun SubtitlePreference.languageCode(): String? = when (this) {
     SubtitlePreference.ENGLISH -> "en"
     SubtitlePreference.HINDI -> "hi"
     SubtitlePreference.PUNJABI -> "pa"
     else -> null
 }
 
-private fun launchVlc(context: Context, stream: String, title: String): Boolean = try {
+internal fun launchVlc(context: Context, stream: String, title: String): Boolean = try {
     val intent = Intent(Intent.ACTION_VIEW)
         .setDataAndType(Uri.parse(stream), "video/*")
         .setPackage("org.videolan.vlc")

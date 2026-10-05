@@ -69,6 +69,8 @@ import com.example.stbplay.ui.ProviderPinSetupPrompt
 import com.example.stbplay.data.resolveProviderPortalId
 import com.example.stbplay.data.resolvePairingPortal
 import com.example.stbplay.ui.screens.TvMediaDetailsScreen
+import com.example.stbplay.ui.screens.TvLivePreviewPanel
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import com.example.stbplay.ui.ProviderPairingDialog
 import com.example.stbplay.ui.StbPlayApp
@@ -436,6 +438,9 @@ private fun StbPlayRoot(
     var qualityLoading by remember { mutableStateOf(false) }
     var qualityError by remember { mutableStateOf<String?>(null) }
     var playRequest by remember { mutableStateOf<StalkerPlayRequest?>(null) }
+    var livePreviewStream by remember(storedSettings.id, storedSettings.url) { mutableStateOf<PortalStream?>(null) }
+    var livePreviewFullscreenSignal by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val livePreviewActionsRequester = remember { FocusRequester() }
     var playingSeries by remember { mutableStateOf<PortalStream?>(null) }
     var playingEpisodes by remember { mutableStateOf<List<PortalEpisode>>(emptyList()) }
     var playingEpisodeIndex by remember { androidx.compose.runtime.mutableIntStateOf(-1) }
@@ -844,6 +849,7 @@ private fun StbPlayRoot(
             focusedLiveChannelId = stream.id
             scope.launch { settingsManager.markRecentlyPlayed(stream.id) }
         }
+        livePreviewStream = null
         playRequest = StalkerPlayRequest(
             command = command,
             kind = when {
@@ -864,7 +870,11 @@ private fun StbPlayRoot(
 
     fun openMedia(stream: PortalStream, resume: Float = 0f) {
         when (stream.streamType) {
-            "live" -> if (isAndroidTv) selectedLiveChannel = stream else launchPlayback(stream)
+            "live" -> if (isAndroidTv && selectedTab == StbPlayTab.LIVE) {
+                focusedLiveChannelId = stream.id
+                if (livePreviewStream?.id == stream.id) livePreviewFullscreenSignal++
+                else { livePreviewFullscreenSignal = 0; livePreviewStream = stream }
+            } else if (isAndroidTv) selectedLiveChannel = stream else launchPlayback(stream)
             "series" -> selectedSeries = stream
             else -> selectedMovie = stream
         }
@@ -1036,7 +1046,7 @@ private fun StbPlayRoot(
         filterByCategory(liveStreams, uiLiveCategories, liveCategoryIndex)
     }
     fun stepLiveChannel(direction: Int) {
-        val currentId = playRequest?.contentId
+        val currentId = playRequest?.contentId ?: livePreviewStream?.id
         val currentCategory = uiLiveCategories.getOrNull(liveCategoryIndex)
         val categoryUnlocked = parentalMode == ParentalMode.ADULT_ONLY ||
             (currentCategory?.isAdult == true && unlockedAdultCategoryKey == "LIVE:$liveCategoryIndex")
@@ -1045,12 +1055,16 @@ private fun StbPlayRoot(
         if (channels.isNotEmpty()) {
             val currentIndex = channels.indexOfFirst { it.id == currentId }
             val nextIndex = if (currentIndex < 0) 0 else (currentIndex + direction + channels.size) % channels.size
-            launchPlayback(channels[nextIndex])
+            if (isAndroidTv && livePreviewStream != null && playRequest == null) {
+                livePreviewStream = channels[nextIndex]
+                focusedLiveChannelId = channels[nextIndex].id
+                scope.launch { settingsManager.markRecentlyPlayed(channels[nextIndex].id) }
+            } else launchPlayback(channels[nextIndex])
         }
     }
     val activity = LocalContext.current as? MainActivity
-    DisposableEffect(activity, playRequest, filteredLive, liveStreams, unlockedAdultCategoryKey) {
-        val handler: ((Int) -> Unit)? = if (playRequest?.kind == StalkerContentKind.LIVE) {
+    DisposableEffect(activity, playRequest, livePreviewStream, filteredLive, liveStreams, unlockedAdultCategoryKey) {
+        val handler: ((Int) -> Unit)? = if (playRequest?.kind == StalkerContentKind.LIVE || livePreviewStream != null) {
             { direction: Int -> stepLiveChannel(direction) }
         } else null
         activity?.channelStepHandler = handler
@@ -1513,6 +1527,7 @@ private fun StbPlayRoot(
                     contentGridState = contentGridState,
                     onTabSelected = { tab ->
                         if (tab != selectedTab) {
+                            livePreviewStream = null
                             if (selectedTab == StbPlayTab.LIVE && uiLiveCategories.getOrNull(liveCategoryIndex)?.isAdult == true) {
                                 liveCategoryIndex = 0
                                 focusedLiveChannelId = null
@@ -1529,6 +1544,33 @@ private fun StbPlayRoot(
                     onLoadMoreContent = { loadVodCategory(selectedContentCategory?.id?.takeUnless { it == "all" }) },
                     onCategorySelected = ::requestCategory,
                     onMediaClick = ::requestMedia,
+                    livePreviewActionsRequester = livePreviewActionsRequester,
+                    livePreview = { modifier, returnToChannels ->
+                        TvLivePreviewPanel(
+                            channel = livePreviewStream?.let(::toUi),
+                            request = livePreviewStream?.let { stream ->
+                                StalkerPlayRequest(command = stream.cmd, kind = StalkerContentKind.LIVE,
+                                    contentId = stream.id, title = stream.name)
+                            },
+                            portalUiUrl = storedSettings.url, macAddress = storedSettings.mac,
+                            token = portalRepository.getHandshakeToken(),
+                            sessionCookie = portalRepository.getSessionCookie(),
+                            subtitlePreference = subtitlePreference,
+                            androidBoxVideoCompatibility = androidBoxVideoCompatibility,
+                            fullscreenSignal = livePreviewFullscreenSignal,
+                            actionsRequester = livePreviewActionsRequester,
+                            modifier = modifier,
+                            onFavorite = { livePreviewStream?.let { setFavorite(toUi(it)) } },
+                            onPlaybackStarted = {
+                                livePreviewStream?.let { stream ->
+                                    scope.launch { settingsManager.markRecentlyPlayed(stream.id) }
+                                }
+                            },
+                            onChannelStep = ::stepLiveChannel,
+                            onBack = { livePreviewStream = null; livePreviewFullscreenSignal = 0; returnToChannels() },
+                            onReturnToChannels = returnToChannels
+                        )
+                    },
                     onToggleFavorite = ::setFavorite,
                     onRemoveHistory = { media -> scope.launch { settingsManager.removeFromHistory(media.id) } },
                     onRefresh = { refreshPortal(storedSettings) },
