@@ -39,7 +39,7 @@ class TvNavigationFocusTest {
         rule.setContent {
             STBPlayTheme {
                 val previewRequester = remember { FocusRequester() }
-                Box(Modifier.fillMaxSize().focusProperties { canFocus = true }) {
+                Box(Modifier.fillMaxSize()) {
                     StbPlayApp(
                         homeState = StbPlayHomeState(heroes = movies.take(1), rows = listOf(UiMediaRow("recommended", "Recommended", items = movies))),
                         liveState = StbPlayLibraryState(loading = loading, categories = listOf(UiCategory("all", "All")), items = if (loading) emptyList() else channels),
