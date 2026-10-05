@@ -74,7 +74,11 @@ class TvNavigationFocusTest {
     }
 
     private fun focused(tag: String) {
-        rule.waitUntil(8_000) { rule.onAllNodes(hasTestTag(tag) and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+        try {
+            rule.waitUntil(8_000) { rule.onAllNodes(hasTestTag(tag) and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+        } catch (failure: Throwable) {
+            throw AssertionError("Expected focus on $tag\n" + rule.onRoot().printToString(), failure)
+        }
         rule.onNodeWithTag(tag).assertIsFocused().assertIsDisplayed()
         if (tag != "tv-focus:settings:back") {
             val pixels = rule.onNodeWithTag(tag).captureToImage().toPixelMap()
@@ -178,8 +182,11 @@ class TvNavigationFocusTest {
         start(StbPlayTab.LIVE)
         focused("tv-focus:category:all")
         rule.runOnIdle { loading = false }
+        rule.waitForIdle()
+        rule.onNodeWithTag("tv-focus:live:ch1").assertIsDisplayed()
         right(); focused("tv-focus:live:ch1")
         rule.runOnIdle { favorites = emptyList() }
+        rule.waitForIdle()
         rail(StbPlayTab.FAVOURITES); ok(); focused("tv-rail:FAVOURITES")
         rail(StbPlayTab.HOME); right(); focused("tv-focus:home:hero")
     }
