@@ -1673,7 +1673,9 @@ private fun StbPlayRoot(
                         }
                     }
                   ) }
-                  if (isAndroidTv) appUiStateHolder.SaveableStateProvider(storedSettings.id.ifBlank { "setup" }) { renderApp() }
+                  if (isAndroidTv) appUiStateHolder.SaveableStateProvider(storedSettings.id.ifBlank { "setup" }) {
+                      Box(Modifier.fillMaxSize().focusProperties { canFocus = !livePreviewFullscreen }) { renderApp() }
+                  }
                   else renderApp()
                 }
             }
