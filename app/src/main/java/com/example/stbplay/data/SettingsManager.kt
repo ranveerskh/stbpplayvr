@@ -12,6 +12,7 @@ import com.example.stbplay.domain.model.generateStbPlayMac
 import com.example.stbplay.isAndroidTvDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -344,7 +345,16 @@ class SettingsManager(private val context: Context) {
         return profiles.firstOrNull { it.id == requested }?.id ?: profiles.firstOrNull()?.id.orEmpty()
     }
 
-    private fun parseProfiles(raw: String?): List<PortalSettings> = runCatching {
+    /** Recover only a stored incomplete pairing draft; deleted profiles stay deleted. */
+    suspend fun providerPairingDraft(id: String): PortalSettings? {
+        if (id.isBlank()) return null
+        val prefs = context.dataStore.data.first()
+        return parseProfiles(prefs[keyPortals], includeDrafts = true)
+            .firstOrNull { it.id == id && it.url.isBlank() }
+            ?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty())
+    }
+
+    private fun parseProfiles(raw: String?, includeDrafts: Boolean = false): List<PortalSettings> = runCatching {
         val array = JSONArray(raw.orEmpty())
         buildList {
             for (index in 0 until array.length()) {
@@ -352,7 +362,7 @@ class SettingsManager(private val context: Context) {
                 val id = item.optString("id").trim()
                 val url = item.optString("url").trim()
                 val mac = item.optString("mac").trim().uppercase()
-                if (id.isBlank() || url.isBlank() || mac.isBlank()) continue
+                if (id.isBlank() || (!includeDrafts && url.isBlank()) || mac.isBlank()) continue
                 add(
                     PortalSettings(
                         id = id,

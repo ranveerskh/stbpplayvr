@@ -688,20 +688,23 @@ private fun StbPlayRoot(
         if (boundId != null && boundId != input.id) return input
         val assignment = runCatching { platformLicenseClient.syncProviderAssignment() }.getOrNull() ?: return input
         val latestSettings = settingsManager.startupSettings.first()
-        val targetId = resolveProviderPortalId(boundId, assignment.portalUrl, latestSettings.profiles) ?: return input
+        val draft = boundId?.let { settingsManager.providerPairingDraft(it) }
+        val targetId = resolveProviderPortalId(boundId, assignment.portalUrl, latestSettings.profiles)
+            ?: draft?.id ?: return input
         if (boundId == null) platformLicenseClient.bindProviderPortal(targetId)
         if (targetId != input.id) return input
-        val latestProfile = latestSettings.profiles.firstOrNull { it.id == targetId } ?: return input
+        val latestProfile = latestSettings.profiles.firstOrNull { it.id == targetId } ?: draft ?: return input
         platformLicense = platformLicenseClient.currentLicense()
         licenseStatus = "Provider portal synced."
         val updated = latestProfile.copy(name = assignment.portalName, url = assignment.portalUrl,
             pin = latestSettings.activePortal.pin).normalized()
+        val recoveringFirstPortal = draft != null && latestSettings.profiles.isEmpty()
+        if (updated.name != latestProfile.name || updated.url != latestProfile.url)
+            settingsManager.upsertPortal(updated, makeActive = recoveringFirstPortal)
         if (updated.pin.isBlank()) {
-            if (latestSettings.activePortal.id == updated.id) providerPinSetup = updated
+            if (latestSettings.activePortal.id == updated.id || recoveringFirstPortal) providerPinSetup = updated
             return input
         }
-        if (updated.name != latestProfile.name || updated.url != latestProfile.url)
-            settingsManager.upsertPortal(updated, makeActive = false)
         return updated
     }
 
@@ -723,7 +726,8 @@ private fun StbPlayRoot(
         if (!settingsLoaded || !disclaimerAcknowledged || platformLicenseClient.pendingProviderPairing() != null) return@LaunchedEffect
         val bootstrap = settingsManager.startupSettings.first()
         val boundId = platformLicenseClient.providerPortalId()
-        val target = bootstrap.profiles.firstOrNull { it.id == boundId } ?: bootstrap.activePortal
+        val target = bootstrap.profiles.firstOrNull { it.id == boundId }
+            ?: boundId?.let { settingsManager.providerPairingDraft(it) } ?: bootstrap.activePortal
         refreshProviderPortal(target)
     }
 
