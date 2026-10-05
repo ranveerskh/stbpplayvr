@@ -1,0 +1,60 @@
+name: Build signed STB PLAY Android 2.0.19 test APK
+
+on:
+  push:
+    branches: [test/2.0.19]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install Android SDK 36
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Restore signing key for in-place test install
+        env:
+          STB_SIGNING_KEYSTORE_B64: ${{ secrets.STB_SIGNING_KEYSTORE_B64 }}
+          STB_RELEASE_STORE_PASSWORD: ${{ secrets.STB_RELEASE_STORE_PASSWORD }}
+          STB_RELEASE_KEY_ALIAS: ${{ secrets.STB_RELEASE_KEY_ALIAS }}
+          STB_RELEASE_KEY_PASSWORD: ${{ secrets.STB_RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$STB_SIGNING_KEYSTORE_B64" && test -n "$STB_RELEASE_STORE_PASSWORD" && test -n "$STB_RELEASE_KEY_ALIAS" && test -n "$STB_RELEASE_KEY_PASSWORD" || { echo 'Configure the existing Android signing secrets before building the test APK.'; exit 1; }
+          printf '%s' "$STB_SIGNING_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/stb-release.jks"
+          chmod 600 "$RUNNER_TEMP/stb-release.jks"
+      - name: Build signed test APK
+        env:
+          STB_RELEASE_KEYSTORE: ${{ runner.temp }}/stb-release.jks
+          STB_RELEASE_STORE_PASSWORD: ${{ secrets.STB_RELEASE_STORE_PASSWORD }}
+          STB_RELEASE_KEY_ALIAS: ${{ secrets.STB_RELEASE_KEY_ALIAS }}
+          STB_RELEASE_KEY_PASSWORD: ${{ secrets.STB_RELEASE_KEY_PASSWORD }}
+        run: |
+          grep -Fq 'versionCode = 71' app/build.gradle.kts
+          grep -Fq 'versionName = "2.0.19"' app/build.gradle.kts
+          chmod +x ./gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease
+      - name: Verify signed APK and update identity
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/stb-apk-verification.txt"
+          cat "$RUNNER_TEMP/stb-apk-verification.txt"
+          grep -Fq 'Signer #1 certificate SHA-256 digest: 91943d0efc4125eb6aeda132ba6b8d79855496e030477c2d5cd00e9bedd4fdb0' "$RUNNER_TEMP/stb-apk-verification.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" > "$RUNNER_TEMP/stb-apk-badging.txt"
+          grep -F "package: name='com.example.stbplay' versionCode='71' versionName='2.0.19'" "$RUNNER_TEMP/stb-apk-badging.txt"
+      - name: Upload test APK only
+        uses: actions/upload-artifact@v4
+        with:
+          name: STB-PLAY-Android-v2.0.19-test-signed
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 14

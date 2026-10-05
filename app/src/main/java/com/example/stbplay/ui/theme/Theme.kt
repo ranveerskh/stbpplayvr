@@ -41,6 +41,11 @@ val BlackPalette = StbPalette(
     panelSoft = Color(0xFF252525), accent = Color(0xFFC9CDD2), accentLight = Color(0xFFF3F4F5),
     text = Color(0xFFF4F6FA), muted = Color(0xFF9AA8B8), onAccent = Color(0xFF070707)
 )
+val AfterDarkPalette = StbPalette(
+    background = Color(0xFF09070B), rail = Color(0xFF140E15), panel = Color(0xFF211720),
+    panelSoft = Color(0xFF30202B), accent = Color(0xFFB44C72), accentLight = Color(0xFFE08AA5),
+    text = Color(0xFFF8F2F5), muted = Color(0xFFC0AEB8), onAccent = Color(0xFF120910)
+)
 
 val LocalStbPalette = staticCompositionLocalOf { BluePalette }
 
@@ -48,14 +53,15 @@ val LocalStbPalette = staticCompositionLocalOf { BluePalette }
 @Composable
 fun STBPlayTheme(
     preference: ThemePreference = ThemePreference.BLUE,
+    adultOnly: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val palette = when (preference) {
+    val palette = if (adultOnly) AfterDarkPalette else when (preference) {
         ThemePreference.BLUE -> BluePalette
         ThemePreference.LIGHT -> LightPalette
         ThemePreference.BLACK -> BlackPalette
     }
-    val scheme = if (preference == ThemePreference.LIGHT) lightColorScheme(
+    val scheme = if (!adultOnly && preference == ThemePreference.LIGHT) lightColorScheme(
         primary = palette.accent, onPrimary = palette.onAccent, background = palette.background,
         onBackground = palette.text, surface = palette.panel, onSurface = palette.text,
         secondary = palette.accentLight, onSecondary = palette.onAccent

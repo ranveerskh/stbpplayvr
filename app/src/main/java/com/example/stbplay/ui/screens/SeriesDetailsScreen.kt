@@ -2,6 +2,8 @@
 
 package com.example.stbplay.ui.screens
 
+import com.example.stbplay.isAndroidTvDevice
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -37,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.Border
 import com.example.stbplay.ui.QuestButton
 import androidx.tv.material3.ButtonDefaults
@@ -67,7 +70,9 @@ fun SeriesDetailsScreen(
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
     onEpisodeClick: (PortalEpisode, List<PortalEpisode>) -> Unit,
-    onBack: () -> Unit
+    episodeProgress: Map<String, Float> = emptyMap(),
+    onBack: () -> Unit,
+    onRemoveHistory: (() -> Unit)? = null
 ) {
     var seasons by remember(series.id) { mutableStateOf<List<PortalSeason>>(emptyList()) }
     var selectedSeason by remember(series.id) { mutableStateOf<PortalSeason?>(null) }
@@ -80,7 +85,7 @@ fun SeriesDetailsScreen(
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val compact = LocalConfiguration.current.screenWidthDp < 900 &&
-        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        !context.isAndroidTvDevice()
 
     val artworkUrl = remember(series.id, series.iconUrl, repository) {
         repository.resolveArtworkUrl(series.iconUrl)
@@ -205,11 +210,18 @@ fun SeriesDetailsScreen(
             Text(series.name, color = SeriesWhite, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             series.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis) }
             Spacer(Modifier.weight(1f))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+              if (context.isAndroidTvDevice()) onRemoveHistory?.let { remove ->
+                  QuestButton(onClick = remove, modifier = Modifier.fillMaxWidth().height(40.dp)) {
+                      Text("Remove from history", fontSize = 12.sp)
+                  }
+              }
+              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QuestButton(onClick = onToggleFavorite, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.colors(containerColor = SeriesPanelSoft, contentColor = SeriesWhite)) {
                     Text(if (isFavorite) "Remove" else "Favourite", maxLines = 1)
                 }
                 QuestButton(onClick = onBack, modifier = Modifier.width(80.dp).height(48.dp), colors = ButtonDefaults.colors(containerColor = SeriesPanelSoft, contentColor = SeriesWhite)) { Text("Back") }
+              }
             }
         }
         Spacer(Modifier.width(42.dp))
@@ -243,9 +255,10 @@ fun SeriesDetailsScreen(
                     when {
                         loadingEpisodes -> Text("Loading episodes…", color = SeriesMuted, fontSize = 14.sp)
                         episodes.isEmpty() -> Text("No episodes were returned for this season.", color = SeriesMuted, fontSize = 14.sp)
-                        else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (context.isAndroidTvDevice()) 3.dp else 9.dp)) {
                             items(episodes, key = { it.id }) { episode ->
-                                EpisodeRow(episode, initialFocus = episode.id == episodes.firstOrNull()?.id) { onEpisodeClick(episode, episodes) }
+                                EpisodeRow(episode, initialFocus = episode.id == episodes.firstOrNull()?.id,
+                                    hasProgress = (episodeProgress[episode.id] ?: 0f) > 0f) { onEpisodeClick(episode, episodes) }
                             }
                         }
                     }
@@ -257,21 +270,41 @@ fun SeriesDetailsScreen(
 }
 
 @Composable
-private fun EpisodeRow(episode: PortalEpisode, initialFocus: Boolean = false, onClick: () -> Unit) {
+private fun EpisodeRow(episode: PortalEpisode, initialFocus: Boolean = false, hasProgress: Boolean = false, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val television = remember(context) { context.isAndroidTvDevice() }
     val playable = !episode.cmd.isNullOrBlank()
     QuestSurface(
         onClick = { if (playable) onClick() },
-        modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).fillMaxWidth().height(68.dp),
+        modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).fillMaxWidth().height(if (television) 28.dp else 68.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = SeriesPanel, focusedContainerColor = SeriesGold.copy(alpha = 0.2f)),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGold)))
     ) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxSize().padding(horizontal = if (television) 8.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(episode.name, color = SeriesWhite, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                episode.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                Text(episode.name, color = SeriesWhite, fontSize = if (television) 12.sp else 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (!television) episode.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
-            Text(if (playable) "Play" else "Unavailable", color = if (playable) SeriesGoldLight else SeriesMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(if (!playable) "Unavailable" else if (television && hasProgress) "Resume" else "Play", color = if (playable) SeriesGoldLight else SeriesMuted, fontSize = if (television) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun EpisodeResumePrompt(title: String, onResume: () -> Unit, onStartOver: () -> Unit, onCancel: () -> Unit) {
+    Dialog(onDismissRequest = onCancel) {
+        Column(
+            Modifier.fillMaxWidth().background(SeriesPanel, RoundedCornerShape(14.dp)).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(title, color = SeriesWhite, fontSize = 19.sp, fontWeight = FontWeight.Bold,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("Continue from your saved position or play from the beginning.", color = SeriesMuted, fontSize = 13.sp)
+            QuestButton(onClick = onResume, modifier = Modifier.fillMaxWidth().questInitialFocus(),
+                colors = ButtonDefaults.colors(containerColor = SeriesGold, contentColor = SeriesOnAccent)) { Text("Resume") }
+            QuestButton(onClick = onStartOver, modifier = Modifier.fillMaxWidth()) { Text("Start over") }
+            QuestButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
         }
     }
 }

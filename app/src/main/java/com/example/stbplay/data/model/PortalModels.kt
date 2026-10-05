@@ -10,7 +10,14 @@ data class PortalCategory(
     val name: String,
     val type: String, // "itv", "vod", "series"
     val isLocked: Boolean = false
-)
+) {
+    fun isAdultCategory(): Boolean = isLocked || name.containsAdultMarker()
+}
+
+private fun String.containsAdultMarker(): Boolean {
+    val normalized = lowercase()
+    return listOf("18+", "adult", "xxx", "porn", "erotic", "a-rated", "uncensored").any(normalized::contains)
+}
 
 data class PortalStream(
     val id: String,
@@ -32,7 +39,19 @@ data class PortalStream(
     val cast: String? = null,
     val categoryTitle: String? = null,
     val releaseDate: String? = null
-)
+) {
+    /** Best-effort adult marker using provider locks, ratings, and category/title labels. */
+    fun isAdultContent(): Boolean {
+        if (isLocked) return true
+        val ratingValue = rating.orEmpty().trim().uppercase()
+        if (ratingValue in setOf("R", "18", "18+", "NC-17", "TV-MA", "XXX", "X")) return true
+        val adultTerms = listOf("18+", "adult", "xxx", "porn", "erotic", "a-rated", "uncensored")
+        return listOf(name, categoryTitle, genre).filterNotNull().any { value ->
+            val normalized = value.lowercase()
+            adultTerms.any { term -> normalized.contains(term) }
+        }
+    }
+}
 
 data class PortalSeries(
     val id: String,

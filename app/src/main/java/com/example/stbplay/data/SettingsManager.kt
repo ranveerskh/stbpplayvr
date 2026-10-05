@@ -8,8 +8,11 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.stbplay.domain.model.PortalSettings
+import com.example.stbplay.domain.model.generateStbPlayMac
+import com.example.stbplay.isAndroidTvDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -17,12 +20,19 @@ private val Context.dataStore by preferencesDataStore(name = "stb_play_settings"
 
 enum class PlayerPreference { AUTO, INTERNAL, VLC }
 enum class ThemePreference { BLUE, LIGHT, BLACK }
+enum class ParentalMode { ALL_CONTENT, HIDE_ADULT, ADULT_ONLY }
 enum class SubtitlePreference { AUTO, OFF, ENGLISH, HINDI, PUNJABI }
 
 data class WatchProgress(
     val contentId: String,
     val fraction: Float,
     val updatedAt: Long
+)
+
+data class SettingsBootstrap(
+    val profiles: List<PortalSettings>,
+    val activePortal: PortalSettings,
+    val disclaimerAcknowledged: Boolean
 )
 
 /**
@@ -33,10 +43,14 @@ class SettingsManager(private val context: Context) {
 
     private val keyPortals = stringPreferencesKey("portal_profiles_v2")
     private val keyActivePortal = stringPreferencesKey("active_portal_id")
+    private val keySharedDeviceMac = stringPreferencesKey("shared_device_mac")
+    private val isAndroidTvDevice = context.isAndroidTvDevice()
     private val keyParentalPin = stringPreferencesKey("parental_pin")
+    private val keyParentalMode = stringPreferencesKey("parental_mode")
     private val keyFavoritesPrefix = "favorite_ids_"
     private val keyProgressPrefix = "vod_progress_"
     private val keyPlayer = stringPreferencesKey("player_preference")
+    private val keyAndroidBoxVideoCompatibility = booleanPreferencesKey("android_box_video_compatibility")
     private val keyTheme = stringPreferencesKey("theme_preference")
     private val keySubtitles = stringPreferencesKey("subtitle_preference")
     private val keyLanguage = stringPreferencesKey("catalogue_language")
@@ -54,11 +68,24 @@ class SettingsManager(private val context: Context) {
         profilesFrom(prefs[keyPortals], prefs)
     }
 
+    /** A single persisted snapshot prevents startup from routing before portal/setup state is known. */
+    val startupSettings: Flow<SettingsBootstrap> = context.dataStore.data.map { prefs ->
+        val profiles = profilesFrom(prefs[keyPortals], prefs)
+        val activeId = prefs[keyActivePortal].orEmpty()
+        val active = profiles.firstOrNull { it.id == activeId } ?: profiles.firstOrNull()
+        SettingsBootstrap(
+            profiles = profiles,
+            activePortal = active?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty())
+                ?: defaultPortal(prefs),
+            disclaimerAcknowledged = prefs[keyDisclaimer] ?: false
+        )
+    }
+
     val portalSettings: Flow<PortalSettings> = context.dataStore.data.map { prefs ->
         val profiles = profilesFrom(prefs[keyPortals], prefs)
         val activeId = prefs[keyActivePortal].orEmpty()
         val active = profiles.firstOrNull { it.id == activeId } ?: profiles.firstOrNull()
-        active?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty()) ?: PortalSettings()
+        active?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty()) ?: defaultPortal(prefs)
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
@@ -87,6 +114,11 @@ class SettingsManager(private val context: Context) {
             .getOrDefault(PlayerPreference.AUTO)
     }
 
+    /** Use SurfaceView first on Android TV/boxes that render HEVC as green or blue. */
+    val androidBoxVideoCompatibility: Flow<Boolean> = context.dataStore.data.map {
+        it[keyAndroidBoxVideoCompatibility] ?: false
+    }
+
     val themePreference: Flow<ThemePreference> = context.dataStore.data.map {
         when (it[keyTheme]) {
             "DARK", "SYSTEM", ThemePreference.BLACK.name -> ThemePreference.BLACK
@@ -95,26 +127,42 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    val parentalMode: Flow<ParentalMode> = context.dataStore.data.map {
+        runCatching { ParentalMode.valueOf(it[keyParentalMode] ?: ParentalMode.ALL_CONTENT.name) }
+            .getOrDefault(ParentalMode.ALL_CONTENT)
+    }
+
     val subtitlePreference: Flow<SubtitlePreference> = context.dataStore.data.map {
         runCatching { SubtitlePreference.valueOf(it[keySubtitles] ?: SubtitlePreference.AUTO.name) }
             .getOrDefault(SubtitlePreference.AUTO)
     }
 
     val catalogueLanguage: Flow<String> = context.dataStore.data.map { it[keyLanguage] ?: "All" }
-    val analyticsEnabled: Flow<Boolean> = context.dataStore.data.map { it[keyAnalytics] ?: true }
+    val analyticsEnabled: Flow<Boolean> = context.dataStore.data.map { it[keyAnalytics] ?: false }
     val disclaimerAcknowledged: Flow<Boolean> = context.dataStore.data.map { it[keyDisclaimer] ?: false }
     val lastRefreshAt: Flow<Long> = context.dataStore.data.map { it[keyLastRefresh] ?: 0L }
 
     suspend fun upsertPortal(settings: PortalSettings, makeActive: Boolean = true) {
         val prepared = settings.normalized().withStableId()
         context.dataStore.edit { prefs ->
-            val profiles = profilesFrom(prefs[keyPortals], prefs).toMutableList()
-            val index = profiles.indexOfFirst { it.id == prepared.id }
-            val profileOnly = prepared.copy(pin = "")
+            val existing = profilesFrom(prefs[keyPortals], prefs)
+            val sharedMac = if (isAndroidTvDevice) {
+                prepared.mac.takeIf(::isValidMac)
+                    ?: prefs[keySharedDeviceMac]?.takeIf(::isValidMac)
+                    ?: existing.firstOrNull()?.mac?.takeIf(::isValidMac)
+                    ?: generatedDeviceMac()
+            } else prepared.mac
+            val saved = prepared.copy(mac = sharedMac)
+            if (isAndroidTvDevice) prefs[keySharedDeviceMac] = sharedMac
+            val profiles = existing.map { profile ->
+                if (isAndroidTvDevice) profile.copy(mac = sharedMac) else profile
+            }.toMutableList()
+            val index = profiles.indexOfFirst { it.id == saved.id }
+            val profileOnly = saved.copy(pin = "")
             if (index >= 0) profiles[index] = profileOnly else profiles.add(profileOnly)
             prefs[keyPortals] = encodeProfiles(profiles)
-            if (makeActive) prefs[keyActivePortal] = prepared.id
-            if (prepared.pin.isNotBlank()) prefs[keyParentalPin] = prepared.pin
+            if (makeActive) prefs[keyActivePortal] = saved.id
+            if (saved.pin.isNotBlank()) prefs[keyParentalPin] = saved.pin
         }
     }
 
@@ -180,6 +228,19 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    /** Records a live channel in Continue Watching without pretending it has seek progress. */
+    suspend fun markRecentlyPlayed(contentId: String) {
+        if (contentId.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val profileId = activeProfileId(prefs)
+            if (profileId.isBlank()) return@edit
+            val key = stringPreferencesKey(keyProgressPrefix + profileId)
+            val progress = parseProgress(prefs[key].orEmpty()).toMutableMap()
+            progress[contentId] = (progress[contentId]?.first ?: 0.001f) to System.currentTimeMillis()
+            prefs[key] = encodeProgress(progress)
+        }
+    }
+
     suspend fun removeFromHistory(contentId: String) {
         context.dataStore.edit { prefs ->
             val profileId = activeProfileId(prefs)
@@ -202,8 +263,16 @@ class SettingsManager(private val context: Context) {
         context.dataStore.edit { it[keyPlayer] = value.name }
     }
 
+    suspend fun setAndroidBoxVideoCompatibility(enabled: Boolean) {
+        context.dataStore.edit { it[keyAndroidBoxVideoCompatibility] = enabled }
+    }
+
     suspend fun setThemePreference(value: ThemePreference) {
         context.dataStore.edit { it[keyTheme] = value.name }
+    }
+
+    suspend fun setParentalMode(value: ParentalMode) {
+        context.dataStore.edit { it[keyParentalMode] = value.name }
     }
 
     suspend fun setSubtitlePreference(value: SubtitlePreference) {
@@ -231,20 +300,44 @@ class SettingsManager(private val context: Context) {
         prefs: androidx.datastore.preferences.core.Preferences
     ): List<PortalSettings> {
         val parsed = parseProfiles(raw)
-        if (parsed.isNotEmpty()) return parsed
-        val oldUrl = prefs[legacyUrl].orEmpty().trim()
-        val oldMac = prefs[legacyMac].orEmpty().trim()
-        return if (oldUrl.isNotBlank() && oldMac.isNotBlank()) {
-            listOf(
-                PortalSettings(
-                    id = "legacy-${oldMac.replace(":", "").lowercase()}",
-                    name = prefs[legacyName].orEmpty().ifBlank { "Portal" },
-                    url = oldUrl,
-                    mac = oldMac
+        val profiles = if (parsed.isNotEmpty()) parsed else {
+            val oldUrl = prefs[legacyUrl].orEmpty().trim()
+            val oldMac = prefs[legacyMac].orEmpty().trim()
+            if (oldUrl.isNotBlank() && oldMac.isNotBlank()) {
+                listOf(
+                    PortalSettings(
+                        id = "legacy-${oldMac.replace(":", "").lowercase()}",
+                        name = prefs[legacyName].orEmpty().ifBlank { "Portal" },
+                        url = oldUrl,
+                        mac = oldMac
+                    )
                 )
-            )
-        } else emptyList()
+            } else emptyList()
+        }
+        if (!isAndroidTvDevice || profiles.isEmpty()) return profiles
+        val sharedMac = prefs[keySharedDeviceMac]?.takeIf(::isValidMac)
+            ?: profiles.firstOrNull()?.mac?.takeIf(::isValidMac)
+            ?: generatedDeviceMac()
+        return profiles.map { it.copy(mac = sharedMac) }
     }
+
+    private fun defaultPortal(prefs: androidx.datastore.preferences.core.Preferences): PortalSettings {
+        val mac = if (isAndroidTvDevice) {
+            prefs[keySharedDeviceMac]?.takeIf(::isValidMac) ?: generatedDeviceMac()
+        } else ""
+        return PortalSettings(mac = mac)
+    }
+
+    private fun generatedDeviceMac(): String {
+        val androidId = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
+        ).orEmpty()
+        return generateStbPlayMac(androidId)
+    }
+
+    private fun isValidMac(value: String): Boolean =
+        Regex("^[0-9A-F]{2}(:[0-9A-F]{2}){5}$").matches(value.trim().uppercase())
 
     private fun activeProfileId(prefs: androidx.datastore.preferences.core.Preferences): String {
         val profiles = profilesFrom(prefs[keyPortals], prefs)
@@ -252,7 +345,16 @@ class SettingsManager(private val context: Context) {
         return profiles.firstOrNull { it.id == requested }?.id ?: profiles.firstOrNull()?.id.orEmpty()
     }
 
-    private fun parseProfiles(raw: String?): List<PortalSettings> = runCatching {
+    /** Recover only a stored incomplete pairing draft; deleted profiles stay deleted. */
+    suspend fun providerPairingDraft(id: String): PortalSettings? {
+        if (id.isBlank()) return null
+        val prefs = context.dataStore.data.first()
+        return parseProfiles(prefs[keyPortals], includeDrafts = true)
+            .firstOrNull { it.id == id && it.url.isBlank() }
+            ?.copy(pin = prefs[keyParentalPin] ?: prefs[legacyPin].orEmpty())
+    }
+
+    private fun parseProfiles(raw: String?, includeDrafts: Boolean = false): List<PortalSettings> = runCatching {
         val array = JSONArray(raw.orEmpty())
         buildList {
             for (index in 0 until array.length()) {
@@ -260,7 +362,7 @@ class SettingsManager(private val context: Context) {
                 val id = item.optString("id").trim()
                 val url = item.optString("url").trim()
                 val mac = item.optString("mac").trim().uppercase()
-                if (id.isBlank() || url.isBlank() || mac.isBlank()) continue
+                if (id.isBlank() || (!includeDrafts && url.isBlank()) || mac.isBlank()) continue
                 add(
                     PortalSettings(
                         id = id,

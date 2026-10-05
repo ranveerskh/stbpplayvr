@@ -41,6 +41,7 @@ import com.example.stbplay.data.model.PortalQualityOption
 import com.example.stbplay.ui.UiMedia
 import com.example.stbplay.ui.questInitialFocus
 import com.example.stbplay.ui.theme.LocalStbPalette
+import com.example.stbplay.isAndroidTvDevice
 
 private val DetailNavy: Color @Composable get() = LocalStbPalette.current.background
 private val DetailPanel: Color @Composable get() = LocalStbPalette.current.panelSoft
@@ -56,10 +57,15 @@ fun MovieDetailsScreen(
     onPlay: () -> Unit,
     onResume: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRemoveHistory: (() -> Unit)? = null
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
+    if (context.isAndroidTvDevice()) {
+        TvMediaDetailsScreen(item, onPlay, onResume, onToggleFavorite, onRemoveHistory, onBack)
+        return
+    }
     val compact = LocalConfiguration.current.screenWidthDp < 900 &&
         !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
     if (compact) {

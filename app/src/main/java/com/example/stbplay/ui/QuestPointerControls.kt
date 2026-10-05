@@ -2,12 +2,17 @@
 
 package com.example.stbplay.ui
 
+import android.content.pm.PackageManager
+import com.example.stbplay.isAndroidTvDevice
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.ButtonColors
 import androidx.tv.material3.ButtonDefaults
@@ -32,11 +37,17 @@ fun QuestButton(
     colors: ButtonColors = ButtonDefaults.colors(),
     content: @Composable RowScope.() -> Unit
 ) {
+    val context = LocalContext.current
+    val isAndroidTv = remember(context) {
+        context.isAndroidTvDevice()
+    }
     TvButton(
         onClick = onClick,
         modifier = modifier.questPointerTap(enabled, onClick),
         enabled = enabled,
         colors = colors,
+        scale = if (isAndroidTv) ButtonDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
+            else ButtonDefaults.scale(focusedScale = 1.1f),
         content = content
     )
 }
@@ -49,8 +60,20 @@ fun QuestSurface(
     shape: ClickableSurfaceShape = ClickableSurfaceDefaults.shape(),
     colors: ClickableSurfaceColors = ClickableSurfaceDefaults.colors(),
     border: ClickableSurfaceBorder = ClickableSurfaceDefaults.border(),
+    focusScale: Float? = null,
+    tvContainerColor: Color? = null,
+    tvFocusedContainerColor: Color? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val context = LocalContext.current
+    val isAndroidTv = remember(context) {
+        context.isAndroidTvDevice()
+    }
+    val resolvedFocusScale = if (isAndroidTv) 1f else focusScale ?: 1.1f
+    if (isAndroidTv && enabled && tvContainerColor != null) {
+        TvHomeSurface(onClick, modifier, tvContainerColor, tvFocusedContainerColor ?: tvContainerColor, content)
+        return
+    }
     TvSurface(
         onClick = onClick,
         modifier = modifier.questPointerTap(enabled, onClick),
@@ -58,6 +81,8 @@ fun QuestSurface(
         shape = shape,
         colors = colors,
         border = border,
+        scale = if (isAndroidTv) ClickableSurfaceDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
+            else ClickableSurfaceDefaults.scale(focusedScale = resolvedFocusScale),
         content = content
     )
 }

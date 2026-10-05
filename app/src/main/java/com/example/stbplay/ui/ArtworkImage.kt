@@ -1,11 +1,16 @@
 package com.example.stbplay.ui
 
+import com.example.stbplay.isAndroidTvDevice
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.tv.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,14 +35,31 @@ fun ArtworkImage(
     requestHeaders: Map<String, String> = emptyMap(),
     fallbackText: String? = title.trim().firstOrNull()?.uppercaseChar()?.toString(),
     fallbackTextSize: TextUnit = 35.sp,
-    fallbackColor: Color = Color(0xFFDDB32F)
+    fallbackColor: Color = Color(0xFFDDB32F),
+    decodeWidthPx: Int? = null,
+    decodeHeightPx: Int? = null
 ) {
     val context = LocalContext.current
-    val request = remember(imageUrl, requestHeaders) {
+    val isTelevision = remember(context) {
+        context.isAndroidTvDevice()
+    }
+    var retryCount by remember(imageUrl, requestHeaders) { mutableIntStateOf(0) }
+    val request = remember(imageUrl, requestHeaders, retryCount, isTelevision, decodeWidthPx, decodeHeightPx) {
         imageUrl?.trim()?.takeIf { it.isNotBlank() }?.let { url ->
             ImageRequest.Builder(context)
                 .data(url)
                 .crossfade(false)
+                .memoryCacheKey(buildString {
+                    append(url)
+                    if (decodeWidthPx != null && decodeHeightPx != null) append("#home:${decodeWidthPx}x${decodeHeightPx}")
+                    if (retryCount != 0) append("#tv-retry")
+                })
+                .apply { if (isTelevision) allowHardware(false) }
+                .apply {
+                    if (decodeWidthPx != null && decodeHeightPx != null) {
+                        size(decodeWidthPx.coerceAtLeast(1), decodeHeightPx.coerceAtLeast(1))
+                    }
+                }
                 .apply {
                     requestHeaders.forEach { (name, value) -> addHeader(name, value) }
                 }
@@ -56,7 +78,10 @@ fun ArtworkImage(
             model = request,
             contentDescription = title.takeIf { it.isNotBlank() },
             modifier = Modifier.fillMaxSize(),
-            contentScale = contentScale
+            contentScale = contentScale,
+            onError = {
+                if (isTelevision && retryCount == 0) retryCount = 1
+            }
         )
     }
 }
