@@ -671,18 +671,16 @@ private fun NativePlayerScreen(
                     }
                 }
                 if (isAndroidTv) {
-                        Row(
-                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
+                        Box(
+                            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(top = 10.dp, end = 10.dp)
                                 .onFocusChanged {
                                     tvActionsHaveFocus = it.hasFocus
                                     if (it.hasFocus) revealPlayerControls()
-                                }.focusGroup(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                }.focusGroup()
                         ) {
                             if (episodeTitles.isNotEmpty()) QuestButton(
                                 onClick = { episodePickerVisible = true; revealPlayerControls() },
-                                modifier = Modifier.widthIn(min = 145.dp).height(48.dp)
+                                modifier = Modifier.align(Alignment.TopCenter).widthIn(min = 145.dp).height(48.dp)
                                     .focusRequester(tvActionsFocusRequester)
                                     .focusProperties { left = FocusRequester.Cancel; up = FocusRequester.Cancel }
                                     .onFocusChanged { if (it.isFocused) revealPlayerControls() }
@@ -697,7 +695,7 @@ private fun NativePlayerScreen(
                                         android.widget.Toast.LENGTH_SHORT
                                     ).show()
                                 },
-                                modifier = Modifier.height(24.dp)
+                                modifier = Modifier.align(Alignment.TopEnd).height(24.dp)
                                     .then(if (episodeTitles.isEmpty()) Modifier.focusRequester(tvActionsFocusRequester) else Modifier)
                                     .focusProperties {
                                         right = FocusRequester.Cancel

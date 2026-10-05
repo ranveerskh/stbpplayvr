@@ -85,6 +85,7 @@ fun TvLivePreviewPanel(
     var controlsHaveFocus by remember { mutableStateOf(false) }
     val vlcRequester = remember { FocusRequester() }
     val startedCallback by rememberUpdatedState(onPlaybackStarted)
+    val returnCallback by rememberUpdatedState(onReturnToChannels)
     var didStart by remember(request) { mutableStateOf(false) }
 
     LaunchedEffect(request, resolver, retry) {
@@ -173,7 +174,7 @@ fun TvLivePreviewPanel(
     }
     fun closeFullscreen() {
         fullscreen = false
-        onReturnToChannels()
+        returnCallback()
     }
 
     @Composable
@@ -271,7 +272,7 @@ fun TvLivePreviewPanel(
                     containerColor = Color(0xCC303030)
                 ) {
                     Text("Not working? Play in VLC", color = Color.White, fontSize = 9.sp,
-                        modifier = Modifier.padding(horizontal = 10.dp))
+                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 10.dp))
                 }
             }
         }
