@@ -1,0 +1,82 @@
+name: Compare TV Movies loading with phone and previous version
+on:
+  push:
+    branches: ['diagnose/movies-2.0.20']
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: tv-2.0.19
+            source: ff3e74def73f62c91eba94c7b3577555eaed0b75
+            target: android-tv
+            profile: tv_1080p
+          - label: tv-2.0.20
+            source: 47216fdf98fc7d013c4d436c97a5c13d284fb3c4
+            target: android-tv
+            profile: tv_1080p
+          - label: phone-2.0.20
+            source: 47216fdf98fc7d013c4d436c97a5c13d284fb3c4
+            target: default
+            profile: pixel_2
+    name: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: diagnostics
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.source }}
+          path: source
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Add identical diagnostic fixture without changing application code
+        run: |
+          mkdir -p source/app/src/androidTest/java/com/example/stbplay/ui
+          cp diagnostics/diagnostics/TvMoviesPagingComparisonTest.kt source/app/src/androidTest/java/com/example/stbplay/ui/
+          if ! grep -q 'androidTestImplementation("androidx.compose.ui:ui-test-junit4")' source/app/build.gradle.kts; then
+            cat >> source/app/build.gradle.kts <<'EOF'
+          dependencies {
+              androidTestImplementation(platform(libs.androidx.compose.bom))
+              androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+              androidTestImplementation("androidx.test.ext:junit:1.2.1")
+              androidTestImplementation("androidx.test:runner:1.6.2")
+              androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+          }
+          EOF
+          fi
+          chmod +x source/gradlew
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: ${{ matrix.target }}
+          arch: x86
+          profile: ${{ matrix.profile }}
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: source
+          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.TvMoviesPagingComparisonTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Movies-comparison-${{ matrix.label }}
+          path: |
+            source/app/build/reports/androidTests/
+            source/app/build/outputs/androidTest-results/
+          if-no-files-found: ignore
