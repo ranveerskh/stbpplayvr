@@ -71,6 +71,12 @@ import com.example.stbplay.data.resolvePairingPortal
 import com.example.stbplay.ui.screens.TvMediaDetailsScreen
 import com.example.stbplay.ui.screens.TvLivePreviewPanel
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import com.example.stbplay.ui.ProviderPairingDialog
 import com.example.stbplay.ui.StbPlayApp
@@ -439,7 +445,12 @@ private fun StbPlayRoot(
     var qualityError by remember { mutableStateOf<String?>(null) }
     var playRequest by remember { mutableStateOf<StalkerPlayRequest?>(null) }
     var livePreviewStream by remember(storedSettings.id, storedSettings.url) { mutableStateOf<PortalStream?>(null) }
-    var livePreviewFullscreenSignal by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var livePreviewFullscreen by remember { mutableStateOf(false) }
+    var tvLivePreviewPlayback by remember { mutableStateOf(false) }
+    var livePreviewBounds by remember { mutableStateOf(Rect.Zero) }
+    var livePreviewVlcAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val livePreviewReturnFocus = remember { arrayOf<() -> Unit>({}) }
+    val density = LocalDensity.current
     val livePreviewActionsRequester = remember { FocusRequester() }
     var playingSeries by remember { mutableStateOf<PortalStream?>(null) }
     var playingEpisodes by remember { mutableStateOf<List<PortalEpisode>>(emptyList()) }
@@ -843,13 +854,17 @@ private fun StbPlayRoot(
         seriesValue: String = stream.series.orEmpty(),
         episode: Boolean = false,
         resumeFraction: Float = 0f,
-        contentId: String = stream.id
+        contentId: String = stream.id,
+        livePreview: Boolean = false
     ) {
         if (stream.streamType == "live") {
-            focusedLiveChannelId = stream.id
+            if (!livePreview) focusedLiveChannelId = stream.id
             scope.launch { settingsManager.markRecentlyPlayed(stream.id) }
         }
-        livePreviewStream = null
+        tvLivePreviewPlayback = livePreview
+        livePreviewVlcAction = null
+        livePreviewStream = if (livePreview) stream else null
+        if (!livePreview) livePreviewFullscreen = false
         playRequest = StalkerPlayRequest(
             command = command,
             kind = when {
@@ -872,8 +887,11 @@ private fun StbPlayRoot(
         when (stream.streamType) {
             "live" -> if (isAndroidTv && selectedTab == StbPlayTab.LIVE) {
                 focusedLiveChannelId = stream.id
-                if (livePreviewStream?.id == stream.id) livePreviewFullscreenSignal++
-                else { livePreviewFullscreenSignal = 0; livePreviewStream = stream }
+                if (tvLivePreviewPlayback && livePreviewStream?.id == stream.id) livePreviewFullscreen = true
+                else {
+                    livePreviewFullscreen = false
+                    launchPlayback(stream, livePreview = true)
+                }
             } else if (isAndroidTv) selectedLiveChannel = stream else launchPlayback(stream)
             "series" -> selectedSeries = stream
             else -> selectedMovie = stream
@@ -1055,11 +1073,7 @@ private fun StbPlayRoot(
         if (channels.isNotEmpty()) {
             val currentIndex = channels.indexOfFirst { it.id == currentId }
             val nextIndex = if (currentIndex < 0) 0 else (currentIndex + direction + channels.size) % channels.size
-            if (isAndroidTv && livePreviewStream != null && playRequest == null) {
-                livePreviewStream = channels[nextIndex]
-                focusedLiveChannelId = channels[nextIndex].id
-                scope.launch { settingsManager.markRecentlyPlayed(channels[nextIndex].id) }
-            } else launchPlayback(channels[nextIndex])
+            launchPlayback(channels[nextIndex], livePreview = isAndroidTv && tvLivePreviewPlayback)
         }
     }
     val activity = LocalContext.current as? MainActivity
@@ -1379,7 +1393,7 @@ private fun StbPlayRoot(
                 }
                 screen == AppScreen.APP && (storedSettings.url.isBlank() || storedSettings.mac.isBlank()) ->
                     Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
-                playRequest != null -> {
+                playRequest != null && !tvLivePreviewPlayback -> {
                     val currentRequest = playRequest!!
                     val currentProgressGeneration = remember(currentRequest) { progressResetGeneration }
                     fun playEpisodeAt(index: Int, promptForResume: Boolean = true) {
@@ -1527,6 +1541,9 @@ private fun StbPlayRoot(
                     contentGridState = contentGridState,
                     onTabSelected = { tab ->
                         if (tab != selectedTab) {
+                            if (tvLivePreviewPlayback) playRequest = null
+                            tvLivePreviewPlayback = false
+                            livePreviewFullscreen = false
                             livePreviewStream = null
                             if (selectedTab == StbPlayTab.LIVE && uiLiveCategories.getOrNull(liveCategoryIndex)?.isAdult == true) {
                                 liveCategoryIndex = 0
@@ -1545,30 +1562,18 @@ private fun StbPlayRoot(
                     onCategorySelected = ::requestCategory,
                     onMediaClick = ::requestMedia,
                     livePreviewActionsRequester = livePreviewActionsRequester,
+                    playingLiveChannelId = if (tvLivePreviewPlayback) playRequest?.contentId else null,
                     livePreview = { modifier, returnToChannels ->
+                        androidx.compose.runtime.SideEffect { livePreviewReturnFocus[0] = returnToChannels }
                         TvLivePreviewPanel(
                             channel = livePreviewStream?.let(::toUi),
-                            request = livePreviewStream?.let { stream ->
-                                StalkerPlayRequest(command = stream.cmd, kind = StalkerContentKind.LIVE,
-                                    contentId = stream.id, title = stream.name)
-                            },
-                            portalUiUrl = storedSettings.url, macAddress = storedSettings.mac,
-                            token = portalRepository.getHandshakeToken(),
-                            sessionCookie = portalRepository.getSessionCookie(),
-                            subtitlePreference = subtitlePreference,
-                            androidBoxVideoCompatibility = androidBoxVideoCompatibility,
-                            fullscreenSignal = livePreviewFullscreenSignal,
                             actionsRequester = livePreviewActionsRequester,
                             modifier = modifier,
+                            onVideoBounds = { if (livePreviewBounds != it) livePreviewBounds = it },
+                            onFullscreen = { if (playRequest != null) livePreviewFullscreen = true },
                             onFavorite = { livePreviewStream?.let { setFavorite(toUi(it)) } },
-                            onPlaybackStarted = {
-                                livePreviewStream?.let { stream ->
-                                    scope.launch { settingsManager.markRecentlyPlayed(stream.id) }
-                                }
-                            },
-                            onChannelStep = ::stepLiveChannel,
-                            onBack = { livePreviewStream = null; livePreviewFullscreenSignal = 0; returnToChannels() },
-                            onReturnToChannels = returnToChannels
+                            onVlc = { livePreviewVlcAction?.invoke() },
+                            onBack = returnToChannels
                         )
                     },
                     onToggleFavorite = ::setFavorite,
@@ -1673,6 +1678,57 @@ private fun StbPlayRoot(
                 }
             }
 
+            // One instance of the existing homepage playback route stays mounted
+            // while its bounds change between the preview slot and fullscreen.
+            if (isAndroidTv && tvLivePreviewPlayback && playRequest != null &&
+                (livePreviewFullscreen || livePreviewBounds.width > 0f)) {
+                val previewRequest = playRequest!!
+                val playerModifier = if (livePreviewFullscreen) Modifier.fillMaxSize()
+                else with(density) {
+                    Modifier.offset { IntOffset(livePreviewBounds.left.toInt(), livePreviewBounds.top.toInt()) }
+                        .size(livePreviewBounds.width.toDp(), livePreviewBounds.height.toDp())
+                }
+                Box(playerModifier) {
+                    androidx.compose.runtime.key(playbackSessionGeneration) { PlaybackRoute(
+                        request = previewRequest,
+                        portalUiUrl = storedSettings.url,
+                        macAddress = storedSettings.mac,
+                        token = portalRepository.getHandshakeToken(),
+                        sessionCookie = portalRepository.getSessionCookie(),
+                        playerPreference = playerPreference,
+                        subtitlePreference = subtitlePreference,
+                        androidBoxVideoCompatibility = androidBoxVideoCompatibility,
+                        embedded = !livePreviewFullscreen,
+                        onVlcActionAvailable = { livePreviewVlcAction = it },
+                        onChannelStep = ::stepLiveChannel,
+                    onPlaybackFailure = {
+                        if (previewRequest.contentId !in recoveryAttemptedContentIds) {
+                            recoveryAttemptedContentIds = recoveryAttemptedContentIds + previewRequest.contentId
+                            scope.launch {
+                                val login = portalRepository.initialize(storedSettings)
+                                if (login.success) {
+                                    portalReady = true
+                                    subscription = portalRepository.getSubscription()
+                                    PortalExpiryReminderWorker.setExpiry(appContext, subscription.expiryEpochMillis.takeUnless { subscription.unlimited })
+                                    connectionError = null
+                                    playbackSessionGeneration++
+                                } else {
+                                    portalReady = false
+                                    connectionError = "Portal connection failed after playback recovery. Check the portal details or provider service status."
+                                }
+                            }
+                        }
+                    },
+                        onBack = {
+                            livePreviewFullscreen = false
+                            scope.launch {
+                                androidx.compose.runtime.withFrameNanos { }
+                                livePreviewReturnFocus[0]()
+                            }
+                        }
+                    ) }
+                }
+            }
             pendingLockedMedia?.let { locked ->
                 PinPrompt(
                     title = locked.name,

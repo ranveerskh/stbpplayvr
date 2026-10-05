@@ -335,6 +335,7 @@ fun StbPlayApp(
     searchMedia: (PortalStream) -> UiMedia,
     onHomeInteraction: () -> Unit = {},
     onMediaFocused: (StbPlayTab, UiMedia) -> Unit = { _, _ -> },
+    playingLiveChannelId: String? = null,
     livePreviewActionsRequester: FocusRequester? = null,
     livePreview: (@Composable (Modifier, () -> Unit) -> Unit)? = null
 ) {
@@ -392,6 +393,7 @@ fun StbPlayApp(
                     onMediaClick = onMediaClick,
                     onToggleFavorite = onToggleFavorite,
                     onMediaFocused = { onMediaFocused(StbPlayTab.LIVE, it) },
+                    playingChannelId = playingLiveChannelId,
                     previewActionsRequester = livePreviewActionsRequester,
                     preview = livePreview
                 )
@@ -1067,14 +1069,34 @@ private fun LiveTvScreen(
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit,
     onMediaFocused: (UiMedia) -> Unit,
+    playingChannelId: String? = null,
     previewActionsRequester: FocusRequester? = null,
     preview: (@Composable (Modifier, () -> Unit) -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
-    val channelFocusRequester = remember { FocusRequester() }
+    val channelRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val initialChannelFocusId = focusedChannelId?.takeIf { id -> state.items.any { it.id == id } }
         ?: state.items.firstOrNull()?.id
     val categoryKey = state.categories.getOrNull(state.selectedCategory)?.id
+    var localFocusedChannelId by rememberSaveable(categoryKey) { mutableStateOf(focusedChannelId) }
+    val channelIndices = remember(state.items) { state.items.mapIndexed { index, item -> item.id to index }.toMap() }
+    val navigationScope = rememberCoroutineScope()
+    var navigationJob by remember { mutableStateOf<Job?>(null) }
+    fun moveChannelFocus(direction: Int) {
+        val current = channelIndices[localFocusedChannelId] ?: 0
+        val next = (current + direction).coerceIn(0, state.items.lastIndex)
+        val item = state.items.getOrNull(next) ?: return
+        localFocusedChannelId = item.id
+        navigationJob?.cancel()
+        navigationJob = navigationScope.launch {
+            val layout = channelListState.layoutInfo
+            val rowHeight = layout.visibleItemsInfo.firstOrNull()?.size ?: 32
+            val pivot = ((layout.viewportEndOffset - layout.viewportStartOffset - rowHeight) / 2).coerceAtLeast(0)
+            channelListState.scrollToItem(next, -pivot)
+            withFrameNanos { }
+            channelRequesters[item.id]?.requestFocus()
+        }
+    }
     var restoredChannelPosition by remember(categoryKey) { mutableStateOf(false) }
     LaunchedEffect(categoryKey, state.loading, state.items.isEmpty()) {
         if (!state.loading && state.items.isNotEmpty() && !restoredChannelPosition) {
@@ -1083,7 +1105,7 @@ private fun LiveTvScreen(
                 channelListState.scrollToItem(focusedIndex)
             if (denseTv && focusedIndex >= 0) {
                 withFrameNanos { }
-                runCatching { channelFocusRequester.requestFocus() }
+                runCatching { channelRequesters[focusedChannelId]?.requestFocus() }
             }
             restoredChannelPosition = true
         }
@@ -1153,24 +1175,36 @@ private fun LiveTvScreen(
             when {
                 state.loading -> LoadingContent("Loading channels…")
                 state.items.isEmpty() -> EmptyState("No channels in this category", state.emptyMessage)
-                else -> LazyColumn(
+                else -> {
+                  val channelList: @Composable () -> Unit = { LazyColumn(
                     state = channelListState,
                     modifier = Modifier.fillMaxSize().focusGroup(),
                     verticalArrangement = Arrangement.spacedBy(if (denseTv) 2.dp else 9.dp),
                     contentPadding = PaddingValues(bottom = 30.dp)
                 ) {
                     columnItems(state.items, key = { it.id }, contentType = { "channel" }) { channel ->
+                        val requester = remember(channel.id) { FocusRequester() }
+                        DisposableEffect(channel.id) {
+                            channelRequesters[channel.id] = requester
+                            onDispose { channelRequesters.remove(channel.id) }
+                        }
                         LiveChannelRow(
                             channel,
                             { onMediaClick(channel) },
                             { onToggleFavorite(channel) },
                             initialFocus = !denseTv && channel.id == initialChannelFocusId,
-                            focusRequester = if (denseTv && channel.id == focusedChannelId) channelFocusRequester else null,
-                            onFocused = { onMediaFocused(channel) },
+                            focusRequester = if (denseTv) requester else null,
+                            onFocused = { if (denseTv) localFocusedChannelId = channel.id else onMediaFocused(channel) },
                             onReturnToCategory = if (denseTv) ({ focusSelectedCategory() }) else null,
-                            onEnterPreview = if (denseTv && preview != null) ({ previewActionsRequester?.requestFocus() }) else null
+                            onEnterPreview = if (denseTv && preview != null) ({ previewActionsRequester?.requestFocus() }) else null,
+                            playing = denseTv && channel.id == playingChannelId,
+                            onMoveChannel = if (denseTv) ({ direction -> moveChannelFocus(direction) }) else null
                         )
                     }
+                }
+                  }
+                  if (denseTv) CompositionLocalProvider(LocalBringIntoViewSpec provides TvHomeBringIntoViewSpec) { channelList() }
+                  else channelList()
                 }
             }
         }
@@ -1178,12 +1212,12 @@ private fun LiveTvScreen(
             Spacer(Modifier.width(14.dp))
             preview(Modifier.weight(0.95f).fillMaxHeight()) {
                 categoryScope.launch {
-                    val index = state.items.indexOfFirst { it.id == focusedChannelId }
+                    val index = channelIndices[localFocusedChannelId] ?: -1
                     if (index >= 0) {
                         if (channelListState.layoutInfo.visibleItemsInfo.none { it.index == index })
                             channelListState.scrollToItem(index)
                         withFrameNanos { }
-                        runCatching { channelFocusRequester.requestFocus() }
+                        runCatching { channelRequesters[localFocusedChannelId]?.requestFocus() }
                     } else focusSelectedCategory()
                 }
             }
@@ -1318,30 +1352,38 @@ private fun LiveChannelRow(
     onReturnToCategory: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
-    onEnterPreview: (() -> Unit)? = null
+    onEnterPreview: (() -> Unit)? = null,
+    playing: Boolean = false,
+    onMoveChannel: ((Int) -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
     if (denseTv) {
+        var focused by remember { mutableStateOf(false) }
         TvHomeSurface(onClick,
             Modifier.fillMaxWidth().height(32.dp)
                 .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
-                .onFocusChanged { if (it.isFocused) onFocused() }
+                .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
                 .onPreviewKeyEvent { event ->
-                    if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                    if (onMoveChannel != null && event.key in listOf(Key.DirectionDown, Key.DirectionUp)) {
+                        if (event.type == KeyEventType.KeyDown) onMoveChannel(if (event.key == Key.DirectionDown) 1 else -1)
+                        true
+                    } else if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
                         onReturnToCategory(); true
                     } else if (onEnterPreview != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight) {
                         onEnterPreview(); true
                     } else false
                 },
-            containerColor = Panel
+            containerColor = if (playing) Gold.copy(alpha = 0.22f) else Panel,
+            focusedContainerColor = Gold
         ) {
             Row(Modifier.fillMaxSize().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 ArtworkImage(item.imageUrl, item.title, Modifier.width(42.dp).height(24.dp),
                     contentScale = ContentScale.Fit, requestHeaders = item.imageHeaders,
                     fallbackText = item.badge ?: "LIVE", fallbackTextSize = 8.sp, fallbackColor = GoldLight)
                 Spacer(Modifier.width(6.dp))
-                Text(item.title, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                Text(item.title, color = if (focused) OnAccent else White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (playing) Text("▶", color = if (focused) OnAccent else GoldLight, fontSize = 11.sp)
                 if (item.isLocked) StatusPill("PIN", GoldLight)
             }
         }

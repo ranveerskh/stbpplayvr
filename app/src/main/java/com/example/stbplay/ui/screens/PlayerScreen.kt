@@ -133,6 +133,8 @@ fun PlaybackRoute(
     onEpisodeSelected: (Int) -> Unit = {},
     onPlaybackEnded: () -> Unit = {},
     onChannelStep: (Int) -> Unit = {},
+    embedded: Boolean = false,
+    onVlcActionAvailable: ((() -> Unit)?) -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -143,7 +145,7 @@ fun PlaybackRoute(
     var errorMessage by remember(request) { mutableStateOf<String?>(null) }
     var retryNumber by remember { mutableIntStateOf(0) }
 
-    BackHandler(onBack = onBack)
+    BackHandler(enabled = !embedded, onBack = onBack)
     LaunchedEffect(request, retryNumber) {
         playbackUrl = null
         errorMessage = null
@@ -157,7 +159,11 @@ fun PlaybackRoute(
     }
 
     when {
-        errorMessage != null -> PlaybackErrorScreen(errorMessage!!, { retryNumber++ }, onBack)
+        errorMessage != null -> if (embedded) {
+            Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                Text(errorMessage!!, color = Color.White, modifier = Modifier.padding(12.dp))
+            }
+        } else PlaybackErrorScreen(errorMessage!!, { retryNumber++ }, onBack)
         playbackUrl == null -> PlaybackLoadingScreen(
             when (request.kind) {
                 StalkerContentKind.LIVE -> "Opening channel…"
@@ -195,6 +201,8 @@ fun PlaybackRoute(
             onPlaybackEnded = onPlaybackEnded,
             onChannelStep = onChannelStep,
             showChannelStepButtons = request.kind == StalkerContentKind.LIVE,
+            embedded = embedded,
+            onVlcActionAvailable = onVlcActionAvailable,
             onBack = onBack
         )
     }
@@ -222,9 +230,13 @@ private fun NativePlayerScreen(
     onPlaybackEnded: () -> Unit,
     onChannelStep: (Int) -> Unit,
     showChannelStepButtons: Boolean,
+    embedded: Boolean,
+    onVlcActionAvailable: ((() -> Unit)?) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val embeddedMode by rememberUpdatedState(embedded)
+    val vlcCallback by rememberUpdatedState(onVlcActionAvailable)
     var playerError by remember(playbackUrl) { mutableStateOf<String?>(null) }
     var didStart by remember(playbackUrl) { mutableStateOf(false) }
     var didRestore by remember(playbackUrl) { mutableStateOf(false) }
@@ -350,6 +362,19 @@ private fun NativePlayerScreen(
     var pointerInsidePlayer by remember(playbackUrl) { mutableStateOf(false) }
     val lastTvHoverPosition = remember(playbackUrl) { floatArrayOf(Float.NaN, Float.NaN) }
     var nativePlayerView by remember(playbackUrl) { mutableStateOf<SeekablePlayerView?>(null) }
+    DisposableEffect(playbackUrl, activePlayer) {
+        vlcCallback {
+            if (launchVlc(context, playbackUrl, title)) activePlayer.pause()
+            else android.widget.Toast.makeText(context, "VLC could not open this stream.", android.widget.Toast.LENGTH_SHORT).show()
+        }
+        onDispose { vlcCallback(null) }
+    }
+    LaunchedEffect(embedded, playbackUrl) {
+        if (!embedded && isAndroidTv) {
+            withFrameNanos { }
+            nativePlayerView?.requestFocus()
+        }
+    }
     val tvActionsFocusRequester = remember { FocusRequester() }
     var tvActionsHaveFocus by remember(playbackUrl) { mutableStateOf(false) }
     var tvActionsFocusRequests by remember(playbackUrl) { mutableIntStateOf(0) }
@@ -447,7 +472,7 @@ private fun NativePlayerScreen(
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { event ->
-        if (!isAndroidTv || episodePickerVisible || playerError != null) return@onPreviewKeyEvent false
+        if (embeddedMode || !isAndroidTv || episodePickerVisible || playerError != null) return@onPreviewKeyEvent false
         val nativeEvent = event.nativeKeyEvent
         val action = tvPlaybackKeyAction(nativeEvent.keyCode, tvActionsHaveFocus, allowSeeking)
         if (action == TvPlaybackKeyAction.NATIVE) {
@@ -494,15 +519,16 @@ private fun NativePlayerScreen(
                             showController()
                         }
                     }) else null
-                    useController = !hideTvLiveController
+                    useController = !embeddedMode && !hideTvLiveController
                     if (hideTvLiveController) hideController()
                     controllerShowTimeoutMs = 3_000
                     if (isAndroidTv) controllerAutoShow = false
                     keepScreenOn = true
-                    isFocusable = true
-                    isFocusableInTouchMode = true
+                    isFocusable = !embeddedMode
+                    isFocusableInTouchMode = !embeddedMode
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     setOnKeyListener { _, keyCode, event ->
+                        if (embeddedMode) return@setOnKeyListener false
                         if (event.action == KeyEvent.ACTION_DOWN &&
                             keyCode !in setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B)
                         ) {
@@ -552,6 +578,7 @@ private fun NativePlayerScreen(
                         }
                     }
                     setOnTouchListener { _, event ->
+                        if (embeddedMode) return@setOnTouchListener false
                         if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
                             revealPlayerControls()
                             showController()
@@ -559,6 +586,7 @@ private fun NativePlayerScreen(
                         false
                     }
                     setOnHoverListener { _, event ->
+                        if (embeddedMode) return@setOnHoverListener false
                         when (event.actionMasked) {
                             MotionEvent.ACTION_HOVER_ENTER -> {
                                 pointerInsidePlayer = true
@@ -585,16 +613,18 @@ private fun NativePlayerScreen(
                         }
                         false
                     }
-                    post { requestFocus() }
+                    post { if (!embeddedMode) requestFocus() }
                 }
             },
             update = {
                 if (it.player !== activePlayer) it.player = activePlayer
-                if (it.useController != !hideTvLiveController) it.useController = !hideTvLiveController
+                it.isFocusable = !embeddedMode
+                it.isFocusableInTouchMode = !embeddedMode
+                if (it.useController != (!embeddedMode && !hideTvLiveController)) it.useController = !embeddedMode && !hideTvLiveController
                 if (hideTvLiveController) it.hideController()
             }
         ) }
-        if (playerControlsVisible && playerError == null) {
+        if (!embedded && playerControlsVisible && playerError == null) {
             val phoneActionBar = compactLayout && !isMetaQuest && !isAndroidTv && phoneActivity != null
             if (phoneActionBar) {
                 Row(
@@ -813,7 +843,7 @@ private fun NativePlayerScreen(
                 }
             }
         }
-        if (isAndroidTv && showChannelStepButtons && playerControlsVisible && playerError == null) {
+        if (!embedded && isAndroidTv && showChannelStepButtons && playerControlsVisible && playerError == null) {
             Text(
                 text = title,
                 color = Color.White,
@@ -873,7 +903,7 @@ private fun NativePlayerScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(error, color = Color.White)
-                if (isVlcInstalled(context)) QuestButton(onClick = {
+                if (!embedded && isVlcInstalled(context)) QuestButton(onClick = {
                     if (launchVlc(context, playbackUrl, title)) activePlayer.pause()
                     else playerError = "VLC could not open this stream."
                 }) { Text("Open in VLC") }
