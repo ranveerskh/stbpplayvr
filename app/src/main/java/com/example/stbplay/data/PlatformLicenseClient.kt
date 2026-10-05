@@ -132,7 +132,6 @@ class PlatformLicenseClient(context: Context) {
         saveEncryptedSecret(token, DEVICE_TOKEN_CIPHER, DEVICE_TOKEN_IV)
         if (session.portalId.isNotBlank()) bindProviderPortal(session.portalId)
         saveLicenseInfo(response)
-        clearPairingRequest()
         ProviderPairingStatus(
             pending = false,
             portalName = portal.optString("name").ifBlank { "Provider portal" },
@@ -176,6 +175,9 @@ class PlatformLicenseClient(context: Context) {
         }
         clearPairingRequest()
     }
+
+    /** Call only after the assigned portal has been durably saved locally. */
+    fun completeProviderPairing() = clearPairingRequest()
 
     fun providerPortalId(): String? = preferences.getString(PROVIDER_PORTAL_ID, null)?.takeIf { it.isNotBlank() }
 

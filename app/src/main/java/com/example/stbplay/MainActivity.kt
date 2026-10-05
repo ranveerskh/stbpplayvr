@@ -67,6 +67,7 @@ import com.example.stbplay.ui.FirstStartDisclaimer
 import com.example.stbplay.ui.PinPrompt
 import com.example.stbplay.ui.ProviderPinSetupPrompt
 import com.example.stbplay.data.resolveProviderPortalId
+import com.example.stbplay.data.resolvePairingPortal
 import com.example.stbplay.ui.screens.TvMediaDetailsScreen
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import com.example.stbplay.ui.ProviderPairingDialog
@@ -663,7 +664,9 @@ private fun StbPlayRoot(
         providerPairingBusy = true
         scope.launch {
             try {
-                settingsManager.upsertPortal(prepared)
+                // A new pairing draft has no URL until the provider assigns it.
+                // Do not activate or save an incomplete profile as a normal portal.
+                if (prepared.url.isNotBlank()) settingsManager.upsertPortal(prepared)
                 providerPairingStatus = "Creating a secure, one-time pairing code…"
                 val session = platformLicenseClient.startProviderPairing(prepared.mac, prepared.id)
                 providerPairing = session
@@ -760,19 +763,19 @@ private fun StbPlayRoot(
                 continue
             }
             val bootstrap = settingsManager.startupSettings.first()
-            val current = if (session.portalId.isBlank()) bootstrap.activePortal
-                else bootstrap.profiles.firstOrNull { it.id == session.portalId }
-            if (current == null) {
-                providerPairing = null
-                providerPairingStatus = "The paired portal was removed. Link the intended portal again."
-                break
-            }
+            val current = resolvePairingPortal(
+                session.portalId, session.portalMac, bootstrap.profiles, bootstrap.activePortal
+            )
             val assignedPortal = current.copy(
                 name = assignment.portalName,
                 url = assignment.portalUrl,
                 mac = session.portalMac,
                 pin = bootstrap.activePortal.pin
             ).normalized().withStableId()
+            // Persist the assigned URL before clearing the recoverable pairing session
+            // or opening PIN setup. Restarting during PIN setup must keep the portal.
+            settingsManager.upsertPortal(assignedPortal)
+            platformLicenseClient.completeProviderPairing()
             platformLicense = platformLicenseClient.currentLicense()
             licenseStatus = "Provider license active."
             providerPairing = null
@@ -780,7 +783,6 @@ private fun StbPlayRoot(
                 providerPairingStatus = "Portal assigned. Set a parental PIN to continue."
                 providerPinSetup = assignedPortal
             } else {
-                settingsManager.upsertPortal(assignedPortal)
                 providerPairingStatus = "Portal assigned. Connecting…"
                 startConnection(assignedPortal)
             }
