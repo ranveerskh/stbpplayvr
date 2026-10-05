@@ -1101,12 +1101,13 @@ private fun LiveTvScreen(
     var restoredChannelPosition by remember(categoryKey) { mutableStateOf(false) }
     LaunchedEffect(categoryKey, state.loading, state.items.isEmpty()) {
         if (!state.loading && state.items.isNotEmpty() && !restoredChannelPosition) {
-            val focusedIndex = state.items.indexOfFirst { it.id == focusedChannelId }
+            val restoreId = if (denseTv) localFocusedChannelId else focusedChannelId
+            val focusedIndex = state.items.indexOfFirst { it.id == restoreId }
             if (focusedIndex >= 0 && (!denseTv || channelListState.layoutInfo.visibleItemsInfo.none { it.index == focusedIndex }))
                 channelListState.scrollToItem(focusedIndex)
             if (denseTv && focusedIndex >= 0) {
                 withFrameNanos { }
-                runCatching { channelRequesters[focusedChannelId]?.requestFocus() }
+                runCatching { channelRequesters[restoreId]?.requestFocus() }
             }
             restoredChannelPosition = true
         }
@@ -1142,7 +1143,8 @@ private fun LiveTvScreen(
             val selected = state.selectedCategory.coerceIn(0, state.categories.lastIndex)
             if (!denseTv || categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
             withFrameNanos { }
-            if (focusedChannelId.isNullOrBlank() || state.items.none { it.id == focusedChannelId }) {
+            val restoreId = if (denseTv) localFocusedChannelId else focusedChannelId
+            if (restoreId.isNullOrBlank() || state.items.none { it.id == restoreId }) {
                 selectedCategoryFocusRequester.requestFocus()
             }
             initialCategoryFocusRequested.value = true
