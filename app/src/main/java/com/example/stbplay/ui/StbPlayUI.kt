@@ -808,9 +808,9 @@ private fun StbPlayHomeScreen(
     val focusNavigation = LocalTvFocusNavigation.current
     val restoredRow = visibleRows.firstOrNull { it.id == focusedHomeRowId }
     val restoredItem = restoredRow?.items?.firstOrNull { it.id == focusedHomeItemId }
-    TvPageEntry(if (restoredItem != null) "home:${restoredRow.id}:${restoredItem.id}"
+    TvPageEntry(if (restoredItem != null) "home:${restoredRow.id}:${restoredItem.streamType}:${restoredItem.id}"
         else if (state.heroes.isNotEmpty()) "home:hero"
-        else visibleRows.firstOrNull()?.let { "home:${it.id}:${it.items.first().id}" })
+        else visibleRows.firstOrNull()?.let { "home:${it.id}:${it.items.first().streamType}:${it.items.first().id}" })
     val rowFocusRequesters = remember(visibleRows.map { it.id }) {
         if (denseTv) visibleRows.associate { it.id to FocusRequester() } else emptyMap()
     }
@@ -1075,7 +1075,7 @@ private fun MediaRow(
                     focusRequester = if (index == 0) firstCardFocusRequester else null,
                     restoreFocusRequester = if (media.id == restoreItemId) restoreFocusRequester else null,
                     onFocused = { onMediaFocused(media) },
-                    focusId = "home:${row.id}:${media.id}",
+                    focusId = "home:${row.id}:${media.streamType}:${media.id}",
                     onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.returnToRail else null,
                     onFocusDown = onFocusDown,
                     onFocusUp = onFocusUp
@@ -1104,7 +1104,7 @@ private fun TvHomeMediaCard(
     focusRequester: FocusRequester? = null,
     restoreFocusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
-    focusId: String = "media:${item.id}",
+    focusId: String = "media:${item.streamType}:${item.id}",
     onFocusDown: (() -> Unit)? = null,
     onFocusUp: (() -> Unit)? = null,
     onReturnToCategory: (() -> Unit)? = null,
@@ -1629,7 +1629,7 @@ private fun ContentBrowserScreen(
     val denseTv = isTelevisionLayout()
     val categoryListState = rememberLazyListState()
     val focusNavigation = LocalTvFocusNavigation.current
-    TvPageEntry(focusedContentId?.takeIf { id -> state.items.any { it.id == id } }?.let { "media:$it" }
+    TvPageEntry(focusedContentId?.takeIf { id -> state.items.any { it.id == id } }?.let { id -> state.items.first { it.id == id }.let { "media:${it.streamType}:${it.id}" } }
         ?: state.categories.getOrNull(state.selectedCategory)?.let { "category:${it.id}" })
     val contentFocusRequester = remember { FocusRequester() }
     val selectedCategoryFocusRequester = remember { FocusRequester() }
@@ -1686,7 +1686,7 @@ private fun ContentBrowserScreen(
                 if (item != null) categoryScope.launch {
                     val index = state.items.indexOf(item)
                     if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) gridState.scrollToItem(index)
-                    val target = snapshotFlow { focusNavigation?.targets?.get("media:${item.id}") }.first { it != null }
+                    val target = snapshotFlow { focusNavigation?.targets?.get("media:${item.streamType}:${item.id}") }.first { it != null }
                     target?.requestFocus()
                 }
             }) else null)
@@ -1801,8 +1801,8 @@ private fun FavouritesScreen(
     val channels = state.items.filter { it.streamType == "live" }
     val titles = state.items.filter { it.streamType != "live" }
     var lastItemId by rememberSaveable { mutableStateOf<String?>(null) }
-    val preferred = state.items.firstOrNull { it.id == lastItemId } ?: channels.firstOrNull() ?: titles.firstOrNull()
-    TvPageEntry(preferred?.let { "media:${it.id}" })
+    val preferred = state.items.firstOrNull { "${it.streamType}:${it.id}" == lastItemId } ?: channels.firstOrNull() ?: titles.firstOrNull()
+    TvPageEntry(preferred?.let { "media:${it.streamType}:${it.id}" })
     val navigation = LocalTvFocusNavigation.current
     val favouriteListState = rememberLazyListState()
     val channelRowState = rememberLazyListState()
@@ -1833,7 +1833,7 @@ private fun FavouritesScreen(
             else MediaRow(
                 UiMediaRow("favorite-channels", "Favourite channels", items = channels),
                 onMediaClick, onToggleFavorite, onRemoveHistory = {}, listState = channelRowState,
-                onMediaFocused = { lastItemId = it.id }
+                onMediaFocused = { lastItemId = "${it.streamType}:${it.id}" }
             )
         }
         item {
@@ -1841,7 +1841,7 @@ private fun FavouritesScreen(
             else MediaRow(
                 UiMediaRow("favorite-titles", "Favourite titles", items = titles),
                 onMediaClick, onToggleFavorite, onRemoveHistory = {}, listState = titleRowState,
-                onMediaFocused = { lastItemId = it.id }
+                onMediaFocused = { lastItemId = "${it.streamType}:${it.id}" }
             )
         }
     }

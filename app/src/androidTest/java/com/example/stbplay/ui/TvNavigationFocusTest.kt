@@ -103,10 +103,10 @@ class TvNavigationFocusTest {
         focused("tv-focus:home:hero")
         left(); focused("tv-rail:HOME")
         rail(StbPlayTab.CONTENT); ok(); focused("tv-focus:category:all")
-        right(); focused("tv-focus:media:film1")
+        right(); focused("tv-focus:media:movie:film1")
         left(); focused("tv-focus:category:all")
         left(); focused("tv-rail:CONTENT")
-        rail(StbPlayTab.FAVOURITES); ok(); focused("tv-focus:media:ch1")
+        rail(StbPlayTab.FAVOURITES); ok(); focused("tv-focus:media:live:ch1")
         left(); focused("tv-rail:FAVOURITES")
         rail(StbPlayTab.SETTINGS); ok(); focused("tv-focus:settings:Subscription")
         left(); focused("tv-rail:SETTINGS")
@@ -126,15 +126,15 @@ class TvNavigationFocusTest {
     @Test fun homeShelfAndMovieFocusSurviveTabSwitches() {
         start()
         focused("tv-focus:home:hero")
-        down(); focused("tv-focus:home:recommended:film1")
-        right(); focused("tv-focus:home:recommended:film2")
+        down(); focused("tv-focus:home:recommended:movie:film1")
+        right(); focused("tv-focus:home:recommended:movie:film2")
         rail(StbPlayTab.LIVE); ok(); focused("tv-focus:category:all")
-        rail(StbPlayTab.HOME); ok(); focused("tv-focus:home:recommended:film2")
+        rail(StbPlayTab.HOME); ok(); focused("tv-focus:home:recommended:movie:film2")
         rail(StbPlayTab.CONTENT); ok(); focused("tv-focus:category:all")
-        right(); focused("tv-focus:media:film1")
-        right(); focused("tv-focus:media:film2")
+        right(); focused("tv-focus:media:movie:film1")
+        right(); focused("tv-focus:media:movie:film2")
         rail(StbPlayTab.SETTINGS); ok(); focused("tv-focus:settings:Subscription")
-        rail(StbPlayTab.CONTENT); ok(); focused("tv-focus:media:film2")
+        rail(StbPlayTab.CONTENT); ok(); focused("tv-focus:media:movie:film2")
     }
 
     @Test fun previewOptionsReturnToSameChannelWithoutChangingSelectedTab() {
@@ -151,6 +151,15 @@ class TvNavigationFocusTest {
         left(); focused("tv-focus:category:all")
         left(); focused("tv-rail:LIVE")
         assertEquals(StbPlayTab.LIVE, selected)
+    }
+
+    @Test fun channelAndMovieWithSamePortalIdKeepSeparateFocusTargets() {
+        favorites = listOf(UiMedia("same", "Saved channel", streamType = "live"), UiMedia("same", "Saved movie", portrait = true))
+        start(StbPlayTab.FAVOURITES)
+        focused("tv-focus:media:live:same")
+        down(); focused("tv-focus:media:movie:same")
+        rail(StbPlayTab.SETTINGS); ok(); focused("tv-focus:settings:Subscription")
+        rail(StbPlayTab.FAVOURITES); ok(); focused("tv-focus:media:movie:same")
     }
 
     @Test fun loadingAndEmptyFavoritesNeverLeaveInvisibleFocus() {
