@@ -1198,18 +1198,24 @@ private fun StbPlayRoot(
     LaunchedEffect(storedSettings.id, storedSettings.url, storedSettings.mac, portalReady) {
         val identity = "${storedSettings.id}|${storedSettings.url}|${storedSettings.mac}"
         val raw = subscriptionCache.getString(identity, null)
-        if (raw != null) runCatching {
+        val profileDetails = if (portalReady) portalRepository.getSubscription() else PortalSubscription()
+        subscription = profileDetails
+        subscriptionMessage = if (!portalReady && raw != null) "Saved portal details" else ""
+        if (raw != null && profileDetails == PortalSubscription()) runCatching {
             val saved = org.json.JSONObject(raw)
             subscription = PortalSubscription(saved.optString("plan", "Subscription"), saved.optString("status"),
                 saved.optLong("expiry", -1L).takeIf { it > 0L }, saved.optBoolean("unlimited"))
-        } else subscription = PortalSubscription()
+        }
         if (portalReady) {
             subscriptionMessage = "Refreshing portal subscription…"
             val fresh = try {
                 portalRepository.refreshSubscription()
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
-                subscriptionMessage = if (raw != null) "Could not refresh. Showing saved portal details." else "Could not fetch portal subscription. Refresh to try again."
+                subscriptionMessage = if (subscription != PortalSubscription()) "Account details unavailable. Showing saved/profile details." else "Could not fetch portal subscription. Refresh to try again."
+                if (subscription != PortalSubscription()) subscriptionCache.edit().putString(identity, org.json.JSONObject()
+                    .put("plan", subscription.plan).put("status", subscription.status)
+                    .put("expiry", subscription.expiryEpochMillis ?: -1L).put("unlimited", subscription.unlimited).toString()).apply()
                 return@LaunchedEffect
             }
             subscriptionMessage = if (fresh == PortalSubscription()) "The portal did not supply subscription details." else ""
