@@ -23,7 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.BasicTextField
+import com.example.stbplay.ui.RemoteTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -313,7 +313,7 @@ private fun SetupField(
 ) {
     var focused by remember { mutableStateOf(false) }
     val field: @Composable (Modifier) -> Unit = { widthModifier ->
-        BasicTextField(
+        RemoteTextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier
