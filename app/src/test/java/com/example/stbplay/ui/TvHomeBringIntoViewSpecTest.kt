@@ -6,6 +6,17 @@ import org.junit.Test
 
 @OptIn(ExperimentalFoundationApi::class)
 class TvHomeBringIntoViewSpecTest {
+    @Test fun verticalNavigationMovesTheListToKeepFocusAtTheSameMiddlePosition() {
+        // 48 px category in a 400 px viewport: the centre position is 176 px.
+        assertEquals(0f, TvVerticalBringIntoViewSpec.calculateScrollDistance(176f, 48f, 400f), 0.001f)
+        assertEquals(50f, TvVerticalBringIntoViewSpec.calculateScrollDistance(226f, 48f, 400f), 0.001f)
+        assertEquals(-50f, TvVerticalBringIntoViewSpec.calculateScrollDistance(126f, 48f, 400f), 0.001f)
+    }
+
+    @Test fun oversizedVerticalContentDoesNotOscillateBetweenItsEdges() {
+        assertEquals(0f, TvVerticalBringIntoViewSpec.calculateScrollDistance(-100f, 600f, 400f), 0.001f)
+    }
+
     @Test fun visibleCardsDoNotMoveTheRow() {
         assertDistance(0f, 0f, 202f, 400f)
         assertDistance(0f, 60f, 202f, 400f)

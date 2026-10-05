@@ -2,6 +2,8 @@
 
 package com.example.stbplay.ui.screens
 
+import com.example.stbplay.isAndroidTvDevice
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -69,7 +71,8 @@ fun SeriesDetailsScreen(
     onToggleFavorite: () -> Unit,
     onEpisodeClick: (PortalEpisode, List<PortalEpisode>) -> Unit,
     episodeProgress: Map<String, Float> = emptyMap(),
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRemoveHistory: (() -> Unit)? = null
 ) {
     var seasons by remember(series.id) { mutableStateOf<List<PortalSeason>>(emptyList()) }
     var selectedSeason by remember(series.id) { mutableStateOf<PortalSeason?>(null) }
@@ -82,7 +85,7 @@ fun SeriesDetailsScreen(
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val compact = LocalConfiguration.current.screenWidthDp < 900 &&
-        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        !context.isAndroidTvDevice()
 
     val artworkUrl = remember(series.id, series.iconUrl, repository) {
         repository.resolveArtworkUrl(series.iconUrl)
@@ -207,11 +210,18 @@ fun SeriesDetailsScreen(
             Text(series.name, color = SeriesWhite, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             series.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis) }
             Spacer(Modifier.weight(1f))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+              if (context.isAndroidTvDevice()) onRemoveHistory?.let { remove ->
+                  QuestButton(onClick = remove, modifier = Modifier.fillMaxWidth().height(40.dp)) {
+                      Text("Remove from history", fontSize = 12.sp)
+                  }
+              }
+              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QuestButton(onClick = onToggleFavorite, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.colors(containerColor = SeriesPanelSoft, contentColor = SeriesWhite)) {
                     Text(if (isFavorite) "Remove" else "Favourite", maxLines = 1)
                 }
                 QuestButton(onClick = onBack, modifier = Modifier.width(80.dp).height(48.dp), colors = ButtonDefaults.colors(containerColor = SeriesPanelSoft, contentColor = SeriesWhite)) { Text("Back") }
+              }
             }
         }
         Spacer(Modifier.width(42.dp))
@@ -245,7 +255,7 @@ fun SeriesDetailsScreen(
                     when {
                         loadingEpisodes -> Text("Loading episodes…", color = SeriesMuted, fontSize = 14.sp)
                         episodes.isEmpty() -> Text("No episodes were returned for this season.", color = SeriesMuted, fontSize = 14.sp)
-                        else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) 3.dp else 9.dp)) {
+                        else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (context.isAndroidTvDevice()) 3.dp else 9.dp)) {
                             items(episodes, key = { it.id }) { episode ->
                                 EpisodeRow(episode, initialFocus = episode.id == episodes.firstOrNull()?.id,
                                     hasProgress = (episodeProgress[episode.id] ?: 0f) > 0f) { onEpisodeClick(episode, episodes) }
@@ -262,7 +272,7 @@ fun SeriesDetailsScreen(
 @Composable
 private fun EpisodeRow(episode: PortalEpisode, initialFocus: Boolean = false, hasProgress: Boolean = false, onClick: () -> Unit) {
     val context = LocalContext.current
-    val television = remember(context) { context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) }
+    val television = remember(context) { context.isAndroidTvDevice() }
     val playable = !episode.cmd.isNullOrBlank()
     QuestSurface(
         onClick = { if (playable) onClick() },

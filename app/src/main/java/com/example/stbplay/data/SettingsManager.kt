@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.stbplay.domain.model.PortalSettings
 import com.example.stbplay.domain.model.generateStbPlayMac
+import com.example.stbplay.isAndroidTvDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
@@ -42,9 +43,7 @@ class SettingsManager(private val context: Context) {
     private val keyPortals = stringPreferencesKey("portal_profiles_v2")
     private val keyActivePortal = stringPreferencesKey("active_portal_id")
     private val keySharedDeviceMac = stringPreferencesKey("shared_device_mac")
-    private val isAndroidTvDevice = context.packageManager.hasSystemFeature(
-        android.content.pm.PackageManager.FEATURE_LEANBACK
-    )
+    private val isAndroidTvDevice = context.isAndroidTvDevice()
     private val keyParentalPin = stringPreferencesKey("parental_pin")
     private val keyParentalMode = stringPreferencesKey("parental_mode")
     private val keyFavoritesPrefix = "favorite_ids_"

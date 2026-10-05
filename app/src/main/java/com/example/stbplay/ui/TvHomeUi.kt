@@ -1,7 +1,5 @@
 package com.example.stbplay.ui
 
-import androidx.compose.animation.core.AnimationSpec
-import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +26,8 @@ import com.example.stbplay.ui.theme.LocalStbPalette
 internal fun TvHomeSurface(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    containerColor: Color = LocalStbPalette.current.panelSoft,
+    focusedContainerColor: Color = containerColor,
     content: @Composable BoxScope.() -> Unit
 ) {
     val palette = LocalStbPalette.current
@@ -37,18 +37,16 @@ internal fun TvHomeSurface(
     Box(
         modifier.onFocusChanged { focused = it.isFocused }
             .clip(shape)
-            .background(palette.panelSoft)
+            .background(if (focused) focusedContainerColor else containerColor)
             .border(2.dp, if (focused) palette.accent else Color.Transparent, shape)
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
         content = content
     )
 }
 
-/** Only move a focused card enough to expose it, without the TV pivot animation. */
+/** Horizontal shelves only move when a card needs to be exposed. */
 @OptIn(ExperimentalFoundationApi::class)
 internal object TvHomeBringIntoViewSpec : BringIntoViewSpec {
-    override val scrollAnimationSpec: AnimationSpec<Float> = snap()
-
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
         val end = offset + size
         return when {
@@ -57,5 +55,15 @@ internal object TvHomeBringIntoViewSpec : BringIntoViewSpec {
             offset < 0f -> offset
             else -> end - containerSize
         }
+    }
+}
+
+/** The focus stays in the middle while the vertical list scrolls behind it. */
+@OptIn(ExperimentalFoundationApi::class)
+internal object TvVerticalBringIntoViewSpec : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        if (size >= containerSize) return TvHomeBringIntoViewSpec.calculateScrollDistance(offset, size, containerSize)
+        val distance = offset - (containerSize - size) / 2f
+        return if (kotlin.math.abs(distance) < 1f) 0f else distance
     }
 }

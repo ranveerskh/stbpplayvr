@@ -66,6 +66,9 @@ import com.example.stbplay.ui.ChangePinPrompt
 import com.example.stbplay.ui.FirstStartDisclaimer
 import com.example.stbplay.ui.PinPrompt
 import com.example.stbplay.ui.ProviderPinSetupPrompt
+import com.example.stbplay.data.resolveProviderPortalId
+import com.example.stbplay.ui.screens.TvMediaDetailsScreen
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import com.example.stbplay.ui.ProviderPairingDialog
 import com.example.stbplay.ui.StbPlayApp
 import com.example.stbplay.ui.StbPlayHomeState
@@ -240,7 +243,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         observedPackageUpdateTime = installedPackageUpdateTime()
         openUpdates = intent?.getBooleanExtra("stb_open_updates", false) == true
-        if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) {
+        if (!isAndroidTvDevice()) {
             runCatching { Cast.getSingletonInstance(this).initialize() }
         }
         settingsManager = SettingsManager(this)
@@ -342,7 +345,7 @@ private fun StbPlayRoot(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
     val isAndroidTv = remember(appContext) {
-        appContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        appContext.isAndroidTvDevice()
     }
     val platformLicenseClient = remember(appContext) { PlatformLicenseClient(appContext) }
     var platformLicense by remember { mutableStateOf(platformLicenseClient.currentLicense()) }
@@ -352,6 +355,7 @@ private fun StbPlayRoot(
     var providerPairingBusy by remember { mutableStateOf(false) }
     val catalogCache = remember(appContext) { CatalogCacheStore(appContext) }
     val contentGridState = rememberLazyGridState()
+    val appUiStateHolder = rememberSaveableStateHolder()
     val liveChannelListState = rememberLazyListState()
     val startupSettings by settingsManager.startupSettings
         .map { it as SettingsBootstrap? }
@@ -424,6 +428,7 @@ private fun StbPlayRoot(
     var focusedLiveChannelId by remember { mutableStateOf<String?>(null) }
     var focusedContentId by remember { mutableStateOf<String?>(null) }
     var selectedMovie by remember { mutableStateOf<PortalStream?>(null) }
+    var selectedLiveChannel by remember { mutableStateOf<PortalStream?>(null) }
     var selectedSeries by remember { mutableStateOf<PortalStream?>(null) }
     var qualityContext by remember { mutableStateOf<QualityContext?>(null) }
     var qualityOptions by remember { mutableStateOf<List<PortalQualityOption>>(emptyList()) }
@@ -660,7 +665,7 @@ private fun StbPlayRoot(
             try {
                 settingsManager.upsertPortal(prepared)
                 providerPairingStatus = "Creating a secure, one-time pairing code…"
-                val session = platformLicenseClient.startProviderPairing(prepared.mac)
+                val session = platformLicenseClient.startProviderPairing(prepared.mac, prepared.id)
                 providerPairing = session
                 providerPairingStatus = "Waiting for your provider to assign a portal."
             } catch (error: Exception) {
@@ -676,19 +681,47 @@ private fun StbPlayRoot(
     }
 
     suspend fun syncAssignedPortal(input: PortalSettings): PortalSettings {
+        val boundId = platformLicenseClient.providerPortalId()
+        if (boundId != null && boundId != input.id) return input
         val assignment = runCatching { platformLicenseClient.syncProviderAssignment() }.getOrNull() ?: return input
+        val latestSettings = settingsManager.startupSettings.first()
+        val targetId = resolveProviderPortalId(boundId, assignment.portalUrl, latestSettings.profiles) ?: return input
+        if (boundId == null) platformLicenseClient.bindProviderPortal(targetId)
+        if (targetId != input.id) return input
+        val latestProfile = latestSettings.profiles.firstOrNull { it.id == targetId } ?: return input
         platformLicense = platformLicenseClient.currentLicense()
         licenseStatus = "Provider portal synced."
-        val updated = input.copy(name = assignment.portalName, url = assignment.portalUrl).normalized()
-        if (updated.name != input.name || updated.url != input.url) settingsManager.upsertPortal(updated)
+        val updated = latestProfile.copy(name = assignment.portalName, url = assignment.portalUrl,
+            pin = latestSettings.activePortal.pin).normalized()
+        if (updated.pin.isBlank()) {
+            if (latestSettings.activePortal.id == updated.id) providerPinSetup = updated
+            return input
+        }
+        if (updated.name != latestProfile.name || updated.url != latestProfile.url)
+            settingsManager.upsertPortal(updated, makeActive = false)
         return updated
     }
 
+    suspend fun refreshProviderPortal(input: PortalSettings) {
+        val latest = syncAssignedPortal(input)
+        if (latest.url == input.url || providerPinSetup != null) return
+        while (connecting) delay(200)
+        val active = settingsManager.portalSettings.first()
+        if (active.id == latest.id && active.url == latest.url && playRequest == null && autoConnectKey != portalKey(latest))
+            startConnection(latest, keepHomeVisible = true)
+    }
+
     fun refreshPortal(input: PortalSettings, keepHomeVisible: Boolean = false) {
-        scope.launch {
-            val latest = syncAssignedPortal(input)
-            startConnection(latest, keepHomeVisible)
-        }
+        startConnection(input, keepHomeVisible)
+        scope.launch { refreshProviderPortal(input) }
+    }
+
+    LaunchedEffect(settingsLoaded, disclaimerAcknowledged) {
+        if (!settingsLoaded || !disclaimerAcknowledged || platformLicenseClient.pendingProviderPairing() != null) return@LaunchedEffect
+        val bootstrap = settingsManager.startupSettings.first()
+        val boundId = platformLicenseClient.providerPortalId()
+        val target = bootstrap.profiles.firstOrNull { it.id == boundId } ?: bootstrap.activePortal
+        refreshProviderPortal(target)
     }
 
     LaunchedEffect(settingsLoaded) {
@@ -726,11 +759,19 @@ private fun StbPlayRoot(
                 providerPairingStatus = "Waiting for your provider to select a portal profile…"
                 continue
             }
-            val current = settingsManager.portalSettings.first()
+            val bootstrap = settingsManager.startupSettings.first()
+            val current = if (session.portalId.isBlank()) bootstrap.activePortal
+                else bootstrap.profiles.firstOrNull { it.id == session.portalId }
+            if (current == null) {
+                providerPairing = null
+                providerPairingStatus = "The paired portal was removed. Link the intended portal again."
+                break
+            }
             val assignedPortal = current.copy(
                 name = assignment.portalName,
                 url = assignment.portalUrl,
-                mac = session.portalMac
+                mac = session.portalMac,
+                pin = bootstrap.activePortal.pin
             ).normalized().withStableId()
             platformLicense = platformLicenseClient.currentLicense()
             licenseStatus = "Provider license active."
@@ -759,9 +800,8 @@ private fun StbPlayRoot(
         }
         val key = portalKey(storedSettings)
         if (connecting || autoConnectKey == key) return@LaunchedEffect
-        val connectionSettings = syncAssignedPortal(storedSettings)
-        if (!connecting && autoConnectKey != portalKey(connectionSettings)) {
-            startConnection(connectionSettings, keepHomeVisible = true)
+        if (!connecting && autoConnectKey != key) {
+            startConnection(storedSettings, keepHomeVisible = true)
         }
     }
 
@@ -811,13 +851,14 @@ private fun StbPlayRoot(
             resumeFraction = resumeFraction
         )
         selectedMovie = null
+        selectedLiveChannel = null
         selectedSeries = null
         qualityContext = null
     }
 
     fun openMedia(stream: PortalStream, resume: Float = 0f) {
         when (stream.streamType) {
-            "live" -> launchPlayback(stream)
+            "live" -> if (isAndroidTv) selectedLiveChannel = stream else launchPlayback(stream)
             "series" -> selectedSeries = stream
             else -> selectedMovie = stream
         }
@@ -1387,6 +1428,18 @@ private fun StbPlayRoot(
                     onOptionClick = ::chooseQuality,
                     onBack = { qualityContext = null; qualityOptions = emptyList() }
                 )
+                selectedLiveChannel != null -> {
+                    val channel = selectedLiveChannel!!
+                    val media = toUi(channel)
+                    TvMediaDetailsScreen(media,
+                        onPlay = { launchPlayback(channel) }, onResume = { launchPlayback(channel) },
+                        onToggleFavorite = { setFavorite(media) },
+                        onRemoveHistory = if (channel.id in progressById) ({
+                            scope.launch { settingsManager.removeFromHistory(channel.id) }
+                            selectedLiveChannel = null
+                        }) else null,
+                        onBack = { selectedLiveChannel = null; startCategoryPreload(storedSettings) })
+                }
                 selectedMovie != null -> {
                     val movie = selectedMovie!!
                     val media = toUi(movie)
@@ -1395,7 +1448,11 @@ private fun StbPlayRoot(
                         onPlay = { startQualityChoice(QualityContext(movie.name, movie)) },
                         onResume = { startQualityChoice(QualityContext(movie.name, movie, resumeFraction = media.progress)) },
                         onToggleFavorite = { setFavorite(media) },
-                        onBack = { selectedMovie = null; startCategoryPreload(storedSettings) }
+                        onBack = { selectedMovie = null; startCategoryPreload(storedSettings) },
+                        onRemoveHistory = if (isAndroidTv && movie.id in progressById) ({
+                            scope.launch { settingsManager.removeFromHistory(movie.id) }
+                            selectedMovie = null
+                        }) else null
                     )
                 }
                 selectedSeries != null -> {
@@ -1409,7 +1466,11 @@ private fun StbPlayRoot(
                         onEpisodeClick = { episode, episodes ->
                             chooseSeriesEpisode(series, episode, episodes)
                         },
-                        onBack = { selectedSeries = null; startCategoryPreload(storedSettings) }
+                        onBack = { selectedSeries = null; startCategoryPreload(storedSettings) },
+                        onRemoveHistory = if (isAndroidTv && series.id in progressById) ({
+                            scope.launch { settingsManager.removeFromHistory(series.id) }
+                            selectedSeries = null
+                        }) else null
                     )
                 }
                 screen == AppScreen.SETUP -> SetupScreen(
@@ -1431,7 +1492,7 @@ private fun StbPlayRoot(
                     onRetry = { startConnection(storedSettings) },
                     onEdit = { editingPortal = storedSettings; screen = AppScreen.SETUP }
                 )
-                else -> StbPlayApp(
+                else -> appUiStateHolder.SaveableStateProvider(storedSettings.id.ifBlank { "setup" }) { StbPlayApp(
                     homeState = homeState,
                     liveState = liveState,
                     contentState = contentState,
@@ -1549,8 +1610,15 @@ private fun StbPlayRoot(
                     },
                     onSearchResults = { remoteSearchStreams = it },
                     searchMedia = ::toUi,
-                    onHomeInteraction = { if (isAndroidTv) lastHomeInteractionMs[0] = SystemClock.elapsedRealtime() }
-                )
+                    onHomeInteraction = { if (isAndroidTv) lastHomeInteractionMs[0] = SystemClock.elapsedRealtime() },
+                    onMediaFocused = { tab, media ->
+                        if (isAndroidTv) when (tab) {
+                            StbPlayTab.LIVE -> focusedLiveChannelId = media.id
+                            StbPlayTab.CONTENT -> focusedContentId = media.id
+                            else -> Unit
+                        }
+                    }
+                ) }
             }
 
             pendingLockedMedia?.let { locked ->

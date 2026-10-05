@@ -1,5 +1,7 @@
 package com.example.stbplay.ui
 
+import com.example.stbplay.isAndroidTvDevice
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,7 +41,7 @@ fun ArtworkImage(
 ) {
     val context = LocalContext.current
     val isTelevision = remember(context) {
-        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        context.isAndroidTvDevice()
     }
     var retryCount by remember(imageUrl, requestHeaders) { mutableIntStateOf(0) }
     val request = remember(imageUrl, requestHeaders, retryCount, isTelevision, decodeWidthPx, decodeHeightPx) {

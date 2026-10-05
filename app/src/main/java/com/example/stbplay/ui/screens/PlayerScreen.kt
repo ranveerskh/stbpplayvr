@@ -2,6 +2,8 @@
 
 package com.example.stbplay.ui.screens
 
+import com.example.stbplay.isAndroidTvDevice
+
 import android.os.Build
 import android.os.SystemClock
 import android.content.ActivityNotFoundException
@@ -235,7 +237,7 @@ private fun NativePlayerScreen(
     var episodePickerVisible by remember(playbackUrl) { mutableStateOf(false) }
 
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val isAndroidTv = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    val isAndroidTv = context.isAndroidTvDevice()
     val isMetaQuest = remember(context) {
         val maker = Build.MANUFACTURER.lowercase()
         val brand = Build.BRAND.lowercase()
@@ -372,7 +374,9 @@ private fun NativePlayerScreen(
     }
     val keepTvEpisodeControlsVisible = isAndroidTv && episodePickerVisible
     LaunchedEffect(controlsInteraction, playerControlsVisible, pointerInsidePlayer, keepTvEpisodeControlsVisible) {
-        if (playerControlsVisible && !pointerInsidePlayer && !keepTvEpisodeControlsVisible) {
+        // A box may leave its air-mouse pointer hovering over the video forever.
+        // Only real input resets the TV timer; hover presence never pins it open.
+        if (playerControlsVisible && (isAndroidTv || !pointerInsidePlayer) && !keepTvEpisodeControlsVisible) {
             delay(3_000)
             playerControlsVisible = false
             if (isAndroidTv) {
@@ -560,6 +564,7 @@ private fun NativePlayerScreen(
                             }
                             MotionEvent.ACTION_HOVER_MOVE -> {
                                 pointerInsidePlayer = true
+                                if (isAndroidTv) revealPlayerControls()
                             }
                             MotionEvent.ACTION_HOVER_EXIT -> {
                                 pointerInsidePlayer = false
@@ -798,7 +803,7 @@ private fun NativePlayerScreen(
                 }
             }
         }
-        if (isAndroidTv && showChannelStepButtons && playerError == null) {
+        if (isAndroidTv && showChannelStepButtons && playerControlsVisible && playerError == null) {
             Text(
                 text = title,
                 color = Color.White,
@@ -1027,7 +1032,7 @@ private fun PlaybackLoadingScreen(title: String) {
 private fun PlaybackErrorScreen(message: String, onRetry: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     val isAndroidTv = remember(context) {
-        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        context.isAndroidTvDevice()
     }
     Box(Modifier.fillMaxSize().background(Color(0xFF070707)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(30.dp)) {

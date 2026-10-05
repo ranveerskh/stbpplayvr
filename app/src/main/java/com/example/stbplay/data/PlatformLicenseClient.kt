@@ -28,7 +28,8 @@ data class ProviderPairingSession(
     val pairingCode: String,
     val deviceReference: String,
     val portalMac: String,
-    val expiresAtMillis: Long
+    val expiresAtMillis: Long,
+    val portalId: String = ""
 )
 
 data class ProviderPairingStatus(
@@ -84,7 +85,7 @@ class PlatformLicenseClient(context: Context) {
     }
 
     /** Starts an explicit provider pairing request; the server stores only a hash of the device ID. */
-    suspend fun startProviderPairing(portalMac: String): ProviderPairingSession = withContext(Dispatchers.IO) {
+    suspend fun startProviderPairing(portalMac: String, portalId: String): ProviderPairingSession = withContext(Dispatchers.IO) {
         val normalizedMac = portalMac.trim().uppercase()
         require(MAC_PATTERN.matches(normalizedMac)) { "Enter a valid portal MAC address before pairing." }
         val response = post("/api/pairing/start", JSONObject()
@@ -102,15 +103,17 @@ class PlatformLicenseClient(context: Context) {
             .putString(PAIRING_CODE, code)
             .putString(PAIRING_MAC, normalizedMac)
             .putLong(PAIRING_EXPIRY, expiry)
+            .putString(PAIRING_PORTAL_ID, portalId)
             .apply()
-        ProviderPairingSession(code, displayDeviceReference(), normalizedMac, expiry)
+        ProviderPairingSession(code, displayDeviceReference(), normalizedMac, expiry, portalId)
     }
 
     fun pendingProviderPairing(): ProviderPairingSession? {
         val code = preferences.getString(PAIRING_CODE, null) ?: return null
         val mac = preferences.getString(PAIRING_MAC, null) ?: return null
         val expiry = preferences.getLong(PAIRING_EXPIRY, 0L)
-        return ProviderPairingSession(code, displayDeviceReference(), mac, expiry)
+        return ProviderPairingSession(code, displayDeviceReference(), mac, expiry,
+            preferences.getString(PAIRING_PORTAL_ID, "").orEmpty())
     }
 
     /** Polls the one-time request. A successful response securely promotes its token for later profile sync. */
@@ -127,6 +130,7 @@ class PlatformLicenseClient(context: Context) {
         val portalUrl = portal.optString("url")
         if (portalUrl.isBlank()) throw IllegalStateException("The provider assignment did not include a portal URL.")
         saveEncryptedSecret(token, DEVICE_TOKEN_CIPHER, DEVICE_TOKEN_IV)
+        if (session.portalId.isNotBlank()) bindProviderPortal(session.portalId)
         saveLicenseInfo(response)
         clearPairingRequest()
         ProviderPairingStatus(
@@ -171,6 +175,13 @@ class PlatformLicenseClient(context: Context) {
             }
         }
         clearPairingRequest()
+    }
+
+    fun providerPortalId(): String? = preferences.getString(PROVIDER_PORTAL_ID, null)?.takeIf { it.isNotBlank() }
+
+    fun bindProviderPortal(portalId: String) {
+        require(portalId.isNotBlank())
+        preferences.edit().putString(PROVIDER_PORTAL_ID, portalId).apply()
     }
 
     fun displayDeviceReference(): String = sha256(deviceId())
@@ -262,6 +273,7 @@ class PlatformLicenseClient(context: Context) {
             .remove(PAIRING_CODE)
             .remove(PAIRING_MAC)
             .remove(PAIRING_EXPIRY)
+            .remove(PAIRING_PORTAL_ID)
             .remove(PAIRING_TOKEN_CIPHER)
             .remove(PAIRING_TOKEN_IV)
             .apply()
@@ -311,6 +323,8 @@ class PlatformLicenseClient(context: Context) {
         private const val PAIRING_CODE = "provider_pairing_code"
         private const val PAIRING_MAC = "provider_pairing_mac"
         private const val PAIRING_EXPIRY = "provider_pairing_expiry"
+        private const val PAIRING_PORTAL_ID = "provider_pairing_portal_id"
+        private const val PROVIDER_PORTAL_ID = "provider_portal_id"
         private const val PAIRING_TOKEN_CIPHER = "provider_pairing_token_cipher"
         private const val PAIRING_TOKEN_IV = "provider_pairing_token_iv"
         private const val DEVICE_TOKEN_CIPHER = "provider_device_token_cipher"

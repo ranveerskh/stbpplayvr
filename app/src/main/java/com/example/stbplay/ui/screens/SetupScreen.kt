@@ -2,6 +2,8 @@
 
 package com.example.stbplay.ui.screens
 
+import com.example.stbplay.isAndroidTvDevice
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -68,7 +70,7 @@ fun SetupScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val isAndroidTv = remember(context) {
-        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        context.isAndroidTvDevice()
     }
     val phoneLayout = LocalConfiguration.current.screenWidthDp < 900 && !isAndroidTv
     val deviceMac = remember(context, isAndroidTv) {
@@ -344,3 +346,4 @@ private fun SetupField(
         field(Modifier.weight(1f))
     }
 }
+

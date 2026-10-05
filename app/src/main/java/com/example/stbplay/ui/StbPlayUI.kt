@@ -54,6 +54,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed as indexedGridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Close
@@ -93,11 +94,14 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.Key
@@ -112,6 +116,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -137,6 +143,7 @@ import com.example.stbplay.data.ParentalMode
 import com.example.stbplay.data.SubtitlePreference
 import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.R
+import com.example.stbplay.isAndroidTvDevice
 import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.domain.model.PortalSettings
@@ -167,7 +174,7 @@ private val PosterWhite = Color.White
 private fun isCompactAndroidLayout(): Boolean {
     val context = LocalContext.current
     val isTelevision = remember(context) {
-        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        context.isAndroidTvDevice()
     }
     return LocalConfiguration.current.screenWidthDp < 900 && !isTelevision
 }
@@ -176,7 +183,7 @@ private fun isCompactAndroidLayout(): Boolean {
 private fun isTelevisionLayout(): Boolean {
     val context = LocalContext.current
     return remember(context) {
-        context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        context.isAndroidTvDevice()
     }
 }
 
@@ -326,7 +333,8 @@ fun StbPlayApp(
     searchRemote: suspend (String, Int) -> VodCatalogBatch,
     onSearchResults: (List<PortalStream>) -> Unit,
     searchMedia: (PortalStream) -> UiMedia,
-    onHomeInteraction: () -> Unit = {}
+    onHomeInteraction: () -> Unit = {},
+    onMediaFocused: (StbPlayTab, UiMedia) -> Unit = { _, _ -> }
 ) {
     var searchOpen by remember { mutableStateOf(false) }
     val tvLayout = isTelevisionLayout()
@@ -334,7 +342,7 @@ fun StbPlayApp(
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val compactLayout = configuration.screenWidthDp < 900 &&
-        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        !context.isAndroidTvDevice()
 
     BackHandler(enabled = !searchOpen && selectedTab != StbPlayTab.HOME) {
         onTabSelected(StbPlayTab.HOME)
@@ -359,7 +367,9 @@ fun StbPlayApp(
         return
     }
 
-    val pageContent: @Composable () -> Unit = {
+    val tabStateHolder = rememberSaveableStateHolder()
+    val renderPage: @Composable () -> Unit = {
+        tabStateHolder.SaveableStateProvider(selectedTab.name) {
             when (selectedTab) {
                 StbPlayTab.HOME -> StbPlayHomeScreen(
                     state = homeState,
@@ -379,7 +389,8 @@ fun StbPlayApp(
                     focusedChannelId = focusedLiveChannelId,
                     onCategorySelected = { onCategorySelected(StbPlayTab.LIVE, it) },
                     onMediaClick = onMediaClick,
-                    onToggleFavorite = onToggleFavorite
+                    onToggleFavorite = onToggleFavorite,
+                    onMediaFocused = { onMediaFocused(StbPlayTab.LIVE, it) }
                 )
                 StbPlayTab.CONTENT -> ContentBrowserScreen(
                     state = contentState,
@@ -388,7 +399,8 @@ fun StbPlayApp(
                     onLoadMore = onLoadMoreContent,
                     onCategorySelected = { onCategorySelected(StbPlayTab.CONTENT, it) },
                     onMediaClick = onMediaClick,
-                    onToggleFavorite = onToggleFavorite
+                    onToggleFavorite = onToggleFavorite,
+                    onMediaFocused = { onMediaFocused(StbPlayTab.CONTENT, it) }
                 )
                 StbPlayTab.FAVOURITES -> FavouritesScreen(
                     state = favouritesState,
@@ -419,6 +431,11 @@ fun StbPlayApp(
                     onShare = onShare
                 )
             }
+        }
+    }
+    val pageContent: @Composable () -> Unit = {
+        if (tvLayout) CompositionLocalProvider(LocalBringIntoViewSpec provides TvVerticalBringIntoViewSpec) { renderPage() }
+        else renderPage()
     }
     if (compactLayout) {
         Column(modifier = Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -568,7 +585,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compac
     }
     Box(Modifier.fillMaxWidth().height(if (compactTv) 42.dp else 48.dp)) {
         QuestSurface(
-            onClick = onClick,
+            onClick = onClick, tvContainerColor = if (selected) Gold.copy(alpha = 0.18f) else Color.Transparent, tvFocusedContainerColor = Gold,
             modifier = Modifier.then(initialFocus).fillMaxSize().onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused && collapsed) showFocusLabel = true
@@ -675,7 +692,7 @@ private fun StbPlayHeader(
 private fun HeaderAction(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     QuestSurface(
-        onClick = onClick,
+        onClick = onClick, tvContainerColor = Panel, tvFocusedContainerColor = Gold,
         modifier = modifier.height(40.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Gold),
@@ -705,15 +722,19 @@ private fun StbPlayHomeScreen(
     val denseTv = isTelevisionLayout()
     val visibleRows = remember(state.rows) { state.rows.filter { it.items.isNotEmpty() } }
     val homeListState = rememberLazyListState()
+    val homeDensity = LocalDensity.current
     val homeScope = rememberCoroutineScope()
     val heroFocusRequester = remember { FocusRequester() }
+    val restoreFocusRequester = remember { FocusRequester() }
+    var focusedHomeRowId by rememberSaveable { mutableStateOf<String?>(null) }
+    var focusedHomeItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var navigationJob by remember { mutableStateOf<Job?>(null) }
     val rowFocusRequesters = remember(visibleRows.map { it.id }) {
         if (denseTv) visibleRows.associate { it.id to FocusRequester() } else emptyMap()
     }
-    val rowListStates = remember(visibleRows.map { it.id }) {
-        if (denseTv) visibleRows.associate { it.id to LazyListState() } else emptyMap()
-    }
+    val rowListStates = if (denseTv) visibleRows.associate { row ->
+        row.id to key(row.id) { rememberLazyListState() }
+    } else emptyMap()
     val firstRowLazyIndex = (if (state.portalWarning != null) 1 else 0) + 1 +
         (if (state.expiryText.isNullOrBlank()) 0 else 1)
     fun focusHomeRow(index: Int) {
@@ -724,11 +745,12 @@ private fun StbPlayHomeScreen(
         val lazyIndex = firstRowLazyIndex + index
         val rowState = rowListStates[row.id] ?: return
         val alreadyVisible = homeListState.layoutInfo.visibleItemsInfo.any { it.index == lazyIndex }
-        if (alreadyVisible && rowState.firstVisibleItemIndex == 0 && rowState.firstVisibleItemScrollOffset == 0 &&
-            runCatching { requester.requestFocus() }.isSuccess) return
         navigationJob = homeScope.launch {
             if (!alreadyVisible) {
-                homeListState.scrollToItem(lazyIndex)
+                val viewport = homeListState.layoutInfo.viewportSize.height
+                val rowCenter = (if (row.items.any { it.portrait }) 101 else 60) + 34
+                val targetOffset = with(homeDensity) { rowCenter.dp.roundToPx() } - viewport / 2
+                homeListState.animateScrollToItem(lazyIndex, targetOffset)
                 withFrameNanos { }
             }
             if (rowState.firstVisibleItemIndex != 0 || rowState.firstVisibleItemScrollOffset != 0) rowState.scrollToItem(0)
@@ -742,9 +764,23 @@ private fun StbPlayHomeScreen(
         if (homeListState.layoutInfo.visibleItemsInfo.any { it.index == heroIndex } &&
             runCatching { heroFocusRequester.requestFocus() }.isSuccess) return
         navigationJob = homeScope.launch {
-            homeListState.scrollToItem(heroIndex)
+            homeListState.animateScrollToItem(heroIndex)
             withFrameNanos { }
             runCatching { heroFocusRequester.requestFocus() }
+        }
+    }
+    LaunchedEffect(denseTv) {
+        if (denseTv) {
+            withFrameNanos { }
+            if (focusedHomeRowId == null) {
+                if (state.heroes.isEmpty()) focusHomeRow(0) else runCatching { heroFocusRequester.requestFocus() }
+            }
+            else if (runCatching { restoreFocusRequester.requestFocus() }.isFailure) {
+                val index = visibleRows.indexOfFirst { it.id == focusedHomeRowId }
+                if (index >= 0) focusHomeRow(index)
+                else if (visibleRows.isNotEmpty()) focusHomeRow(0)
+                else runCatching { heroFocusRequester.requestFocus() }
+            }
         }
     }
     val homeContent: @Composable () -> Unit = {
@@ -767,7 +803,8 @@ private fun StbPlayHomeScreen(
                     onMediaClick,
                     onToggleFavorite,
                     focusRequester = heroFocusRequester,
-                    onFocusDown = { focusHomeRow(0) }
+                    onFocusDown = { focusHomeRow(0) },
+                    onFocused = { focusedHomeRowId = null; focusedHomeItemId = null }
                 )
             }
             state.expiryText?.takeIf { it.isNotBlank() }?.let { expiry ->
@@ -782,13 +819,16 @@ private fun StbPlayHomeScreen(
                     listState = rowListStates[row.id],
                     firstCardFocusRequester = rowFocusRequesters[row.id],
                     staticTvCards = denseTv,
+                    restoreItemId = if (row.id == focusedHomeRowId) focusedHomeItemId else null,
+                    restoreFocusRequester = restoreFocusRequester,
+                    onMediaFocused = { focusedHomeRowId = row.id; focusedHomeItemId = it.id },
                     onFocusDown = if (denseTv && index < visibleRows.lastIndex) ({ focusHomeRow(index + 1) }) else null,
                     onFocusUp = if (denseTv) ({ if (index == 0) focusHomeHero() else focusHomeRow(index - 1) }) else null
                 )
             }
         }
     }
-    if (denseTv) CompositionLocalProvider(LocalBringIntoViewSpec provides TvHomeBringIntoViewSpec) { homeContent() }
+    if (denseTv) CompositionLocalProvider(LocalBringIntoViewSpec provides TvVerticalBringIntoViewSpec) { homeContent() }
     else homeContent()
 }
 
@@ -815,7 +855,8 @@ private fun RotatingHero(
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit,
     focusRequester: FocusRequester,
-    onFocusDown: () -> Unit
+    onFocusDown: () -> Unit,
+    onFocused: () -> Unit
 ) {
     val denseTv = isTelevisionLayout()
     var index by remember(heroes.map { it.id }) { mutableIntStateOf(0) }
@@ -831,10 +872,9 @@ private fun RotatingHero(
     val item = heroes.getOrNull(index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))) ?: return
     val heroModifier = Modifier
             .focusRequester(focusRequester)
-            .then(if (denseTv) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth()
         .height(if (isCompactAndroidLayout()) 205.dp else if (denseTv) 230.dp else 290.dp)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
             .onPreviewKeyEvent { event ->
                 if (denseTv && event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
                     onFocusDown()
@@ -860,12 +900,8 @@ private fun RotatingHero(
                         modifier = Modifier.height(38.dp),
                         colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)
                     ) { Text("Play", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                    else Text("Select to play", color = Muted, fontSize = 11.sp)
-                    if (denseTv) TvHomeSurface({ onToggleFavorite(item) }, Modifier.size(32.dp)) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(if (item.isFavorite) "★" else "☆", color = GoldLight, fontSize = 19.sp)
-                        }
-                    } else FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
+                    else Text("Select for details", color = Muted, fontSize = 11.sp)
+                    if (!denseTv) FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
                 }
             }
             Box(
@@ -907,6 +943,9 @@ private fun MediaRow(
     listState: LazyListState? = null,
     firstCardFocusRequester: FocusRequester? = null,
     staticTvCards: Boolean = false,
+    restoreItemId: String? = null,
+    restoreFocusRequester: FocusRequester? = null,
+    onMediaFocused: (UiMedia) -> Unit = {},
     onFocusDown: (() -> Unit)? = null,
     onFocusUp: (() -> Unit)? = null
 ) {
@@ -919,7 +958,7 @@ private fun MediaRow(
             Text(row.title, color = White, fontSize = if (denseTv) 18.sp else 21.sp, fontWeight = FontWeight.SemiBold)
             row.subtitle?.let { Text(it, color = Muted, fontSize = 12.sp) }
         }
-        LazyRow(
+        val shelf: @Composable () -> Unit = { LazyRow(
             state = listState ?: rememberLazyListState(),
             modifier = Modifier.focusGroup(),
             horizontalArrangement = Arrangement.spacedBy(if (denseTv) 10.dp else 15.dp),
@@ -933,9 +972,9 @@ private fun MediaRow(
                 if (denseTv && staticTvCards) TvHomeMediaCard(
                     item = media,
                     onClick = { onMediaClick(media) },
-                    onToggleFavorite = { onToggleFavorite(media) },
-                    onRemoveHistory = if (row.id == "continue") ({ onRemoveHistory(media) }) else null,
                     focusRequester = if (index == 0) firstCardFocusRequester else null,
+                    restoreFocusRequester = if (media.id == restoreItemId) restoreFocusRequester else null,
+                    onFocused = { onMediaFocused(media) },
                     onFocusDown = onFocusDown,
                     onFocusUp = onFocusUp
                 ) else MediaCard(
@@ -948,7 +987,9 @@ private fun MediaRow(
                     onFocusUp = onFocusUp
                 )
             }
-        }
+        } }
+        if (denseTv) CompositionLocalProvider(LocalBringIntoViewSpec provides TvHomeBringIntoViewSpec) { shelf() }
+        else shelf()
     }
 }
 
@@ -956,27 +997,36 @@ private fun MediaRow(
 private fun TvHomeMediaCard(
     item: UiMedia,
     onClick: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onRemoveHistory: (() -> Unit)?,
-    focusRequester: FocusRequester?,
-    onFocusDown: (() -> Unit)?,
-    onFocusUp: (() -> Unit)?
+    focusRequester: FocusRequester? = null,
+    restoreFocusRequester: FocusRequester? = null,
+    onFocused: () -> Unit = {},
+    onFocusDown: (() -> Unit)? = null,
+    onFocusUp: (() -> Unit)? = null,
+    onReturnToCategory: (() -> Unit)? = null,
+    initialFocus: Boolean = false,
+    compactGrid: Boolean = false
 ) {
     val width = if (item.portrait) 142.dp else 205.dp
     val height = if (item.portrait) 202.dp else 120.dp
     val footerHeight = if (item.portrait) 46.dp else 38.dp
     val density = LocalDensity.current
-    Box(Modifier.width(width).height(height).onPreviewKeyEvent { event ->
+    val cardModifier = if (compactGrid) Modifier.fillMaxWidth().aspectRatio(width.value / height.value)
+        else Modifier.width(width).height(height)
+    Box(cardModifier.onPreviewKeyEvent { event ->
         if (event.type != KeyEventType.KeyDown) false
         else when {
             event.key == Key.DirectionDown && onFocusDown != null -> { onFocusDown(); true }
             event.key == Key.DirectionUp && onFocusUp != null -> { onFocusUp(); true }
+            event.key == Key.DirectionLeft && onReturnToCategory != null -> { onReturnToCategory(); true }
             else -> false
         }
     }) {
         TvHomeSurface(
             onClick,
             Modifier.fillMaxSize().then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .then(restoreFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
+                .onFocusChanged { if (it.isFocused) onFocused() }
         ) {
             Column(Modifier.fillMaxSize()) {
                 ArtworkImage(
@@ -999,18 +1049,6 @@ private fun TvHomeMediaCard(
             if (item.isLocked) StatusPill("PIN", GoldLight, Modifier.align(Alignment.TopCenter).padding(top = 4.dp))
             if (item.progress > 0f) ProgressBar(item.progress, Modifier.align(Alignment.BottomCenter))
         }
-        onRemoveHistory?.let { remove ->
-            TvHomeSurface(remove, Modifier.align(Alignment.TopStart).padding(4.dp).width(62.dp).height(24.dp)) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Remove", color = White, fontSize = 10.sp, maxLines = 1)
-                }
-            }
-        }
-        TvHomeSurface(onToggleFavorite, Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp)) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(if (item.isFavorite) "★" else "☆", color = GoldLight, fontSize = 19.sp)
-            }
-        }
     }
 }
 
@@ -1021,16 +1059,24 @@ private fun LiveTvScreen(
     focusedChannelId: String?,
     onCategorySelected: (Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
-    onToggleFavorite: (UiMedia) -> Unit
+    onToggleFavorite: (UiMedia) -> Unit,
+    onMediaFocused: (UiMedia) -> Unit
 ) {
+    val denseTv = isTelevisionLayout()
+    val channelFocusRequester = remember { FocusRequester() }
     val initialChannelFocusId = focusedChannelId?.takeIf { id -> state.items.any { it.id == id } }
         ?: state.items.firstOrNull()?.id
     val categoryKey = state.categories.getOrNull(state.selectedCategory)?.id
-    var restoredChannelPosition by remember(categoryKey, focusedChannelId) { mutableStateOf(false) }
-    LaunchedEffect(initialChannelFocusId, state.loading) {
+    var restoredChannelPosition by remember(categoryKey) { mutableStateOf(false) }
+    LaunchedEffect(categoryKey, state.loading, state.items.isEmpty()) {
         if (!state.loading && state.items.isNotEmpty() && !restoredChannelPosition) {
             val focusedIndex = state.items.indexOfFirst { it.id == focusedChannelId }
-            if (focusedIndex >= 0) channelListState.scrollToItem(focusedIndex)
+            if (focusedIndex >= 0 && channelListState.layoutInfo.visibleItemsInfo.none { it.index == focusedIndex })
+                channelListState.scrollToItem(focusedIndex)
+            if (denseTv && focusedIndex >= 0) {
+                withFrameNanos { }
+                runCatching { channelFocusRequester.requestFocus() }
+            }
             restoredChannelPosition = true
         }
     }
@@ -1054,7 +1100,6 @@ private fun LiveTvScreen(
         }
         return
     }
-    val denseTv = isTelevisionLayout()
     val categoryListState = rememberLazyListState(
         initialFirstVisibleItemIndex = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
     )
@@ -1063,7 +1108,8 @@ private fun LiveTvScreen(
     val initialCategoryFocusRequested = remember { mutableStateOf(false) }
     LaunchedEffect(state.categories.size) {
         if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
-            categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+            val selected = state.selectedCategory.coerceIn(0, state.categories.lastIndex)
+            if (categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
             withFrameNanos { }
             if (focusedChannelId.isNullOrBlank() || state.items.none { it.id == focusedChannelId }) {
                 selectedCategoryFocusRequester.requestFocus()
@@ -1071,16 +1117,11 @@ private fun LiveTvScreen(
             initialCategoryFocusRequested.value = true
         }
     }
-    LaunchedEffect(state.selectedCategory, state.categories.size) {
-        if (state.categories.isNotEmpty()) {
-            categoryListState.animateScrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
-        }
-    }
     fun focusSelectedCategory() {
         if (state.categories.isEmpty()) return
         val selected = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
         categoryScope.launch {
-            if (state.categories.isNotEmpty()) categoryListState.scrollToItem(selected)
+            if (categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
             withFrameNanos { }
             selectedCategoryFocusRequester.requestFocus()
         }
@@ -1112,7 +1153,8 @@ private fun LiveTvScreen(
                             channel,
                             { onMediaClick(channel) },
                             { onToggleFavorite(channel) },
-                            initialFocus = channel.id == initialChannelFocusId,
+                            focusRequester = if (channel.id == focusedChannelId) channelFocusRequester else null,
+                            onFocused = { onMediaFocused(channel) },
                             onReturnToCategory = if (denseTv) ({ focusSelectedCategory() }) else null
                         )
                     }
@@ -1202,6 +1244,22 @@ private fun CompactCategorySelector(categories: List<UiCategory>, selected: Int,
 private fun CategorySidebarItem(category: UiCategory, selected: Boolean, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
     val denseTv = isTelevisionLayout()
     var focused by remember { mutableStateOf(false) }
+    if (denseTv) {
+        TvHomeSurface(onClick,
+            Modifier.then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .fillMaxWidth().height(48.dp).onFocusChanged { focused = it.isFocused },
+            containerColor = if (selected) Gold.copy(alpha = 0.2f) else Color.Transparent,
+            focusedContainerColor = Gold
+        ) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(category.title, color = if (focused) OnAccent else White, fontSize = 11.sp,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (category.isLocked) Text("PIN", color = if (focused) OnAccent else GoldLight, fontSize = 9.sp)
+            }
+        }
+        return
+    }
     QuestSurface(
         onClick = onClick,
         modifier = Modifier.then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
@@ -1230,9 +1288,35 @@ private fun LiveChannelRow(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     initialFocus: Boolean = false,
-    onReturnToCategory: (() -> Unit)? = null
+    onReturnToCategory: (() -> Unit)? = null,
+    focusRequester: FocusRequester? = null,
+    onFocused: () -> Unit = {}
 ) {
     val denseTv = isTelevisionLayout()
+    if (denseTv) {
+        TvHomeSurface(onClick,
+            Modifier.fillMaxWidth().height(32.dp)
+                .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .onFocusChanged { if (it.isFocused) onFocused() }
+                .onPreviewKeyEvent { event ->
+                    if (onReturnToCategory != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                        onReturnToCategory(); true
+                    } else false
+                },
+            containerColor = Panel
+        ) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                ArtworkImage(item.imageUrl, item.title, Modifier.width(42.dp).height(24.dp),
+                    contentScale = ContentScale.Fit, requestHeaders = item.imageHeaders,
+                    fallbackText = item.badge ?: "LIVE", fallbackTextSize = 8.sp, fallbackColor = GoldLight)
+                Spacer(Modifier.width(6.dp))
+                Text(item.title, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (item.isLocked) StatusPill("PIN", GoldLight)
+            }
+        }
+        return
+    }
     Row(Modifier.fillMaxWidth().height(if (denseTv) 32.dp else 78.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (denseTv) 4.dp else 8.dp)) {
         QuestSurface(
@@ -1326,7 +1410,8 @@ private fun ContentBrowserScreen(
     onLoadMore: () -> Unit,
     onCategorySelected: (Int) -> Unit,
     onMediaClick: (UiMedia) -> Unit,
-    onToggleFavorite: (UiMedia) -> Unit
+    onToggleFavorite: (UiMedia) -> Unit,
+    onMediaFocused: (UiMedia) -> Unit
 ) {
     val selectedCategoryKey = state.categories.getOrNull(state.selectedCategory)?.id ?: state.selectedCategory.toString()
     AutoLoadMoreForGrid(
@@ -1344,12 +1429,14 @@ private fun ContentBrowserScreen(
     }
     val denseTv = isTelevisionLayout()
     val categoryListState = rememberLazyListState()
+    val contentFocusRequester = remember { FocusRequester() }
     val selectedCategoryFocusRequester = remember { FocusRequester() }
     val categoryScope = rememberCoroutineScope()
     val initialCategoryFocusRequested = remember { mutableStateOf(false) }
     LaunchedEffect(state.categories.size) {
         if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
-            categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+            val selected = state.selectedCategory.coerceIn(0, state.categories.lastIndex)
+            if (categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
             withFrameNanos { }
             if (focusedContentId.isNullOrBlank() || state.items.none { it.id == focusedContentId }) {
                 selectedCategoryFocusRequester.requestFocus()
@@ -1357,20 +1444,24 @@ private fun ContentBrowserScreen(
             initialCategoryFocusRequested.value = true
         }
     }
-    LaunchedEffect(state.selectedCategory, state.categories.size) {
-        if (state.categories.isNotEmpty()) {
-            categoryListState.animateScrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+    var positionRestored by remember(selectedCategoryKey) { mutableStateOf(false) }
+    LaunchedEffect(selectedCategoryKey, state.loading, state.items.isEmpty()) {
+        if (!state.loading && state.items.isNotEmpty() && !positionRestored) {
+            val restoreIndex = focusedContentId?.let { id -> state.items.indexOfFirst { it.id == id } } ?: -1
+            if (restoreIndex >= 0 && gridState.layoutInfo.visibleItemsInfo.none { it.index == restoreIndex })
+                gridState.scrollToItem(restoreIndex)
+            if (denseTv && restoreIndex >= 0) {
+                withFrameNanos { }
+                runCatching { contentFocusRequester.requestFocus() }
+            }
+            positionRestored = true
         }
-    }
-    LaunchedEffect(selectedCategoryKey, focusedContentId) {
-        val restoreIndex = focusedContentId?.let { id -> state.items.indexOfFirst { it.id == id } } ?: -1
-        gridState.scrollToItem(restoreIndex.takeIf { it >= 0 } ?: 0)
     }
     fun focusSelectedCategory() {
         if (state.categories.isEmpty()) return
         val selected = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
         categoryScope.launch {
-            if (state.categories.isNotEmpty()) categoryListState.scrollToItem(selected)
+            if (categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
             withFrameNanos { }
             selectedCategoryFocusRequester.requestFocus()
         }
@@ -1415,7 +1506,8 @@ private fun ContentBrowserScreen(
                             contentType = { _, item -> if (item.portrait) "poster" else "landscape" }) { index, media ->
                             MediaCard(
                                 media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true,
-                                initialFocus = media.id == focusedContentId,
+                                focusRequester = if (media.id == focusedContentId) contentFocusRequester else null,
+                                onFocused = { onMediaFocused(media) },
                                 onReturnToCategory = if (denseTv && index % columns == 0) ({ focusSelectedCategory() }) else null
                             )
                         }
@@ -1522,9 +1614,16 @@ private fun MediaCard(
     onReturnToCategory: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
     onFocusDown: (() -> Unit)? = null,
-    onFocusUp: (() -> Unit)? = null
+    onFocusUp: (() -> Unit)? = null,
+    onFocused: () -> Unit = {}
 ) {
     val denseTv = isTelevisionLayout()
+    if (denseTv) {
+        TvHomeMediaCard(item, onClick, focusRequester = focusRequester, onFocused = onFocused,
+            onFocusDown = onFocusDown, onFocusUp = onFocusUp, onReturnToCategory = onReturnToCategory,
+            initialFocus = initialFocus, compactGrid = compactGrid)
+        return
+    }
     val compact = isCompactAndroidLayout()
     val width = if (item.portrait) (if (denseTv) 142.dp else if (compact) 132.dp else 166.dp) else (if (denseTv) 205.dp else if (compact) 190.dp else 235.dp)
     val height = if (item.portrait) (if (denseTv) 202.dp else if (compact) 190.dp else 235.dp) else (if (denseTv) 120.dp else if (compact) 112.dp else 138.dp)
@@ -1770,7 +1869,7 @@ private fun StbPlaySettingsScreen(
                         }
                     }
                     Text("Adult-only mode shows adult content on Home and applies its own dark theme. Provider ratings and labels determine which individual titles are recognized as adult.", color = Muted, fontSize = 12.sp)
-                    PrimaryAction("Change PIN", onChangePin)
+                    PrimaryAction("Change PIN", onClick = onChangePin)
                 }
             }
             SettingsPage.CONTENT -> item {
@@ -1786,7 +1885,7 @@ private fun StbPlaySettingsScreen(
                 SettingsSection("App updates") {
                     Text(state.updateText, color = if (state.updateAvailableVersion == null) Muted else Good, fontSize = 13.sp)
                     WideAction("Check for updates", onCheckUpdates, Modifier.fillMaxWidth())
-                    if (state.updateAvailableVersion != null) PrimaryAction("Download & install", onDownloadUpdate)
+                    if (state.updateAvailableVersion != null) PrimaryAction("Download & install", onClick = onDownloadUpdate)
                 }
             }
             SettingsPage.PRIVACY -> item {
@@ -1844,7 +1943,7 @@ fun ProviderPairingDialog(
                 PairingValue("Portal MAC", session.portalMac)
                 Text(status, color = GoldLight, fontSize = 13.sp)
                 Text("Your provider sees the Device ID and MAC in their panel after pairing. Portal setup stays manual unless your provider assigns a profile. Canceling revokes the code when online; otherwise it expires automatically.", color = Muted, fontSize = 12.sp)
-                PrimaryAction("Cancel pairing", onDismiss)
+                PrimaryAction("Cancel pairing", onClick = onDismiss)
             }
         }
     }
@@ -1882,7 +1981,7 @@ private fun SettingsMenuDivider() {
 private fun SettingsMenuRow(icon: ImageVector, title: String, subtitle: String? = null, showChevron: Boolean = true,
                             initialFocus: Boolean = false, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    QuestSurface(onClick = onClick,
+    QuestSurface(onClick = onClick, tvContainerColor = Color.Transparent, tvFocusedContainerColor = Gold,
         modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth().height(64.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
@@ -2015,7 +2114,7 @@ private fun PortalProfileRow(profile: PortalSettings, active: Boolean, onUse: ()
 @Composable
 private fun PreferenceRow(title: String, value: String, onClick: () -> Unit) {
     QuestSurface(
-        onClick = onClick,
+        onClick = onClick, tvContainerColor = Navy, tvFocusedContainerColor = Gold.copy(alpha = 0.18f),
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Navy, focusedContainerColor = Gold.copy(alpha = 0.18f)),
@@ -2037,7 +2136,7 @@ private fun PreferenceRow(title: String, value: String, onClick: () -> Unit) {
 private fun WideAction(title: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     QuestSurface(
-        onClick = onClick,
+        onClick = onClick, tvContainerColor = PanelSoft, tvFocusedContainerColor = Gold,
         modifier = modifier.height(38.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = Gold),
@@ -2046,8 +2145,8 @@ private fun WideAction(title: String, onClick: () -> Unit, modifier: Modifier = 
 }
 
 @Composable
-private fun PrimaryAction(title: String, onClick: () -> Unit) {
-    QuestButton(onClick = onClick, colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)) {
+private fun PrimaryAction(title: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    QuestButton(onClick = onClick, modifier = modifier, colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)) {
         Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -2405,6 +2504,9 @@ fun ProviderPinSetupPrompt(onSave: (String) -> Unit, onCancel: () -> Unit) {
     var next by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
+    val newPinFocus = remember { FocusRequester() }
+    val confirmPinFocus = remember { FocusRequester() }
+    val savePinFocus = remember { FocusRequester() }
     BackHandler(onBack = onCancel)
     Box(Modifier.fillMaxSize().background(Color(0xD9070707)), contentAlignment = Alignment.Center) {
         Surface(
@@ -2422,11 +2524,14 @@ fun ProviderPinSetupPrompt(onSave: (String) -> Unit, onCancel: () -> Unit) {
                     "Create a 4–8 digit PIN to protect parental settings and restricted content.",
                     color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center
                 )
-                PinField("New PIN", next, initialFocus = true) { next = it; error = "" }
-                PinField("Confirm PIN", confirmation) { confirmation = it; error = "" }
+                PinField("New PIN", next, initialFocus = true, focusRequester = newPinFocus,
+                    nextFocusRequester = confirmPinFocus, imeAction = ImeAction.Next) { next = it; error = "" }
+                PinField("Confirm PIN", confirmation, focusRequester = confirmPinFocus,
+                    previousFocusRequester = newPinFocus, nextFocusRequester = savePinFocus,
+                    nextIsAction = true) { confirmation = it; error = "" }
                 if (error.isNotBlank()) Text(error, color = Danger, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryAction("Save PIN") {
+                    PrimaryAction("Save PIN", Modifier.focusRequester(savePinFocus).focusProperties { up = confirmPinFocus }) {
                         error = when {
                             next.length !in 4..8 -> "PIN must have 4 to 8 digits."
                             confirmation != next -> "The PIN entries do not match."
@@ -2445,6 +2550,9 @@ fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () 
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
+    val currentPinFocus = remember { FocusRequester() }
+    val newPinFocus = remember { FocusRequester() }
+    val savePinFocus = remember { FocusRequester() }
     BackHandler(onBack = onCancel)
     Box(Modifier.fillMaxSize().background(Color(0xD9070707)), contentAlignment = Alignment.Center) {
         Surface(
@@ -2454,11 +2562,13 @@ fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () 
         ) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(13.dp)) {
                 Text("Change parental PIN", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                PinField("Current PIN", current, initialFocus = true) { current = it; error = "" }
-                PinField("New PIN", next) { next = it; error = "" }
+                PinField("Current PIN", current, initialFocus = true, focusRequester = currentPinFocus,
+                    nextFocusRequester = newPinFocus, imeAction = ImeAction.Next) { current = it; error = "" }
+                PinField("New PIN", next, focusRequester = newPinFocus, previousFocusRequester = currentPinFocus,
+                    nextFocusRequester = savePinFocus, nextIsAction = true) { next = it; error = "" }
                 if (error.isNotBlank()) Text(error, color = Danger, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryAction("Update") {
+                    PrimaryAction("Update", Modifier.focusRequester(savePinFocus).focusProperties { up = newPinFocus }) {
                         error = when {
                             current != expectedPin -> "Current PIN is incorrect."
                             next.length !in 4..8 -> "New PIN must have 4 to 8 digits."
@@ -2473,16 +2583,47 @@ fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () 
 }
 
 @Composable
-private fun PinField(label: String, value: String, initialFocus: Boolean = false, onChange: (String) -> Unit) {
+private fun PinField(
+    label: String, value: String, initialFocus: Boolean = false,
+    focusRequester: FocusRequester? = null,
+    previousFocusRequester: FocusRequester? = null,
+    nextFocusRequester: FocusRequester? = null,
+    imeAction: ImeAction = ImeAction.Done,
+    nextIsAction: Boolean = false,
+    onChange: (String) -> Unit
+) {
+    val television = isTelevisionLayout()
+    val keyboard = LocalSoftwareKeyboardController.current
+    fun focusNext() {
+        if (nextIsAction) keyboard?.hide()
+        nextFocusRequester?.requestFocus()
+    }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(label, color = Muted, fontSize = 12.sp)
         BasicTextField(
             value = value,
             onValueChange = { onChange(it.filter(Char::isDigit).take(8)) },
-            modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
+            modifier = Modifier.then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
+                .focusProperties {
+                    nextFocusRequester?.let { next = it; down = it }
+                    previousFocusRequester?.let { previous = it; up = it }
+                }
+                .onPreviewKeyEvent { event ->
+                    val advance = nextFocusRequester != null && (event.key == Key.DirectionDown ||
+                        (value.isNotBlank() && event.key in listOf(Key.Enter, Key.NumPadEnter, Key.DirectionCenter)))
+                    val retreat = previousFocusRequester != null && event.key == Key.DirectionUp
+                    if (television && (advance || retreat)) {
+                        if (event.type == KeyEventType.KeyDown) {
+                            if (advance) focusNext() else previousFocusRequester?.requestFocus()
+                        }
+                        true
+                    } else false
+                }
                 .fillMaxWidth().height(48.dp).background(Navy, RoundedCornerShape(10.dp)).border(1.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 13.dp),
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = imeAction),
+            keyboardActions = KeyboardActions(onNext = { focusNext() }, onDone = { focusNext(); keyboard?.hide() }),
             textStyle = TextStyle(color = White, fontSize = 16.sp)
         )
     }
