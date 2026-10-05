@@ -348,6 +348,7 @@ private fun NativePlayerScreen(
     var playerControlsVisible by remember(playbackUrl) { mutableStateOf(false) }
     var controlsInteraction by remember(playbackUrl) { mutableIntStateOf(0) }
     var pointerInsidePlayer by remember(playbackUrl) { mutableStateOf(false) }
+    val lastTvHoverPosition = remember(playbackUrl) { floatArrayOf(Float.NaN, Float.NaN) }
     var nativePlayerView by remember(playbackUrl) { mutableStateOf<SeekablePlayerView?>(null) }
     val tvActionsFocusRequester = remember { FocusRequester() }
     var tvActionsHaveFocus by remember(playbackUrl) { mutableStateOf(false) }
@@ -496,6 +497,7 @@ private fun NativePlayerScreen(
                     useController = !hideTvLiveController
                     if (hideTvLiveController) hideController()
                     controllerShowTimeoutMs = 3_000
+                    if (isAndroidTv) controllerAutoShow = false
                     keepScreenOn = true
                     isFocusable = true
                     isFocusableInTouchMode = true
@@ -560,14 +562,24 @@ private fun NativePlayerScreen(
                         when (event.actionMasked) {
                             MotionEvent.ACTION_HOVER_ENTER -> {
                                 pointerInsidePlayer = true
+                                lastTvHoverPosition[0] = event.x
+                                lastTvHoverPosition[1] = event.y
                                 revealPlayerControls()
                             }
                             MotionEvent.ACTION_HOVER_MOVE -> {
                                 pointerInsidePlayer = true
-                                if (isAndroidTv) revealPlayerControls()
+                                if (isAndroidTv && (lastTvHoverPosition[0].isNaN() ||
+                                    kotlin.math.abs(event.x - lastTvHoverPosition[0]) >= 1f ||
+                                    kotlin.math.abs(event.y - lastTvHoverPosition[1]) >= 1f)) {
+                                    lastTvHoverPosition[0] = event.x
+                                    lastTvHoverPosition[1] = event.y
+                                    revealPlayerControls()
+                                }
                             }
                             MotionEvent.ACTION_HOVER_EXIT -> {
                                 pointerInsidePlayer = false
+                                lastTvHoverPosition[0] = Float.NaN
+                                lastTvHoverPosition[1] = Float.NaN
                                 controlsInteraction++
                             }
                         }

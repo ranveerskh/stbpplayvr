@@ -1492,7 +1492,8 @@ private fun StbPlayRoot(
                     onRetry = { startConnection(storedSettings) },
                     onEdit = { editingPortal = storedSettings; screen = AppScreen.SETUP }
                 )
-                else -> appUiStateHolder.SaveableStateProvider(storedSettings.id.ifBlank { "setup" }) { StbPlayApp(
+                else -> {
+                  val renderApp: @Composable () -> Unit = { StbPlayApp(
                     homeState = homeState,
                     liveState = liveState,
                     contentState = contentState,
@@ -1618,7 +1619,10 @@ private fun StbPlayRoot(
                             else -> Unit
                         }
                     }
-                ) }
+                  ) }
+                  if (isAndroidTv) appUiStateHolder.SaveableStateProvider(storedSettings.id.ifBlank { "setup" }) { renderApp() }
+                  else renderApp()
+                }
             }
 
             pendingLockedMedia?.let { locked ->

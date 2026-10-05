@@ -368,8 +368,7 @@ fun StbPlayApp(
     }
 
     val tabStateHolder = rememberSaveableStateHolder()
-    val renderPage: @Composable () -> Unit = {
-        tabStateHolder.SaveableStateProvider(selectedTab.name) {
+    val renderTab: @Composable () -> Unit = {
             when (selectedTab) {
                 StbPlayTab.HOME -> StbPlayHomeScreen(
                     state = homeState,
@@ -431,7 +430,10 @@ fun StbPlayApp(
                     onShare = onShare
                 )
             }
-        }
+    }
+    val renderPage: @Composable () -> Unit = {
+        if (tvLayout) tabStateHolder.SaveableStateProvider(selectedTab.name) { renderTab() }
+        else renderTab()
     }
     val pageContent: @Composable () -> Unit = {
         if (tvLayout) CompositionLocalProvider(LocalBringIntoViewSpec provides TvVerticalBringIntoViewSpec) { renderPage() }
@@ -1071,7 +1073,7 @@ private fun LiveTvScreen(
     LaunchedEffect(categoryKey, state.loading, state.items.isEmpty()) {
         if (!state.loading && state.items.isNotEmpty() && !restoredChannelPosition) {
             val focusedIndex = state.items.indexOfFirst { it.id == focusedChannelId }
-            if (focusedIndex >= 0 && channelListState.layoutInfo.visibleItemsInfo.none { it.index == focusedIndex })
+            if (focusedIndex >= 0 && (!denseTv || channelListState.layoutInfo.visibleItemsInfo.none { it.index == focusedIndex }))
                 channelListState.scrollToItem(focusedIndex)
             if (denseTv && focusedIndex >= 0) {
                 withFrameNanos { }
@@ -1109,13 +1111,16 @@ private fun LiveTvScreen(
     LaunchedEffect(state.categories.size) {
         if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
             val selected = state.selectedCategory.coerceIn(0, state.categories.lastIndex)
-            if (categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
+            if (!denseTv || categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
             withFrameNanos { }
             if (focusedChannelId.isNullOrBlank() || state.items.none { it.id == focusedChannelId }) {
                 selectedCategoryFocusRequester.requestFocus()
             }
             initialCategoryFocusRequested.value = true
         }
+    }
+    if (!denseTv) LaunchedEffect(state.selectedCategory, state.categories.size) {
+        if (state.categories.isNotEmpty()) categoryListState.animateScrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
     }
     fun focusSelectedCategory() {
         if (state.categories.isEmpty()) return
@@ -1153,7 +1158,8 @@ private fun LiveTvScreen(
                             channel,
                             { onMediaClick(channel) },
                             { onToggleFavorite(channel) },
-                            focusRequester = if (channel.id == focusedChannelId) channelFocusRequester else null,
+                            initialFocus = !denseTv && channel.id == initialChannelFocusId,
+                            focusRequester = if (denseTv && channel.id == focusedChannelId) channelFocusRequester else null,
                             onFocused = { onMediaFocused(channel) },
                             onReturnToCategory = if (denseTv) ({ focusSelectedCategory() }) else null
                         )
@@ -1436,7 +1442,7 @@ private fun ContentBrowserScreen(
     LaunchedEffect(state.categories.size) {
         if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
             val selected = state.selectedCategory.coerceIn(0, state.categories.lastIndex)
-            if (categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
+            if (!denseTv || categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
             withFrameNanos { }
             if (focusedContentId.isNullOrBlank() || state.items.none { it.id == focusedContentId }) {
                 selectedCategoryFocusRequester.requestFocus()
@@ -1444,9 +1450,18 @@ private fun ContentBrowserScreen(
             initialCategoryFocusRequested.value = true
         }
     }
+    if (!denseTv) {
+        LaunchedEffect(state.selectedCategory, state.categories.size) {
+            if (state.categories.isNotEmpty()) categoryListState.animateScrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+        }
+        LaunchedEffect(selectedCategoryKey, focusedContentId) {
+            val restoreIndex = focusedContentId?.let { id -> state.items.indexOfFirst { it.id == id } } ?: -1
+            gridState.scrollToItem(restoreIndex.takeIf { it >= 0 } ?: 0)
+        }
+    }
     var positionRestored by remember(selectedCategoryKey) { mutableStateOf(false) }
     LaunchedEffect(selectedCategoryKey, state.loading, state.items.isEmpty()) {
-        if (!state.loading && state.items.isNotEmpty() && !positionRestored) {
+        if (denseTv && !state.loading && state.items.isNotEmpty() && !positionRestored) {
             val restoreIndex = focusedContentId?.let { id -> state.items.indexOfFirst { it.id == id } } ?: -1
             if (restoreIndex >= 0 && gridState.layoutInfo.visibleItemsInfo.none { it.index == restoreIndex })
                 gridState.scrollToItem(restoreIndex)
@@ -1506,7 +1521,8 @@ private fun ContentBrowserScreen(
                             contentType = { _, item -> if (item.portrait) "poster" else "landscape" }) { index, media ->
                             MediaCard(
                                 media, { onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true,
-                                focusRequester = if (media.id == focusedContentId) contentFocusRequester else null,
+                                initialFocus = !denseTv && media.id == focusedContentId,
+                                focusRequester = if (denseTv && media.id == focusedContentId) contentFocusRequester else null,
                                 onFocused = { onMediaFocused(media) },
                                 onReturnToCategory = if (denseTv && index % columns == 0) ({ focusSelectedCategory() }) else null
                             )
