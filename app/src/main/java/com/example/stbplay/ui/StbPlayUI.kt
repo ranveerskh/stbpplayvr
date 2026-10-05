@@ -1862,7 +1862,8 @@ private fun StbPlaySettingsScreen(
     val entry = LocalTvFocusEntry.current
     val restoreTitle = remember(page, entry) { lastMenuTitle }
     val settingsEntry = remember(page, entry) { java.util.UUID.randomUUID().toString() }
-    val settingsListState = rememberLazyListState()
+    val defaultSettingsListState = rememberLazyListState()
+    val settingsListState = if (television) remember(page) { LazyListState() } else defaultSettingsListState
     LaunchedEffect(page, entry) {
         if (television && page == SettingsPage.HOME) {
             val group = when (restoreTitle) {
