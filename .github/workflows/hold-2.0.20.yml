@@ -1,0 +1,15 @@
+name: Hold 2.0.20 stable publication
+on:
+  push:
+    branches: ['hold/2.0.20']
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel release at user request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST repos/ranveerskh/stbpplayvr/actions/runs/37352193836/cancel
