@@ -8,6 +8,7 @@ import androidx.compose.ui.focus.focusProperties
 import com.example.stbplay.ui.screens.TvLivePreviewPanel
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
@@ -75,6 +76,16 @@ class TvNavigationFocusTest {
     private fun focused(tag: String) {
         rule.waitUntil(8_000) { rule.onAllNodes(hasTestTag(tag) and isFocused()).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(tag).assertIsFocused().assertIsDisplayed()
+        if (tag != "tv-focus:settings:back") {
+            val pixels = rule.onNodeWithTag(tag).captureToImage().toPixelMap()
+            val gold = (0 until minOf(8, pixels.height)).any { y ->
+                val color = pixels[pixels.width / 2, y]
+                kotlin.math.abs(color.red - 214f / 255f) < 0.08f &&
+                    kotlin.math.abs(color.green - 172f / 255f) < 0.08f &&
+                    kotlin.math.abs(color.blue - 88f / 255f) < 0.08f
+            }
+            assertTrue("Focused control must also show its yellow highlight: $tag", gold)
+        }
     }
     private fun rail(tab: StbPlayTab) {
         rule.onNodeWithTag("tv-rail:${tab.name}").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
