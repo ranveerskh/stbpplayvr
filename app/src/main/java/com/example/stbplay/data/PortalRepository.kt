@@ -382,6 +382,24 @@ class PortalRepository {
     fun getPortalName(): String = currentSettings?.name.orEmpty()
     fun getSubscription(): PortalSubscription = currentSubscription
 
+    /** Fetch account metadata separately from catalogue and playback initialization. */
+    suspend fun refreshSubscription(): PortalSubscription = withContext(Dispatchers.IO) {
+        val settings = currentSettings ?: return@withContext currentSubscription
+        val session = currentSession ?: return@withContext currentSubscription
+        val profileSubscription = currentSubscription
+        val response = stalkerClient.call(settings.url, settings.mac, session, "account_info", "get_main_info")
+        val account = parseSubscription(response)
+        val merged = PortalSubscription(
+            plan = account.plan.takeUnless { it == "Subscription" } ?: profileSubscription.plan,
+            status = account.status.ifBlank { profileSubscription.status },
+            expiryEpochMillis = if (account.unlimited) null else account.expiryEpochMillis ?: profileSubscription.expiryEpochMillis,
+            unlimited = account.unlimited || (account.expiryEpochMillis == null && profileSubscription.unlimited)
+        )
+        if (currentSession === session && currentSettings == settings) currentSubscription = merged
+        currentSubscription
+    }
+
+
     /**
      * Returns only qualities actually exposed by the portal. A single playable
      * command is labelled Auto rather than inventing a 4K/1080p label.
@@ -564,15 +582,15 @@ class PortalRepository {
     }
 
     private fun parseSubscription(profile: JSONObject): PortalSubscription {
-        val root = profile.opt("js")
-        val plan = profileValue(root, setOf("tariff_plan", "tariff", "plan", "package", "subscription_name"))
+        val root = profile.opt("js") ?: profile
+        val plan = profileValue(root, setOf("tariff_plan", "tariff_name", "tariff", "plan", "package", "subscription_name"))
             .orEmpty().ifBlank { "Subscription" }.take(80)
         val status = profileValue(root, setOf("status", "state", "account_status")).orEmpty().take(40)
         val expiryRaw = profileValue(
             root,
-            setOf("end_date", "expire_date", "expire_billing_date", "expiration", "expires_at", "expiry_date", "valid_until", "endDate", "expireDate")
+            setOf("end_date", "expire_date", "expire_billing_date", "expiration", "expires_at", "expiry_date", "valid_until", "endDate", "expireDate", "exp_date", "expire", "expiry", "expiration_date", "expire_time", "billing_end_date")
         ).orEmpty()
-        val unlimited = expiryRaw.trim().lowercase() in setOf("", "0", "none", "never", "unlimited", "infinite")
+        val unlimited = expiryRaw.trim().lowercase() in setOf("0", "none", "never", "unlimited", "infinite")
         return PortalSubscription(plan, status, if (unlimited) null else parseDateEpoch(expiryRaw), unlimited)
     }
 
@@ -586,7 +604,7 @@ class PortalRepository {
                     val value = node.opt(key)
                     if (key in keys && value != null && value != JSONObject.NULL) {
                         val text = value.toString().trim()
-                        if (text.isNotBlank()) return text
+                        if (value !is JSONObject && value !is JSONArray && text.isNotBlank() && text != "null") return text
                     }
                     profileValue(value, keys, depth + 1)?.let { return it }
                 }
@@ -609,8 +627,12 @@ class PortalRepository {
         }
         return runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
             ?: runCatching { OffsetDateTime.parse(value).toInstant().toEpochMilli() }.getOrNull()
-            ?: runCatching { LocalDateTime.parse(value).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()
+            ?: runCatching { LocalDateTime.parse(value.replace(' ', 'T')).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()
             ?: runCatching { LocalDate.parse(value).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()
+            ?: listOf("dd.MM.yyyy", "dd-MM-yyyy", "MM/dd/yyyy").firstNotNullOfOrNull { format ->
+                runCatching { LocalDate.parse(value, java.time.format.DateTimeFormatter.ofPattern(format))
+                    .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()
+            }
     }
 
     private fun vodListParams(categoryId: String?): Map<String, String> = buildMap {

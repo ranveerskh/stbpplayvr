@@ -188,18 +188,29 @@ private fun isTelevisionLayout(): Boolean {
     }
 }
 
-/** Gives a newly opened TV screen a focused control for Quest/gamepad input. */
+private data class SettingsFocusTarget(val title: String, val onFocused: (String) -> Unit)
+private val LocalSettingsFocusTarget = androidx.compose.runtime.staticCompositionLocalOf<SettingsFocusTarget?> { null }
+
+private val LocalTvFocusEntry = androidx.compose.runtime.staticCompositionLocalOf { "" }
+
+/** Request once per mounted screen, without stealing focus when a lazy row returns. */
 @Composable
 fun Modifier.questInitialFocus(): Modifier {
     val requester = remember { FocusRequester() }
     val television = isTelevisionLayout()
     // Lazy items leave composition when scrolled away. Keep this flag in their
     // saved item state so returning to the viewport cannot steal remote focus.
-    var focusWasRequested by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(requester) {
-        if (!television || !focusWasRequested) {
-            focusWasRequested = true
+    val fallbackEntry = remember { java.util.UUID.randomUUID().toString() }
+    val entry = LocalTvFocusEntry.current.ifBlank { fallbackEntry }
+    var requestedEntry by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(requester, entry) {
+        if (!television || requestedEntry != entry) {
+            if (television) {
+                withFrameNanos { }
+                withFrameNanos { }
+            }
             requester.requestFocus()
+            requestedEntry = entry
         }
     }
     return then(focusRequester(requester))
@@ -288,7 +299,11 @@ data class StbPlaySettingsState(
     val updateText: String = "Check whether a newer STB Play version is available.",
     val updateAvailableVersion: String? = null,
     val licenseStatus: String = "No key activated",
-    val licenseBusy: Boolean = false
+    val licenseBusy: Boolean = false,
+    val appAccessStatus: String = "",
+    val deviceReference: String = "",
+    val portalMac: String = "",
+    val portalSubscriptionMessage: String = ""
 )
 
 @Composable
@@ -438,8 +453,11 @@ fun StbPlayApp(
                 )
             }
     }
+    val focusEntry = remember(selectedTab) { java.util.UUID.randomUUID().toString() }
     val renderPage: @Composable () -> Unit = {
-        if (tvLayout) tabStateHolder.SaveableStateProvider(selectedTab.name) { renderTab() }
+        if (tvLayout) CompositionLocalProvider(LocalTvFocusEntry provides focusEntry) {
+            tabStateHolder.SaveableStateProvider(selectedTab.name) { renderTab() }
+        }
         else renderTab()
     }
     val pageContent: @Composable () -> Unit = {
@@ -1107,7 +1125,8 @@ private fun LiveTvScreen(
                 channelListState.scrollToItem(focusedIndex)
             if (denseTv && focusedIndex >= 0) {
                 withFrameNanos { }
-                runCatching { channelRequesters[restoreId]?.requestFocus() }
+                withFrameNanos { }
+                channelRequesters[restoreId]?.requestFocus()
             }
             restoredChannelPosition = true
         }
@@ -1138,10 +1157,11 @@ private fun LiveTvScreen(
     val selectedCategoryFocusRequester = remember { FocusRequester() }
     val categoryScope = rememberCoroutineScope()
     val initialCategoryFocusRequested = remember { mutableStateOf(false) }
-    LaunchedEffect(state.categories.size) {
-        if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
+    LaunchedEffect(state.categories.size, state.loading) {
+        if (!state.loading && state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
             val selected = state.selectedCategory.coerceIn(0, state.categories.lastIndex)
             if (!denseTv || categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
+            withFrameNanos { }
             withFrameNanos { }
             val restoreId = if (denseTv) localFocusedChannelId else focusedChannelId
             if (restoreId.isNullOrBlank() || state.items.none { it.id == restoreId }) {
@@ -1508,10 +1528,11 @@ private fun ContentBrowserScreen(
     val selectedCategoryFocusRequester = remember { FocusRequester() }
     val categoryScope = rememberCoroutineScope()
     val initialCategoryFocusRequested = remember { mutableStateOf(false) }
-    LaunchedEffect(state.categories.size) {
-        if (state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
+    LaunchedEffect(state.categories.size, state.loading) {
+        if (!state.loading && state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
             val selected = state.selectedCategory.coerceIn(0, state.categories.lastIndex)
             if (!denseTv || categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
+            withFrameNanos { }
             withFrameNanos { }
             if (focusedContentId.isNullOrBlank() || state.items.none { it.id == focusedContentId }) {
                 selectedCategoryFocusRequester.requestFocus()
@@ -1536,7 +1557,8 @@ private fun ContentBrowserScreen(
                 gridState.scrollToItem(restoreIndex)
             if (denseTv && restoreIndex >= 0) {
                 withFrameNanos { }
-                runCatching { contentFocusRequester.requestFocus() }
+                withFrameNanos { }
+                contentFocusRequester.requestFocus()
             }
             positionRestored = true
         }
@@ -1835,10 +1857,33 @@ private fun StbPlaySettingsScreen(
     onShare: () -> Unit
 ) {
     var page by remember { mutableStateOf(SettingsPage.HOME) }
+    var lastMenuTitle by rememberSaveable { mutableStateOf("Subscription") }
+    val television = isTelevisionLayout()
+    val entry = LocalTvFocusEntry.current
+    val restoreTitle = remember(page, entry) { lastMenuTitle }
+    val settingsEntry = remember(page, entry) { java.util.UUID.randomUUID().toString() }
+    val settingsListState = rememberLazyListState()
+    LaunchedEffect(page, entry) {
+        if (television && page == SettingsPage.HOME) {
+            val group = when (restoreTitle) {
+                "Content sources", "Content & storage" -> 1
+                "Player options", "Appearance & language", "Parental controls" -> 2
+                "Updates", "Privacy & permissions" -> 3
+                "About STB Play", "Share app" -> 4
+                else -> 0
+            }
+            settingsListState.scrollToItem(group)
+        }
+    }
     val uriHandler = LocalUriHandler.current
     BackHandler(enabled = page != SettingsPage.HOME) { page = SettingsPage.HOME }
+    CompositionLocalProvider(
+        LocalTvFocusEntry provides if (television) settingsEntry else entry,
+        LocalSettingsFocusTarget provides if (television && page == SettingsPage.HOME)
+            SettingsFocusTarget(restoreTitle) { lastMenuTitle = it } else null) {
     androidx.compose.runtime.key(if (isTelevisionLayout()) page else Unit) {
     LazyColumn(
+        state = settingsListState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = if (isCompactAndroidLayout()) 16.dp else 24.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1995,11 +2040,33 @@ private fun StbPlaySettingsScreen(
             }
             SettingsPage.ABOUT -> item {
                 SettingsSection("About") {
+                    val context = LocalContext.current
+                    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                    val deviceDescription = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+                    val mode = if (isTelevisionLayout()) "TV" else if (
+                        listOf(android.os.Build.MANUFACTURER, android.os.Build.BRAND, android.os.Build.MODEL)
+                            .any { it.contains("oculus", true) || it.contains("meta", true) || it.contains("quest", true) }
+                    ) "Meta" else "Phone"
+                    PairingValue("App version / build", "${com.example.stbplay.BuildConfig.VERSION_NAME} (${com.example.stbplay.BuildConfig.VERSION_CODE})")
+                    PairingValue("STB PLAY Device ID", state.deviceReference.ifBlank { "Unavailable" })
+                    WideAction("Copy Device ID", {
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(state.deviceReference))
+                        android.widget.Toast.makeText(context, "Device ID copied", android.widget.Toast.LENGTH_SHORT).show()
+                    }, Modifier.fillMaxWidth())
+                    PairingValue("Portal MAC", state.portalMac.ifBlank { "No portal MAC configured" })
+                    WideAction("Copy MAC", {
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(state.portalMac))
+                        android.widget.Toast.makeText(context, "MAC copied", android.widget.Toast.LENGTH_SHORT).show()
+                    }, Modifier.fillMaxWidth())
+                    PairingValue("Device", deviceDescription)
+                    PairingValue("Android version", "${android.os.Build.VERSION.RELEASE} · API ${android.os.Build.VERSION.SDK_INT}")
+                    PairingValue("App mode", mode)
                     Text("STB Play does not provide subscriptions, channels, movies or streams. Use only content sources you are authorized to access.", color = White, fontSize = 13.sp)
                     WideAction("Share STB Play", onShare, Modifier.fillMaxWidth())
                 }
             }
         }
+    }
     }
     }
 }
@@ -2066,9 +2133,14 @@ private fun SettingsMenuDivider() {
 private fun SettingsMenuRow(icon: ImageVector, title: String, subtitle: String? = null, showChevron: Boolean = true,
                             initialFocus: Boolean = false, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    val target = LocalSettingsFocusTarget.current
+    val requestInitial = target?.let { it.title == title } ?: initialFocus
     QuestSurface(onClick = onClick, tvContainerColor = Color.Transparent, tvFocusedContainerColor = Gold,
-        modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
-            .fillMaxWidth().height(64.dp).onFocusChanged { focused = it.isFocused },
+        modifier = Modifier.then(if (requestInitial) Modifier.questInitialFocus() else Modifier)
+            .fillMaxWidth().height(64.dp).onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) target?.onFocused?.invoke(title)
+            },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Gold),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))) {
@@ -2091,17 +2163,11 @@ private fun SubscriptionCard(state: StbPlaySettingsState, onActivateLicense: (St
     var activationMessage by remember { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SettingsSection("STB Play demo trial") {
+        SettingsSection("STB Play app access") {
             Text(state.licenseName, color = White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             if (state.licenseExpiryText.isNotBlank()) Text(state.licenseExpiryText, color = Muted, fontSize = 12.sp)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Free 1-month trial", color = White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                Text("ACTIVE", color = Good, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-            Text(
-                "Demo access remains available alongside optional key activation. Verification problems will not block portal playback.",
-                color = Muted, fontSize = 12.sp
-            )
+            Text(state.appAccessStatus, color = if (state.appAccessStatus == "ACTIVE") Good else GoldLight,
+                fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Text("License: ${state.licenseStatus}", color = if (state.licenseBusy) GoldLight else Muted, fontSize = 12.sp)
             WideAction("Upgrade / enter activation key", {
                 activationMessage = ""
@@ -2112,7 +2178,8 @@ private fun SubscriptionCard(state: StbPlaySettingsState, onActivateLicense: (St
         SettingsSection("Portal subscription") {
             Text(state.subscriptionPlan, color = White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             val details = listOf(state.subscriptionStatus, state.expiryText).filter { it.isNotBlank() }.joinToString(" · ")
-            Text(details.ifBlank { "Subscription details are reported by the portal when available." }, color = Muted, fontSize = 12.sp)
+            Text(details.ifBlank { "The portal has not supplied subscription details. Refresh to try again." }, color = Muted, fontSize = 12.sp)
+            if (state.portalSubscriptionMessage.isNotBlank()) Text(state.portalSubscriptionMessage, color = Muted, fontSize = 12.sp)
             Text("Expiry reminders: 10 and 9 days before, then daily during the final 5 days.", color = Muted, fontSize = 12.sp)
         }
     }
@@ -2129,7 +2196,7 @@ private fun SubscriptionCard(state: StbPlaySettingsState, onActivateLicense: (St
             ) {
                 Text("Upgrade STB Play", color = GoldLight, fontSize = 21.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    "Enter a key generated by your STB Play website. Activation is optional; the demo trial and portal playback stay available if verification is offline.",
+                    "Enter a key generated by your STB Play website. An assigned provider plan takes precedence over the app trial.",
                     color = White, fontSize = 13.sp
                 )
                 RemoteTextField(
@@ -2456,8 +2523,11 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
     var agreed by remember { mutableStateOf(false) }
     val policyScrollState = rememberScrollState()
     val policyFocusRequester = remember { FocusRequester() }
+    var policyFocused by remember { mutableStateOf(false) }
+    val television = isTelevisionLayout()
     val scope = rememberCoroutineScope()
     LaunchedEffect(policyFocusRequester) {
+        withFrameNanos { }
         policyFocusRequester.requestFocus()
     }
     Box(
@@ -2473,8 +2543,11 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
                 Text("Privacy and authorized use", color = GoldLight, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                 Text("Review these terms before continuing. You can revisit the privacy controls in Settings.", color = Muted, fontSize = 13.sp)
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().verticalScroll(policyScrollState)
-                        .focusRequester(policyFocusRequester).focusable()
+                    Modifier.weight(1f).fillMaxWidth()
+                        .then(if (television) Modifier.border(if (policyFocused) 2.dp else 0.dp,
+                            if (policyFocused) Gold else Color.Transparent, RoundedCornerShape(8.dp)).padding(8.dp) else Modifier)
+                        .verticalScroll(policyScrollState)
+                        .focusRequester(policyFocusRequester).onFocusChanged { policyFocused = it.isFocused }.focusable()
                         .onPreviewKeyEvent { event ->
                             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             when (event.key) {
@@ -2508,7 +2581,7 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
                 QuestButton(
                     onClick = { agreed = !agreed },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
-                    colors = ButtonDefaults.colors(containerColor = Navy, contentColor = White, focusedContainerColor = Navy, focusedContentColor = White)
+                    colors = ButtonDefaults.colors(containerColor = Navy, contentColor = White, focusedContainerColor = if (television) Gold else Navy, focusedContentColor = if (television) OnAccent else White)
                 ) {
                     Text(if (agreed) "☑  I agree to the privacy policy and authorized-use terms" else "□  I agree to the privacy policy and authorized-use terms", fontSize = 13.sp, textAlign = TextAlign.Center)
                 }

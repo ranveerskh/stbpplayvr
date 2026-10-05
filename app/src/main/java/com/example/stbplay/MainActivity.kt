@@ -53,6 +53,7 @@ import com.example.stbplay.data.UpdateInfo
 import com.example.stbplay.data.UpdateCheckWorker
 import com.example.stbplay.data.UpdateManager
 import com.example.stbplay.data.PlatformLicenseClient
+import com.example.stbplay.data.appAccessInfo
 import com.example.stbplay.data.ProviderPairingSession
 import com.example.stbplay.data.PortalExpiryReminderWorker
 import com.example.stbplay.data.model.PortalCategory
@@ -357,6 +358,8 @@ private fun StbPlayRoot(
         appContext.isAndroidTvDevice()
     }
     val platformLicenseClient = remember(appContext) { PlatformLicenseClient(appContext) }
+    val demoTrialStartedAt = remember(platformLicenseClient) { platformLicenseClient.demoTrialStartedAtMillis() }
+    val subscriptionCache = remember(appContext) { appContext.getSharedPreferences("portal_subscription_cache", android.content.Context.MODE_PRIVATE) }
     var platformLicense by remember { mutableStateOf(platformLicenseClient.currentLicense()) }
     var providerPairing by remember { mutableStateOf<ProviderPairingSession?>(null) }
     var providerPinSetup by remember { mutableStateOf<PortalSettings?>(null) }
@@ -422,6 +425,7 @@ private fun StbPlayRoot(
     var movieCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
     var seriesCategories by remember { mutableStateOf<List<PortalCategory>>(emptyList()) }
     var subscription by remember { mutableStateOf(PortalSubscription()) }
+    var subscriptionMessage by remember { mutableStateOf("") }
     var licenseStatus by remember { mutableStateOf("No key activated") }
     var licenseBusy by remember { mutableStateOf(false) }
 
@@ -1191,6 +1195,32 @@ private fun StbPlayRoot(
         }
     }
     val homeLoading = screen == AppScreen.LOADING
+    LaunchedEffect(storedSettings.id, storedSettings.url, storedSettings.mac, portalReady) {
+        val identity = "${storedSettings.id}|${storedSettings.url}|${storedSettings.mac}"
+        val raw = subscriptionCache.getString(identity, null)
+        if (raw != null) runCatching {
+            val saved = org.json.JSONObject(raw)
+            subscription = PortalSubscription(saved.optString("plan", "Subscription"), saved.optString("status"),
+                saved.optLong("expiry", -1L).takeIf { it > 0L }, saved.optBoolean("unlimited"))
+        } else subscription = PortalSubscription()
+        if (portalReady) {
+            subscriptionMessage = "Refreshing portal subscription…"
+            val fresh = try {
+                portalRepository.refreshSubscription()
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                subscriptionMessage = if (raw != null) "Could not refresh. Showing saved portal details." else "Could not fetch portal subscription. Refresh to try again."
+                return@LaunchedEffect
+            }
+            subscriptionMessage = if (fresh == PortalSubscription()) "The portal did not supply subscription details." else ""
+            subscription = fresh
+            subscriptionCache.edit().putString(identity, org.json.JSONObject()
+                .put("plan", fresh.plan).put("status", fresh.status)
+                .put("expiry", fresh.expiryEpochMillis ?: -1L).put("unlimited", fresh.unlimited).toString()).apply()
+            PortalExpiryReminderWorker.setExpiry(appContext, fresh.expiryEpochMillis.takeUnless { fresh.unlimited })
+        }
+    }
+
     val homeExpiry = subscription.toExpiryText()
     val homeState = remember(homeRows, homeHeroes, homeLoading, connectionError, homeExpiry) {
         StbPlayHomeState(loading = homeLoading, heroes = homeHeroes, portalWarning = connectionError,
@@ -1216,16 +1246,20 @@ private fun StbPlayRoot(
         emptyMessage = selectedVodCatalog?.error ?: "Try another category or refresh the portal."
     )
     val favouritesState = StbPlayLibraryState(items = favoriteStreams.map(::toUi))
-    val licenseExpiryMillis = platformLicense.expiresAtMillis
+    val accessInfo = appAccessInfo(platformLicense, platformLicenseClient.providerPortalId() != null, demoTrialStartedAt, System.currentTimeMillis())
+    val licenseExpiryMillis = accessInfo.expiresAtMillis
     val settingsState = StbPlaySettingsState(
         profiles = profiles,
         activeProfileId = storedSettings.id,
         subscriptionPlan = subscription.plan,
         subscriptionStatus = subscription.status,
         expiryText = subscription.toExpiryText().orEmpty(),
-        licenseName = if (platformLicense.hasKey) platformLicense.label else "Demo trial",
+        licenseName = accessInfo.name,
+        appAccessStatus = accessInfo.status,
+        deviceReference = platformLicenseClient.displayDeviceReference(),
+        portalMac = storedSettings.mac,
+        portalSubscriptionMessage = subscriptionMessage,
         licenseExpiryText = when {
-            !platformLicense.hasKey -> "No STB Play key activated"
             licenseExpiryMillis == null -> "No expiry set"
             licenseExpiryMillis <= System.currentTimeMillis() -> "Expired ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(java.util.Date(licenseExpiryMillis))}"
             else -> "Expires ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(java.util.Date(licenseExpiryMillis))} · ${kotlin.math.ceil((licenseExpiryMillis - System.currentTimeMillis()).toDouble() / TimeUnit.DAYS.toMillis(1)).toInt()} days left"

@@ -725,7 +725,7 @@ private fun NativePlayerScreen(
                                         android.widget.Toast.LENGTH_SHORT
                                     ).show()
                                 },
-                                modifier = Modifier.align(Alignment.TopEnd).height(24.dp)
+                                modifier = Modifier.align(Alignment.TopEnd).heightIn(min = 32.dp)
                                     .then(if (episodeTitles.isEmpty()) Modifier.focusRequester(tvActionsFocusRequester) else Modifier)
                                     .focusProperties {
                                         right = FocusRequester.Cancel
@@ -733,7 +733,7 @@ private fun NativePlayerScreen(
                                         if (episodeTitles.isEmpty()) left = FocusRequester.Cancel
                                     }
                                     .onFocusChanged { if (it.isFocused) revealPlayerControls() }
-                            ) { Text("Not working? Play in VLC", fontSize = 9.sp) }
+                            ) { Text("Not working? Play in VLC", fontSize = 10.sp, maxLines = 1) }
                         }
                 } else if (episodeTitles.isNotEmpty()) QuestButton(
                     onClick = { episodePickerVisible = true; revealPlayerControls() },

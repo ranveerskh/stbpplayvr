@@ -2,6 +2,8 @@ package com.example.stbplay.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -32,6 +34,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
+import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.isAndroidTvDevice
 
 /** TV fields are navigation targets until explicitly selected for editing. */
@@ -60,6 +64,8 @@ fun RemoteTextField(
     }
 
     var editing by remember { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
+    val accent = LocalStbPalette.current.accent
     var restoreBrowseFocus by remember { mutableStateOf(false) }
     var editorHadFocus by remember { mutableStateOf(false) }
     var keyboardWasVisible by remember { mutableStateOf(false) }
@@ -104,7 +110,9 @@ fun RemoteTextField(
         } else false
     }
     Box(
-        modifier = keyModifier.then(modifier).then(
+        modifier = keyModifier.onFocusChanged { focused = it.hasFocus }
+            .border(if (focused) 3.dp else 0.dp, if (focused) accent else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(10.dp))
+            .then(modifier).then(
             if (!editing) Modifier.focusRequester(browseRequester).clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

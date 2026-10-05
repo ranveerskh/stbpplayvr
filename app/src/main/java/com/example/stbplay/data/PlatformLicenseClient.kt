@@ -21,7 +21,11 @@ import kotlinx.coroutines.withContext
 data class PlatformLicenseDetails(
     val label: String = "No license key",
     val expiresAtMillis: Long? = null,
-    val hasKey: Boolean = false
+    val hasKey: Boolean = false,
+    val trial: Boolean = false,
+    val trialExpiresAtMillis: Long? = null,
+    val inGrace: Boolean = false,
+    val graceUntilMillis: Long? = null
 )
 
 data class ProviderPairingSession(
@@ -193,16 +197,33 @@ class PlatformLicenseClient(context: Context) {
         return PlatformLicenseDetails(
             label = preferences.getString(LICENSE_LABEL, null) ?: if (hasKey) "STB Play license" else "No license key",
             expiresAtMillis = preferences.getLong(LICENSE_EXPIRY, -1L).takeIf { it > 0L },
-            hasKey = hasKey
+            hasKey = hasKey,
+            trial = preferences.getBoolean("license_trial", false),
+            trialExpiresAtMillis = preferences.getLong("license_trial_expiry", -1L).takeIf { it > 0L },
+            inGrace = preferences.getBoolean("license_in_grace", false),
+            graceUntilMillis = preferences.getLong("license_grace_expiry", -1L).takeIf { it > 0L }
         )
     }
 
+    /** Existing installs use Android's original install date; updating never restarts the trial. */
+    fun demoTrialStartedAtMillis(): Long {
+        val saved = preferences.getLong("demo_trial_started_at", 0L)
+        if (saved > 0L) return saved
+        @Suppress("DEPRECATION")
+        val installed = appContext.packageManager.getPackageInfo(appContext.packageName, 0).firstInstallTime
+        preferences.edit().putLong("demo_trial_started_at", installed).apply()
+        return installed
+    }
+
     private fun saveLicenseInfo(response: JSONObject) {
-        val expires = response.optString("licenseExpiresAt").takeIf { it.isNotBlank() && it != "null" }
-            ?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+        val expires = parseTime(response.optString("licenseExpiresAt"))
         preferences.edit()
             .putString(LICENSE_LABEL, response.optString("licenseLabel").takeIf { it.isNotBlank() && it != "null" } ?: "STB Play license")
             .putLong(LICENSE_EXPIRY, expires ?: -1L)
+            .putBoolean("license_trial", response.optBoolean("trial", false))
+            .putLong("license_trial_expiry", parseTime(response.optString("trialExpiresAt")) ?: -1L)
+            .putBoolean("license_in_grace", response.optBoolean("inGrace", false))
+            .putLong("license_grace_expiry", parseTime(response.optString("graceUntil")) ?: -1L)
             .putBoolean(LICENSE_ACTIVE, true)
             .apply()
     }
