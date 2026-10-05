@@ -1,4 +1,4 @@
-@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 
 package com.example.stbplay.ui
 
@@ -7,6 +7,7 @@ import com.example.stbplay.data.VodCatalogBatch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -114,6 +115,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -196,8 +198,9 @@ private val LocalTvFocusEntry = androidx.compose.runtime.staticCompositionLocalO
 /** Request once per mounted screen, without stealing focus when a lazy row returns. */
 @Composable
 fun Modifier.questInitialFocus(): Modifier {
-    val requester = remember { FocusRequester() }
     val television = isTelevisionLayout()
+    if (television && LocalTvFocusNavigation.current != null) return this
+    val requester = remember { FocusRequester() }
     // Lazy items leave composition when scrolled away. Keep this flag in their
     // saved item state so returning to the viewport cannot steal remote focus.
     val fallbackEntry = remember { java.util.UUID.randomUUID().toString() }
@@ -357,6 +360,13 @@ fun StbPlayApp(
 ) {
     var searchOpen by remember { mutableStateOf(false) }
     val tvLayout = isTelevisionLayout()
+    val inputMode = androidx.compose.ui.platform.LocalInputModeManager.current
+    val railRequesters = remember { StbPlayTab.entries.associateWith { FocusRequester() } }
+    val enterPageAction = remember { arrayOf<() -> Unit>({}) }
+    fun returnToSelectedRail() { railRequesters.getValue(selectedTab).requestFocus() }
+    LaunchedEffect(tvLayout) {
+        if (tvLayout) inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
+    }
     var railCollapsed by remember(tvLayout) { mutableStateOf(tvLayout) }
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
@@ -456,7 +466,27 @@ fun StbPlayApp(
     val focusEntry = remember(selectedTab) { java.util.UUID.randomUUID().toString() }
     val renderPage: @Composable () -> Unit = {
         if (tvLayout) CompositionLocalProvider(LocalTvFocusEntry provides focusEntry) {
-            tabStateHolder.SaveableStateProvider(selectedTab.name) { renderTab() }
+            tabStateHolder.SaveableStateProvider(selectedTab.name) {
+                var lastPageFocusId by rememberSaveable { mutableStateOf<String?>(null) }
+                val navigation = remember { TvFocusNavigation(::returnToSelectedRail) { lastPageFocusId = it } }
+                SideEffect { enterPageAction[0] = navigation::enterPage }
+                val target = navigation.entryId?.let { navigation.targets[it] }
+                LaunchedEffect(navigation.pending, navigation.requestGeneration, navigation.entryId, target) {
+                    if (navigation.pending && target != null) {
+                        inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
+                        target.requestFocus()
+                    } else if (navigation.pending && navigation.entryId == null) {
+                        navigation.returnToRail()
+                        navigation.pending = false
+                    }
+                }
+                CompositionLocalProvider(LocalTvFocusNavigation provides navigation) {
+                    Box(Modifier.fillMaxSize().focusProperties {
+                        exit = { direction -> if (direction == androidx.compose.ui.focus.FocusDirection.Left)
+                            railRequesters.getValue(selectedTab) else FocusRequester.Default }
+                    }.focusGroup()) { renderTab() }
+                }
+            }
         }
         else renderTab()
     }
@@ -482,7 +512,11 @@ fun StbPlayApp(
                 collapsed = railCollapsed,
                 compactTv = tvLayout,
                 onToggle = { if (selectedTab != StbPlayTab.CONTENT) railCollapsed = !railCollapsed },
-                onTabSelected = onTabSelected
+                onTabSelected = onTabSelected,
+                railRequesters = railRequesters,
+                onEnterPage = { tab ->
+                    if (tab == selectedTab) enterPageAction[0]() else onTabSelected(tab)
+                }
             )
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 StbPlayHeader(
@@ -537,7 +571,9 @@ private fun StbPlayNavigationRail(
     collapsed: Boolean,
     compactTv: Boolean,
     onToggle: () -> Unit,
-    onTabSelected: (StbPlayTab) -> Unit
+    onTabSelected: (StbPlayTab) -> Unit,
+    railRequesters: Map<StbPlayTab, FocusRequester>,
+    onEnterPage: (StbPlayTab) -> Unit
 ) {
     val tabs = listOf(
         Triple(StbPlayTab.HOME, "Home", Icons.Filled.Home),
@@ -587,7 +623,20 @@ private fun StbPlayNavigationRail(
                 collapsed = collapsed,
                 compactTv = compactTv,
                 selected = selectedTab == tab,
-                onClick = { onTabSelected(tab) }
+                focusModifier = if (compactTv) Modifier.focusRequester(railRequesters.getValue(tab))
+                    .testTag("tv-rail:${tab.name}")
+                    .focusProperties {
+                        val position = StbPlayTab.entries.indexOf(tab)
+                        up = StbPlayTab.entries.getOrNull(position - 1)?.let { railRequesters.getValue(it) } ?: FocusRequester.Cancel
+                        down = StbPlayTab.entries.getOrNull(position + 1)?.let { railRequesters.getValue(it) } ?: FocusRequester.Cancel
+                        left = FocusRequester.Cancel
+                    }.onPreviewKeyEvent { event ->
+                        if (event.key == Key.DirectionRight) {
+                            if (event.type == KeyEventType.KeyDown) onEnterPage(tab)
+                            true
+                        } else false
+                    } else Modifier,
+                onClick = { if (compactTv) onEnterPage(tab) else onTabSelected(tab) }
             )
         }
         Spacer(modifier = Modifier.weight(1f))
@@ -598,7 +647,7 @@ private fun StbPlayNavigationRail(
 }
 
 @Composable
-private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compactTv: Boolean, selected: Boolean, onClick: () -> Unit) {
+private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compactTv: Boolean, selected: Boolean, focusModifier: Modifier = Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     var showFocusLabel by remember { mutableStateOf(false) }
     // On TV, the selected navigation item and the first page control were both
@@ -613,7 +662,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compac
     Box(Modifier.fillMaxWidth().height(if (compactTv) 42.dp else 48.dp)) {
         QuestSurface(
             onClick = onClick, tvContainerColor = if (selected) Gold.copy(alpha = 0.18f) else Color.Transparent, tvFocusedContainerColor = Gold,
-            modifier = Modifier.then(initialFocus).fillMaxSize().onFocusChanged {
+            modifier = focusModifier.then(initialFocus).fillMaxSize().onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused && collapsed) showFocusLabel = true
                 if (!it.isFocused) showFocusLabel = false
@@ -756,6 +805,12 @@ private fun StbPlayHomeScreen(
     var focusedHomeRowId by rememberSaveable { mutableStateOf<String?>(null) }
     var focusedHomeItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var navigationJob by remember { mutableStateOf<Job?>(null) }
+    val focusNavigation = LocalTvFocusNavigation.current
+    val restoredRow = visibleRows.firstOrNull { it.id == focusedHomeRowId }
+    val restoredItem = restoredRow?.items?.firstOrNull { it.id == focusedHomeItemId }
+    TvPageEntry(if (restoredItem != null) "home:${restoredRow.id}:${restoredItem.id}"
+        else if (state.heroes.isNotEmpty()) "home:hero"
+        else visibleRows.firstOrNull()?.let { "home:${it.id}:${it.items.first().id}" })
     val rowFocusRequesters = remember(visibleRows.map { it.id }) {
         if (denseTv) visibleRows.associate { it.id to FocusRequester() } else emptyMap()
     }
@@ -797,7 +852,7 @@ private fun StbPlayHomeScreen(
         }
     }
     LaunchedEffect(denseTv) {
-        if (denseTv) {
+        if (denseTv && focusNavigation == null) {
             withFrameNanos { }
             if (focusedHomeRowId == null) {
                 if (state.heroes.isEmpty()) focusHomeRow(0) else runCatching { heroFocusRequester.requestFocus() }
@@ -807,6 +862,17 @@ private fun StbPlayHomeScreen(
                 if (index >= 0) focusHomeRow(index)
                 else if (visibleRows.isNotEmpty()) focusHomeRow(0)
                 else runCatching { heroFocusRequester.requestFocus() }
+            }
+        }
+    }
+    LaunchedEffect(focusNavigation, restoredItem?.id) {
+        if (focusNavigation != null && restoredItem != null && restoredRow != null) {
+            val index = visibleRows.indexOf(restoredRow)
+            if (homeListState.layoutInfo.visibleItemsInfo.none { it.index == firstRowLazyIndex + index })
+                homeListState.scrollToItem(firstRowLazyIndex + index)
+            val itemIndex = restoredRow.items.indexOf(restoredItem)
+            rowListStates[restoredRow.id]?.let { rowState ->
+                if (rowState.layoutInfo.visibleItemsInfo.none { it.index == itemIndex }) rowState.scrollToItem(itemIndex)
             }
         }
     }
@@ -897,7 +963,14 @@ private fun RotatingHero(
         }
     }
     val item = heroes.getOrNull(index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))) ?: return
-    val heroModifier = Modifier
+    val focusNavigation = LocalTvFocusNavigation.current
+    val heroModifier = Modifier.tvFocusTarget("home:hero")
+            .onPreviewKeyEvent { event ->
+                if (event.key == Key.DirectionLeft && focusNavigation != null) {
+                    if (event.type == KeyEventType.KeyDown) focusNavigation.returnToRail()
+                    true
+                } else false
+            }
             .focusRequester(focusRequester)
             .fillMaxWidth()
         .height(if (isCompactAndroidLayout()) 205.dp else if (denseTv) 230.dp else 290.dp)
@@ -1002,14 +1075,18 @@ private fun MediaRow(
                     focusRequester = if (index == 0) firstCardFocusRequester else null,
                     restoreFocusRequester = if (media.id == restoreItemId) restoreFocusRequester else null,
                     onFocused = { onMediaFocused(media) },
+                    focusId = "home:${row.id}:${media.id}",
+                    onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.returnToRail else null,
                     onFocusDown = onFocusDown,
                     onFocusUp = onFocusUp
                 ) else MediaCard(
                     item = media,
                     onClick = { onMediaClick(media) },
+                    onFocused = { onMediaFocused(media) },
                     onToggleFavorite = { onToggleFavorite(media) },
                     onRemoveHistory = if (row.id == "continue") ({ onRemoveHistory(media) }) else null,
                     focusRequester = if (index == 0) firstCardFocusRequester else null,
+                    onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.returnToRail else null,
                     onFocusDown = onFocusDown,
                     onFocusUp = onFocusUp
                 )
@@ -1027,6 +1104,7 @@ private fun TvHomeMediaCard(
     focusRequester: FocusRequester? = null,
     restoreFocusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
+    focusId: String = "media:${item.id}",
     onFocusDown: (() -> Unit)? = null,
     onFocusUp: (() -> Unit)? = null,
     onReturnToCategory: (() -> Unit)? = null,
@@ -1050,7 +1128,7 @@ private fun TvHomeMediaCard(
     }) {
         TvHomeSurface(
             onClick,
-            Modifier.fillMaxSize().then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+            Modifier.fillMaxSize().tvFocusTarget(focusId).then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
                 .then(restoreFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
                 .then(if (initialFocus) Modifier.questInitialFocus() else Modifier)
                 .onFocusChanged { if (it.isFocused) onFocused() }
@@ -1098,6 +1176,9 @@ private fun LiveTvScreen(
         ?: state.items.firstOrNull()?.id
     val categoryKey = state.categories.getOrNull(state.selectedCategory)?.id
     var localFocusedChannelId by rememberSaveable(categoryKey) { mutableStateOf(focusedChannelId) }
+    TvPageEntry(localFocusedChannelId?.takeIf { id -> state.items.any { it.id == id } }?.let { "live:$it" }
+        ?: state.categories.getOrNull(state.selectedCategory)?.let { "category:${it.id}" })
+    val focusNavigation = LocalTvFocusNavigation.current
     val channelIndices = remember(state.items) { state.items.mapIndexed { index, item -> item.id to index }.toMap() }
     val navigationScope = rememberCoroutineScope()
     var navigationJob by remember { mutableStateOf<Job?>(null) }
@@ -1123,7 +1204,7 @@ private fun LiveTvScreen(
             val focusedIndex = state.items.indexOfFirst { it.id == restoreId }
             if (focusedIndex >= 0 && (!denseTv || channelListState.layoutInfo.visibleItemsInfo.none { it.index == focusedIndex }))
                 channelListState.scrollToItem(focusedIndex)
-            if (denseTv && focusedIndex >= 0) {
+            if (denseTv && focusNavigation == null && focusedIndex >= 0) {
                 withFrameNanos { }
                 withFrameNanos { }
                 channelRequesters[restoreId]?.requestFocus()
@@ -1158,7 +1239,7 @@ private fun LiveTvScreen(
     val categoryScope = rememberCoroutineScope()
     val initialCategoryFocusRequested = remember { mutableStateOf(false) }
     LaunchedEffect(state.categories.size, state.loading) {
-        if (!state.loading && state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
+        if (focusNavigation == null && !state.loading && state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
             val selected = state.selectedCategory.coerceIn(0, state.categories.lastIndex)
             if (!denseTv || categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
             withFrameNanos { }
@@ -1183,7 +1264,16 @@ private fun LiveTvScreen(
         }
     }
     Row(modifier = Modifier.fillMaxSize().padding(start = if (denseTv) 14.dp else 24.dp, end = if (denseTv) 16.dp else 30.dp, bottom = if (denseTv) 14.dp else 28.dp)) {
-        CategorySidebar(state.categories, state.selectedCategory, categoryListState, selectedCategoryFocusRequester, onCategorySelected)
+        CategorySidebar(state.categories, state.selectedCategory, categoryListState, selectedCategoryFocusRequester, onCategorySelected,
+            onEnterItems = if (denseTv) ({
+                val item = state.items.firstOrNull { it.id == localFocusedChannelId } ?: state.items.firstOrNull()
+                if (item != null) categoryScope.launch {
+                    val index = channelIndices[item.id] ?: 0
+                    if (channelListState.layoutInfo.visibleItemsInfo.none { it.index == index }) channelListState.scrollToItem(index)
+                    val target = snapshotFlow { focusNavigation?.targets?.get("live:${item.id}") }.first { it != null }
+                    target?.requestFocus()
+                }
+            }) else null)
         Spacer(modifier = Modifier.width(if (denseTv) 12.dp else 24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1254,9 +1344,11 @@ private fun CategorySidebar(
     selected: Int,
     listState: LazyListState,
     selectedFocusRequester: FocusRequester,
-    onSelected: (Int) -> Unit
+    onSelected: (Int) -> Unit,
+    onEnterItems: (() -> Unit)? = null
 ) {
     val denseTv = isTelevisionLayout()
+    val focusNavigation = LocalTvFocusNavigation.current
     Column(
         modifier = Modifier.width(if (denseTv) 170.dp else 210.dp).fillMaxHeight()
             .clip(RoundedCornerShape(15.dp))
@@ -1267,7 +1359,8 @@ private fun CategorySidebar(
         Text("Categories", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(if (denseTv) 2.dp else 6.dp)) {
             indexedColumnItems(categories, key = { _, category -> category.id }, contentType = { _, _ -> "category" }) { index, category ->
-                CategorySidebarItem(category, index == selected, if (index == selected) selectedFocusRequester else null) { onSelected(index) }
+                CategorySidebarItem(category, index == selected, if (index == selected) selectedFocusRequester else null,
+                    onEnterItems = onEnterItems) { onSelected(index) }
             }
         }
     }
@@ -1325,12 +1418,23 @@ private fun CompactCategorySelector(categories: List<UiCategory>, selected: Int,
 }
 
 @Composable
-private fun CategorySidebarItem(category: UiCategory, selected: Boolean, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
+private fun CategorySidebarItem(category: UiCategory, selected: Boolean, focusRequester: FocusRequester? = null, onEnterItems: (() -> Unit)? = null, onClick: () -> Unit) {
     val denseTv = isTelevisionLayout()
     var focused by remember { mutableStateOf(false) }
     if (denseTv) {
+        val navigation = LocalTvFocusNavigation.current
         TvHomeSurface(onClick,
-            Modifier.then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+            Modifier.tvFocusTarget("category:${category.id}").onPreviewKeyEvent { event ->
+                when {
+                    event.key == Key.DirectionLeft && navigation != null -> {
+                        if (event.type == KeyEventType.KeyDown) navigation.returnToRail(); true
+                    }
+                    event.key == Key.DirectionRight && onEnterItems != null -> {
+                        if (event.type == KeyEventType.KeyDown) onEnterItems(); true
+                    }
+                    else -> false
+                }
+            }.then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
                 .fillMaxWidth().height(48.dp).onFocusChanged { focused = it.isFocused },
             containerColor = if (selected) Gold.copy(alpha = 0.2f) else Color.Transparent,
             focusedContainerColor = Gold
@@ -1383,7 +1487,7 @@ private fun LiveChannelRow(
     if (denseTv) {
         var focused by remember { mutableStateOf(false) }
         TvHomeSurface(onClick,
-            Modifier.fillMaxWidth().height(32.dp)
+            Modifier.fillMaxWidth().height(32.dp).tvFocusTarget("live:${item.id}")
                 .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
                 .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
                 .onPreviewKeyEvent { event ->
@@ -1524,12 +1628,15 @@ private fun ContentBrowserScreen(
     }
     val denseTv = isTelevisionLayout()
     val categoryListState = rememberLazyListState()
+    val focusNavigation = LocalTvFocusNavigation.current
+    TvPageEntry(focusedContentId?.takeIf { id -> state.items.any { it.id == id } }?.let { "media:$it" }
+        ?: state.categories.getOrNull(state.selectedCategory)?.let { "category:${it.id}" })
     val contentFocusRequester = remember { FocusRequester() }
     val selectedCategoryFocusRequester = remember { FocusRequester() }
     val categoryScope = rememberCoroutineScope()
     val initialCategoryFocusRequested = remember { mutableStateOf(false) }
     LaunchedEffect(state.categories.size, state.loading) {
-        if (!state.loading && state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
+        if (focusNavigation == null && !state.loading && state.categories.isNotEmpty() && !initialCategoryFocusRequested.value) {
             val selected = state.selectedCategory.coerceIn(0, state.categories.lastIndex)
             if (!denseTv || categoryListState.layoutInfo.visibleItemsInfo.none { it.index == selected }) categoryListState.scrollToItem(selected)
             withFrameNanos { }
@@ -1555,7 +1662,7 @@ private fun ContentBrowserScreen(
             val restoreIndex = focusedContentId?.let { id -> state.items.indexOfFirst { it.id == id } } ?: -1
             if (restoreIndex >= 0 && gridState.layoutInfo.visibleItemsInfo.none { it.index == restoreIndex })
                 gridState.scrollToItem(restoreIndex)
-            if (denseTv && restoreIndex >= 0) {
+            if (denseTv && focusNavigation == null && restoreIndex >= 0) {
                 withFrameNanos { }
                 withFrameNanos { }
                 contentFocusRequester.requestFocus()
@@ -1573,7 +1680,16 @@ private fun ContentBrowserScreen(
         }
     }
     Row(modifier = Modifier.fillMaxSize().padding(start = if (denseTv) 14.dp else 24.dp, end = if (denseTv) 16.dp else 30.dp, bottom = if (denseTv) 14.dp else 28.dp)) {
-        CategorySidebar(state.categories, state.selectedCategory, categoryListState, selectedCategoryFocusRequester, onCategorySelected)
+        CategorySidebar(state.categories, state.selectedCategory, categoryListState, selectedCategoryFocusRequester, onCategorySelected,
+            onEnterItems = if (denseTv) ({
+                val item = state.items.firstOrNull { it.id == focusedContentId } ?: state.items.firstOrNull()
+                if (item != null) categoryScope.launch {
+                    val index = state.items.indexOf(item)
+                    if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) gridState.scrollToItem(index)
+                    val target = snapshotFlow { focusNavigation?.targets?.get("media:${item.id}") }.first { it != null }
+                    target?.requestFocus()
+                }
+            }) else null)
         Spacer(modifier = Modifier.width(if (denseTv) 12.dp else 24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Column(verticalArrangement = Arrangement.spacedBy(if (denseTv) 5.dp else 11.dp)) {
@@ -1684,7 +1800,26 @@ private fun FavouritesScreen(
 ) {
     val channels = state.items.filter { it.streamType == "live" }
     val titles = state.items.filter { it.streamType != "live" }
+    var lastItemId by rememberSaveable { mutableStateOf<String?>(null) }
+    val preferred = state.items.firstOrNull { it.id == lastItemId } ?: channels.firstOrNull() ?: titles.firstOrNull()
+    TvPageEntry(preferred?.let { "media:${it.id}" })
+    val navigation = LocalTvFocusNavigation.current
+    val favouriteListState = rememberLazyListState()
+    val channelRowState = rememberLazyListState()
+    val titleRowState = rememberLazyListState()
+    LaunchedEffect(navigation, preferred?.id) {
+        if (navigation != null && navigation.pending && preferred != null) {
+            val isChannel = preferred.streamType == "live"
+            val rowIndex = if (isChannel) 1 else 2
+            if (favouriteListState.layoutInfo.visibleItemsInfo.none { it.index == rowIndex })
+                favouriteListState.scrollToItem(rowIndex)
+            val rowState = if (isChannel) channelRowState else titleRowState
+            val itemIndex = (if (isChannel) channels else titles).indexOf(preferred)
+            if (rowState.layoutInfo.visibleItemsInfo.none { it.index == itemIndex }) rowState.scrollToItem(itemIndex)
+        }
+    }
     LazyColumn(
+        state = favouriteListState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = if (isCompactAndroidLayout()) 14.dp else 30.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(28.dp)
@@ -1697,14 +1832,16 @@ private fun FavouritesScreen(
             if (channels.isEmpty()) EmptyInline("Favourite channels", "Use Save on any live channel to add it here.")
             else MediaRow(
                 UiMediaRow("favorite-channels", "Favourite channels", items = channels),
-                onMediaClick, onToggleFavorite, onRemoveHistory = {}
+                onMediaClick, onToggleFavorite, onRemoveHistory = {}, listState = channelRowState,
+                onMediaFocused = { lastItemId = it.id }
             )
         }
         item {
             if (titles.isEmpty()) EmptyInline("Favourite titles", "Use Add to favourites on a movie or series.")
             else MediaRow(
                 UiMediaRow("favorite-titles", "Favourite titles", items = titles),
-                onMediaClick, onToggleFavorite, onRemoveHistory = {}
+                onMediaClick, onToggleFavorite, onRemoveHistory = {}, listState = titleRowState,
+                onMediaFocused = { lastItemId = it.id }
             )
         }
     }
@@ -1861,6 +1998,7 @@ private fun StbPlaySettingsScreen(
     val television = isTelevisionLayout()
     val entry = LocalTvFocusEntry.current
     val restoreTitle = remember(page, entry) { lastMenuTitle }
+    TvPageEntry(if (page == SettingsPage.HOME) "settings:$restoreTitle" else "settings:back")
     val settingsEntry = remember(page, entry) { java.util.UUID.randomUUID().toString() }
     val defaultSettingsListState = rememberLazyListState()
     val settingsListState = if (television) remember(page) { LazyListState() } else defaultSettingsListState
@@ -1893,7 +2031,7 @@ private fun StbPlaySettingsScreen(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 QuestButton(
                     onClick = { page = SettingsPage.HOME },
-                    modifier = Modifier.widthIn(min = 108.dp).height(46.dp).questInitialFocus()
+                    modifier = Modifier.widthIn(min = 108.dp).height(46.dp).tvFocusTarget("settings:back").questInitialFocus()
                 ) { Text("←  Back", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                 Text(page.title, color = White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -2136,8 +2274,14 @@ private fun SettingsMenuRow(icon: ImageVector, title: String, subtitle: String? 
     var focused by remember { mutableStateOf(false) }
     val target = LocalSettingsFocusTarget.current
     val requestInitial = target?.let { it.title == title } ?: initialFocus
+    val navigation = LocalTvFocusNavigation.current
     QuestSurface(onClick = onClick, tvContainerColor = Color.Transparent, tvFocusedContainerColor = Gold,
-        modifier = Modifier.then(if (requestInitial) Modifier.questInitialFocus() else Modifier)
+        modifier = Modifier.tvFocusTarget("settings:$title").onPreviewKeyEvent { event ->
+            if (event.key == Key.DirectionLeft && navigation != null) {
+                if (event.type == KeyEventType.KeyDown) navigation.returnToRail()
+                true
+            } else false
+        }.then(if (requestInitial) Modifier.questInitialFocus() else Modifier)
             .fillMaxWidth().height(64.dp).onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused) target?.onFocused?.invoke(title)
