@@ -16,7 +16,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.media3.cast.Cast
 import androidx.media3.common.Player
@@ -146,6 +148,8 @@ class PlaybackSmokeTest {
             }
         }
         val (view, player) = awaitVideo()
+        // Phone controls open on user input, just as they do in the installed app.
+        rule.onRoot().performTouchInput { click() }
         val position = rule.runOnIdle { player.pause(); player.currentPosition }
         rule.onNodeWithText("Full").performClick()
         rule.waitForIdle()
