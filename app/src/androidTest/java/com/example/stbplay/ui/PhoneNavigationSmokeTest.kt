@@ -6,7 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.media3.cast.Cast
 import androidx.media3.common.util.UnstableApi
@@ -22,7 +22,7 @@ import org.junit.Test
 
 @androidx.annotation.OptIn(UnstableApi::class)
 class PhoneNavigationSmokeTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
 
     @Suppress("DEPRECATION")
     @Test fun touchNavigationAndSearchKeyboardKeepTheSelectedMediaType() {
@@ -65,13 +65,21 @@ class PhoneNavigationSmokeTest {
         rule.onNodeWithContentDescription("Movies").performClick()
         rule.waitForIdle()
         assertEquals(StbPlayTab.CONTENT, selected)
-        rule.onNodeWithText(movie.title).performClick()
+        rule.onNodeWithText(movie.title).performTouchInput { click() }
+        rule.waitUntil(5_000) { clicked?.title == movie.title }
         assertEquals("movie", clicked?.streamType)
         rule.onNodeWithContentDescription("Home").performClick()
         rule.onNodeWithText("⌕").performClick()
         rule.onNode(hasSetTextAction()).performTextInput("Fixture channel")
         rule.waitUntil(10_000) { rule.onAllNodesWithText(channel.title).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText(channel.title).performClick()
+        rule.runOnIdle {
+            val input = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            input.hideSoftInputFromWindow(rule.activity.window.decorView.windowToken, 0)
+            clicked = null
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText(channel.title).performTouchInput { click() }
+        rule.waitUntil(5_000) { clicked?.title == channel.title }
         assertEquals("same", clicked?.id)
         assertEquals("live", clicked?.streamType)
         assertEquals(StbPlayTab.HOME, selected)
