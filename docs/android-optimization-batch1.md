@@ -18,4 +18,6 @@ The test-only CI workflow runs unit tests, the existing seven Android TV focus/h
 
 The projection reuse test uses 20,000 VOD items and 80 favourites across 20 focus-only updates. It asserts that the search/favourite list instances stay the same and that favourites are mapped only once. These are work-reuse checks, not an emulator frame-time benchmark or evidence of a specific physical-device speedup.
 
+The API 30 phone emulator bundles an old Google Cast Dynamite module. Tests initialize that module synchronously on the main thread before Media3's asynchronous initialization; production Cast code and dependencies remain unchanged. These checks cover phone UI and local playback, not Cast receiver transfers or physical phone startup timing.
+
 Physical TV/box, phone and Quest testing is still required. Install over the current app without uninstalling or clearing data. Repeat the same provider, parental mode, language and cache conditions before and after: Home shelf moves, Live scrolling without OK, channel preview/fullscreen/Back, Movies grid movement and return focus, favourites/history, search keyboard, portal switching and authenticated artwork. Use the read-only audit's ADB startup, gfxinfo, meminfo and Perfetto protocol for performance comparisons.

@@ -29,6 +29,7 @@ import com.example.stbplay.data.StalkerContentKind
 import com.example.stbplay.data.StalkerPlayRequest
 import com.example.stbplay.isAndroidTvDevice
 import com.example.stbplay.ui.theme.STBPlayTheme
+import com.google.android.gms.cast.framework.CastContext
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -46,9 +47,14 @@ class PlaybackSmokeTest {
     private val isTv get() = rule.activity.isAndroidTvDevice()
     private val videoUrl = "http://10.0.2.2:8765/video.mp4"
 
-    @Before fun initializePhoneCastAsTheAppDoes() {
+    @Suppress("DEPRECATION")
+    @Before fun initializePhoneEmulatorCast() {
         rule.runOnIdle {
-            if (!isTv) runCatching { Cast.getSingletonInstance(rule.activity).initialize() }
+            if (!isTv) {
+                // Warm the old emulator module on main before Media3's async initialization.
+                CastContext.getSharedInstance(rule.activity)
+                Cast.getSingletonInstance(rule.activity).initialize()
+            }
         }
     }
 

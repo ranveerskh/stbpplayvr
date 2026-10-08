@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.media3.cast.Cast
 import androidx.media3.common.util.UnstableApi
+import com.google.android.gms.cast.framework.CastContext
 import com.example.stbplay.data.VodCatalogBatch
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.isAndroidTvDevice
@@ -23,10 +24,16 @@ import org.junit.Test
 class PhoneNavigationSmokeTest {
     @get:Rule val rule = createComposeRule()
 
+    @Suppress("DEPRECATION")
     @Test fun touchNavigationAndSearchKeyboardKeepTheSelectedMediaType() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assumeTrue(!context.isAndroidTvDevice())
-        rule.runOnIdle { runCatching { Cast.getSingletonInstance(context).initialize() } }
+        rule.runOnIdle {
+            // API 30's old Dynamite module requires synchronous main-thread creation.
+            // This is emulator setup only; the app's Cast initialization is unchanged.
+            CastContext.getSharedInstance(context)
+            Cast.getSingletonInstance(context).initialize()
+        }
         val movie = UiMedia("same", "Fixture movie", portrait = true)
         val channel = UiMedia("same", "Fixture channel", streamType = "live")
         val movieStream = PortalStream(movie.id, movie.title, null, null, "movie")
