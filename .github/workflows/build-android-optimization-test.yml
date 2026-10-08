@@ -47,7 +47,7 @@ jobs:
           grep -Fq 'versionCode = 72' app/build.gradle.kts
           grep -Fq 'versionName = "2.0.20.1"' app/build.gradle.kts
           chmod +x ./gradlew
-          ./gradlew --no-daemon testDebugUnitTest assembleRelease
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease assembleDebugAndroidTest
       - name: Serve generated playback fixture to the emulators
         run: |
           python3 -m http.server 8765 --bind 127.0.0.1 --directory app/src/androidTest/assets > "$RUNNER_TEMP/playback-fixture-server.log" 2>&1 &
