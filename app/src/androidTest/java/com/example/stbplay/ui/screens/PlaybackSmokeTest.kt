@@ -87,6 +87,17 @@ class PlaybackSmokeTest {
         return view to player
     }
 
+    private fun pauseAtKnownPosition(player: Player): Long {
+        // A pause acknowledgement can advance a freshly started player's reported position.
+        // Anchor the paused fixture to a known seek position before testing layout changes.
+        val position = 5_000L
+        rule.runOnIdle { player.pause(); player.seekTo(position) }
+        rule.waitUntil(10_000) {
+            rule.runOnIdle { !player.isPlaying && player.currentPosition == position }
+        }
+        return position
+    }
+
     @Test fun moviePlaysAndBackCallbackWorksOnTvAndPhone() {
         var backCount = 0
         rule.setContent {
@@ -120,7 +131,7 @@ class PlaybackSmokeTest {
             }
         }
         val (originalView, originalPlayer) = awaitVideo()
-        val position = rule.runOnIdle { originalPlayer.pause(); originalPlayer.currentPosition }
+        val position = pauseAtKnownPosition(originalPlayer)
         repeat(3) {
             rule.runOnIdle { embedded = false }; rule.waitForIdle()
             assertSame(originalView, playerView())
@@ -151,7 +162,7 @@ class PlaybackSmokeTest {
         val (view, player) = awaitVideo()
         // Phone controls open on user input, just as they do in the installed app.
         rule.onRoot().performTouchInput { click() }
-        val position = rule.runOnIdle { player.pause(); player.currentPosition }
+        val position = pauseAtKnownPosition(player)
         rule.onNodeWithText("Full").performClick()
         rule.waitForIdle()
         rule.runOnIdle { assertSame(player, view.player); assertEquals(position, player.currentPosition) }
