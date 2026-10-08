@@ -36,7 +36,8 @@ internal fun rememberFavouriteUiItems(
     catalogGeneration: Int,
     artworkToken: String?,
     artworkCookie: String,
+    portalReady: Boolean = true,
     toUi: (PortalStream) -> UiMedia
 ): List<UiMedia> = remember(
-    streams, progressById, favoriteIds, portal, catalogGeneration, artworkToken, artworkCookie
+    streams, progressById, favoriteIds, portal, catalogGeneration, artworkToken, artworkCookie, portalReady
 ) { streams.map(toUi) }

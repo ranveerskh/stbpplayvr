@@ -88,6 +88,30 @@ class CatalogueProjectionsTest {
         assertTrue(result.isEmpty())
     }
 
+    @Test fun completedLoginRefreshesArtworkEvenWhenCredentialsAndStreamsAreUnchanged() {
+        val streams = listOf(stream("same"))
+        val portal = PortalSettings(id = "new", url = "https://new.test", mac = "02:00:00:00:00:01")
+        var ready by mutableStateOf(false)
+        // The repository's active origin changes during login, after the saved profile has changed.
+        var activeArtworkOrigin = "https://previous.test"
+        var result: List<UiMedia> = emptyList()
+        var calls = 0
+        rule.setContent {
+            val mapped = rememberFavouriteUiItems(streams, emptyMap(), emptySet(), portal, 1,
+                "same-token", "same-cookie", ready) {
+                calls++
+                UiMedia(it.id, it.name, imageUrl = "$activeArtworkOrigin/${it.id}")
+            }
+            SideEffect { result = mapped }
+        }
+        rule.waitForIdle()
+        assertEquals("https://previous.test/same", result.single().imageUrl)
+        rule.runOnIdle { activeArtworkOrigin = "https://new.test"; ready = true }
+        rule.waitForIdle()
+        assertEquals("https://new.test/same", result.single().imageUrl)
+        assertEquals(2, calls)
+    }
+
     @Test fun favouriteMappingRefreshesProgressFlagsPortalAndArtworkSession() {
         var streams by mutableStateOf(listOf(stream("movie")))
         var progress by mutableStateOf(emptyMap<String, Float>())

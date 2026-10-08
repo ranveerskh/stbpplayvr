@@ -1183,7 +1183,7 @@ private fun StbPlayRoot(
     val searchCatalog = rememberSearchCatalog(selectedTab, safeLive, safeVod, favoriteStreams, catalogueLanguage)
     val favouriteUiItems = rememberFavouriteUiItems(
         favoriteStreams, progressById, favoriteIds, storedSettings, catalogGeneration,
-        artworkToken, artworkCookie, ::toUi
+        artworkToken, artworkCookie, portalReady, ::toUi
     )
     val homeHeroes = remember(homeHeroStreams, progressById, favoriteIds, catalogGeneration, artworkToken, artworkCookie) {
         homeHeroStreams.map(::toUi)
