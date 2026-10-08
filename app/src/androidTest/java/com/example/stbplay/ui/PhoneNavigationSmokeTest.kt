@@ -70,7 +70,8 @@ class PhoneNavigationSmokeTest {
         assertEquals("movie", clicked?.streamType)
         rule.onNodeWithContentDescription("Home").performClick()
         rule.onNodeWithText("⌕").performClick()
-        rule.onNode(hasSetTextAction()).performTextInput("Fixture channel")
+        // Keep the query different from the result title so the matcher cannot hit the text field.
+        rule.onNode(hasSetTextAction()).performTextInput("Fixture chan")
         rule.waitUntil(10_000) { rule.onAllNodesWithText(channel.title).fetchSemanticsNodes().isNotEmpty() }
         rule.runOnIdle {
             val input = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
@@ -78,7 +79,7 @@ class PhoneNavigationSmokeTest {
             clicked = null
         }
         rule.waitForIdle()
-        rule.onNodeWithText(channel.title).performTouchInput { click() }
+        rule.onNodeWithText(channel.title).assertIsDisplayed().performTouchInput { click() }
         rule.waitUntil(5_000) { clicked?.title == channel.title }
         assertEquals("same", clicked?.id)
         assertEquals("live", clicked?.streamType)
