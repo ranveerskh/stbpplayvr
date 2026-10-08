@@ -26,7 +26,8 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 72
-        versionName = "2.0.20"
+        // Test-only optimization build; keep code 72 for in-place install and stable rollback.
+        versionName = "2.0.20.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

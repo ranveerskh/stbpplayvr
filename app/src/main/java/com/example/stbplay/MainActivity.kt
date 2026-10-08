@@ -69,6 +69,7 @@ import com.example.stbplay.ui.PinPrompt
 import com.example.stbplay.ui.ProviderPinSetupPrompt
 import com.example.stbplay.data.resolveProviderPortalId
 import com.example.stbplay.data.resolvePairingPortal
+import com.example.stbplay.data.findCatalogStream
 import com.example.stbplay.ui.screens.TvMediaDetailsScreen
 import com.example.stbplay.ui.screens.TvLivePreviewPanel
 import androidx.compose.ui.focus.FocusRequester
@@ -88,6 +89,8 @@ import com.example.stbplay.ui.StbPlayTab
 import com.example.stbplay.ui.UiCategory
 import com.example.stbplay.ui.UiMedia
 import com.example.stbplay.ui.UiMediaRow
+import com.example.stbplay.ui.rememberFavouriteUiItems
+import com.example.stbplay.ui.rememberSearchCatalog
 import com.example.stbplay.ui.screens.LoadingScreen
 import com.example.stbplay.ui.screens.MovieDetailsScreen
 import com.example.stbplay.ui.screens.PlaybackRoute
@@ -831,10 +834,11 @@ private fun StbPlayRoot(
         }
     }
 
-    fun allStreamFor(media: UiMedia): PortalStream? = (liveStreams + movieStreams + seriesStreams + remoteSearchStreams + localFavoriteStreams)
-        .firstOrNull { it.id == media.id && it.streamType == media.streamType }
-        ?: vodCatalogs.values.asSequence().flatMap { it.items.asSequence() }
-            .firstOrNull { it.id == media.id && it.streamType == media.streamType }
+    fun allStreamFor(media: UiMedia): PortalStream? = findCatalogStream(
+        media.id, media.streamType, liveStreams, movieStreams, seriesStreams,
+        remoteSearchStreams, localFavoriteStreams,
+        vodCatalogs.values.asSequence().flatMap { it.items.asSequence() }
+    )
 
     fun setFavorite(media: UiMedia) {
         val save = media.id !in favoriteIds
@@ -1176,6 +1180,11 @@ private fun StbPlayRoot(
     }
     val artworkToken = portalRepository.getHandshakeToken()
     val artworkCookie = portalRepository.getSessionCookie()
+    val searchCatalog = rememberSearchCatalog(selectedTab, safeLive, safeVod, favoriteStreams, catalogueLanguage)
+    val favouriteUiItems = rememberFavouriteUiItems(
+        favoriteStreams, progressById, favoriteIds, storedSettings, catalogGeneration,
+        artworkToken, artworkCookie, ::toUi
+    )
     val homeHeroes = remember(homeHeroStreams, progressById, favoriteIds, catalogGeneration, artworkToken, artworkCookie) {
         homeHeroStreams.map(::toUi)
     }
@@ -1251,7 +1260,7 @@ private fun StbPlayRoot(
         loadingMore = selectedVodCatalog?.loading == true,
         emptyMessage = selectedVodCatalog?.error ?: "Try another category or refresh the portal."
     )
-    val favouritesState = StbPlayLibraryState(items = favoriteStreams.map(::toUi))
+    val favouritesState = StbPlayLibraryState(items = favouriteUiItems)
     val accessInfo = appAccessInfo(platformLicense, platformLicenseClient.providerPortalId() != null, demoTrialStartedAt, System.currentTimeMillis())
     val licenseExpiryMillis = accessInfo.expiresAtMillis
     val settingsState = StbPlaySettingsState(
@@ -1679,20 +1688,7 @@ private fun StbPlayRoot(
                             if (playRequest == null && selectedMovie == null && selectedSeries == null) startCategoryPreload(storedSettings)
                         }
                     },
-                    searchCatalog = when (selectedTab) {
-                        StbPlayTab.LIVE -> liveStreams.filter { isAllowedInMode(it, explicitAdultLiveCategoryIds) }
-                        StbPlayTab.CONTENT -> {
-                            // Search everything already loaded from every VOD page/category,
-                            // not just the currently selected category's visible page.
-                            allVod.filter { stream -> isAllowedInMode(stream, explicitAdultVodCategoryIds) }.filter { stream ->
-                                catalogueLanguage == "All" ||
-                                    stream.language?.contains(catalogueLanguage, ignoreCase = true) == true ||
-                                    stream.searchText?.contains(catalogueLanguage, ignoreCase = true) == true
-                            }
-                        }
-                        StbPlayTab.FAVOURITES -> favoriteStreams
-                        else -> safeLive + safeVod
-                    },
+                    searchCatalog = searchCatalog,
                     searchRemote = { query, page ->
                             portalRepository.searchVod(query, page).let { batch ->
                             batch.copy(items = batch.items.filter { stream -> isAllowedInMode(stream, explicitAdultVodCategoryIds) }.filter { stream ->
