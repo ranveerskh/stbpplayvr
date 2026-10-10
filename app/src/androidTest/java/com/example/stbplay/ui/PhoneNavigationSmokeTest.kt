@@ -86,6 +86,8 @@ class PhoneNavigationSmokeTest {
         assertEquals("same", clicked?.id)
         assertEquals("live", clicked?.streamType)
         assertEquals(StbPlayTab.HOME, selected)
+        rule.onNodeWithText("Search All content").assertIsDisplayed()
+        rule.onNodeWithText("Back").performClick()
         ThemePreference.entries.forEach { preference ->
             rule.runOnIdle { theme = preference }
             rule.waitForIdle()

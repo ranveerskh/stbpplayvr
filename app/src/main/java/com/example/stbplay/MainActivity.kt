@@ -37,6 +37,8 @@ import androidx.tv.material3.Surface
 import androidx.media3.cast.Cast
 import androidx.media3.common.util.UnstableApi
 import androidx.annotation.OptIn as AndroidXOptIn
+import com.example.stbplay.ui.SearchSession
+import com.example.stbplay.data.CategoryDropdownPosition
 import com.example.stbplay.data.PlayerPreference
 import com.example.stbplay.data.ParentalMode
 import com.example.stbplay.data.PortalRepository
@@ -384,8 +386,12 @@ private fun StbPlayRoot(
     val androidBoxVideoCompatibility by settingsManager.androidBoxVideoCompatibility.collectAsState(initial = false)
     val subtitlePreference by settingsManager.subtitlePreference.collectAsState(initial = com.example.stbplay.data.SubtitlePreference.AUTO)
     val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
+    val phoneCategoryPosition by settingsManager.phoneCategoryPosition.collectAsState(initial = CategoryDropdownPosition.TOP)
+    val phoneMovieColumns by settingsManager.phoneMovieColumns.collectAsState(initial = 2)
+    val searchHistory by settingsManager.searchHistory.collectAsState(initial = emptyList())
     val parentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
     val catalogueLanguage by settingsManager.catalogueLanguage.collectAsState(initial = "All")
+    val searchSession = remember(storedSettings.id, storedSettings.url, storedSettings.mac, parentalMode, catalogueLanguage) { SearchSession() }
     val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = false)
     val privacyPrefs = remember(appContext) { appContext.getSharedPreferences("privacy_notice", Context.MODE_PRIVATE) }
     var acceptedPolicyVersion by remember(privacyPrefs) {
@@ -531,7 +537,7 @@ private fun StbPlayRoot(
     )
 
     fun startCategoryPreload(settings: PortalSettings) {
-        if (searchVisible) return
+        if (searchVisible || searchSession.open) return
         if (categoryPreloadJob?.isActive == true) return
         categoryPreloadJob = scope.launch {
             delay(400)
@@ -1285,6 +1291,8 @@ private fun StbPlayRoot(
         playerPreference = playerPreference,
         androidBoxVideoCompatibility = androidBoxVideoCompatibility,
         themePreference = themePreference,
+        phoneCategoryPosition = phoneCategoryPosition,
+        phoneMovieColumns = phoneMovieColumns,
         parentalMode = parentalMode,
         subtitlePreference = subtitlePreference,
         catalogueLanguage = catalogueLanguage,
@@ -1657,6 +1665,8 @@ private fun StbPlayRoot(
                     onProviderPair = ::startProviderPairing,
                     onPlayerPreferenceChanged = { preference -> scope.launch { settingsManager.setPlayerPreference(preference) } },
                     onAndroidBoxVideoCompatibilityChanged = { enabled -> scope.launch { settingsManager.setAndroidBoxVideoCompatibility(enabled) } },
+                    onPhoneCategoryPositionChanged = { position -> scope.launch { settingsManager.setPhoneCategoryPosition(position) } },
+                    onPhoneMovieColumnsChanged = { columns -> scope.launch { settingsManager.setPhoneMovieColumns(columns) } },
                     onThemePreferenceChanged = { preference -> scope.launch { settingsManager.setThemePreference(preference) } },
                     onSubtitlePreferenceChanged = { preference -> scope.launch { settingsManager.setSubtitlePreference(preference) } },
                     onCatalogueLanguageChanged = { language -> scope.launch { settingsManager.setCatalogueLanguage(language) } },
@@ -1680,6 +1690,10 @@ private fun StbPlayRoot(
                         }
                     },
                     onShare = onShare,
+                    searchSession = searchSession,
+                    searchHistory = searchHistory,
+                    onRememberSearch = { query -> scope.launch { settingsManager.addSearchHistory(query) } },
+                    onClearSearchHistory = { scope.launch { settingsManager.clearSearchHistory() } },
                     onSearchVisibilityChanged = { visible ->
                         searchVisible = visible
                         if (visible) categoryPreloadJob?.cancel()

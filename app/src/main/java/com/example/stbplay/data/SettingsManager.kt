@@ -50,6 +50,7 @@ class SettingsManager(private val context: Context) {
     private val keyParentalPin = stringPreferencesKey("parental_pin")
     private val keyParentalMode = stringPreferencesKey("parental_mode")
     private val keyFavoritesPrefix = "favorite_ids_"
+    private val keySearchHistoryPrefix = "search_history_"
     private val keyProgressPrefix = "vod_progress_"
     private val keyPlayer = stringPreferencesKey("player_preference")
     private val keyAndroidBoxVideoCompatibility = booleanPreferencesKey("android_box_video_compatibility")
@@ -104,6 +105,32 @@ class SettingsManager(private val context: Context) {
         else parseProgress(prefs[stringPreferencesKey(keyProgressPrefix + profileId)].orEmpty())
             .mapValues { it.value.first }
     }
+
+    val searchHistory: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        val id = activeProfileId(prefs)
+        if (id.isBlank()) emptyList() else parseSearchHistory(prefs[stringPreferencesKey(keySearchHistoryPrefix + id)])
+    }
+
+    suspend fun addSearchHistory(query: String) {
+        context.dataStore.edit { prefs ->
+            val id = activeProfileId(prefs)
+            if (id.isBlank()) return@edit
+            val key = stringPreferencesKey(keySearchHistoryPrefix + id)
+            prefs[key] = JSONArray(updatedSearchHistory(parseSearchHistory(prefs[key]), query)).toString()
+        }
+    }
+
+    suspend fun clearSearchHistory() {
+        context.dataStore.edit { prefs ->
+            val id = activeProfileId(prefs)
+            if (id.isNotBlank()) prefs.remove(stringPreferencesKey(keySearchHistoryPrefix + id))
+        }
+    }
+
+    private fun parseSearchHistory(raw: String?): List<String> = runCatching {
+        val array = JSONArray(raw ?: "[]")
+        (0 until array.length()).map { array.getString(it) }.filter { it.isNotBlank() }
+    }.getOrDefault(emptyList())
 
     val watchHistory: Flow<List<WatchProgress>> = context.dataStore.data.map { prefs ->
         val profileId = activeProfileId(prefs)
