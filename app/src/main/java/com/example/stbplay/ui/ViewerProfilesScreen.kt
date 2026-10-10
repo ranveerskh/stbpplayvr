@@ -107,7 +107,7 @@ fun ViewerProfilesScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("🙂", "🦊", "🐼", "🚀").forEach { face -> QuestButton(onClick = { avatar = face }) { Text(face) } }
             }
-            QuestButton(onClick = { avatarPicker.launch("image/*") }) { Text("Upload avatar photo") }
+            QuestButton(onClick = { runCatching { avatarPicker.launch("image/*") }.onFailure { error = "No photo picker is available. Choose a built-in avatar instead." } }) { Text("Upload avatar photo") }
             if (avatar.startsWith("/")) coil.compose.AsyncImage(avatar, "Selected avatar", Modifier.size(64.dp))
             else Text("Avatar: $avatar", color = palette.text)
             error?.let { Text(it, color = palette.danger) }

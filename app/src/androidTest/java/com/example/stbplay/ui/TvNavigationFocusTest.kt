@@ -152,6 +152,7 @@ class TvNavigationFocusTest {
     @Test fun settingsSubpageAndBackRestoreActualMenuFocus() {
         start(StbPlayTab.SETTINGS)
         focused("tv-focus:settings:Subscription")
+        down(); focused("tv-focus:settings:Who's watching?")
         down(); focused("tv-focus:settings:Content sources")
         ok(); focused("tv-focus:settings:back")
         device.pressBack(); rule.waitForIdle()
