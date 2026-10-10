@@ -276,7 +276,7 @@ private fun EpisodeRow(episode: PortalEpisode, initialFocus: Boolean = false, ha
     val playable = !episode.cmd.isNullOrBlank()
     QuestSurface(
         onClick = { if (playable) onClick() },
-        modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).fillMaxWidth().height(if (television) 28.dp else 68.dp),
+        modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).fillMaxWidth().height(if (television) 28.dp else 48.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = SeriesPanel, focusedContainerColor = SeriesGold.copy(alpha = 0.2f)),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGold)))

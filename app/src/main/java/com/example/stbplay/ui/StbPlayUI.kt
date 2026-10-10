@@ -307,6 +307,8 @@ data class StbPlaySettingsState(
     val phoneCategoryPosition: CategoryDropdownPosition = CategoryDropdownPosition.TOP,
     val phoneMovieColumns: Int = 2,
     val parentalMode: ParentalMode = ParentalMode.ALL_CONTENT,
+    val kidsProfile: Boolean = false,
+    val viewerName: String = "Owner",
     val subtitlePreference: SubtitlePreference = SubtitlePreference.AUTO,
     val catalogueLanguage: String = "All",
     val analyticsEnabled: Boolean = false,
@@ -374,7 +376,8 @@ fun StbPlayApp(
     searchSession: SearchSession = remember { SearchSession() },
     searchHistory: List<String> = emptyList(),
     onRememberSearch: (String) -> Unit = {},
-    onClearSearchHistory: () -> Unit = {}
+    onClearSearchHistory: () -> Unit = {},
+    onSwitchViewer: () -> Unit = {}
 ) {
     val searchOpen = searchSession.open
     val tvLayout = isTelevisionLayout()
@@ -495,7 +498,8 @@ fun StbPlayApp(
                     onParentalModeChanged = onParentalModeChanged,
                     onCheckUpdates = onCheckUpdates,
                     onDownloadUpdate = onDownloadUpdate,
-                    onShare = onShare
+                    onShare = onShare,
+                    onSwitchViewer = onSwitchViewer
                 )
             }
     }
@@ -969,7 +973,7 @@ private fun StbPlayHomeScreen(
 private fun PortalConnectionWarning(message: String, onRetry: () -> Unit, onEditPortal: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF32251B)).border(1.dp, Gold.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+            .background(if (LocalStbPalette.current == LightPalette) Color(0xFFFFF3D6) else Color(0xFF32251B)).border(1.dp, Gold.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
@@ -1046,7 +1050,7 @@ private fun RotatingHero(
             }
             Box(
                 Modifier.width(if (isCompactAndroidLayout()) 112.dp else if (denseTv) 155.dp else 190.dp)
-                    .fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(Color(0xFF101319))
+                    .fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(Panel)
             ) {
                 ArtworkImage(
                     imageUrl = item.imageUrl,
@@ -1059,7 +1063,7 @@ private fun RotatingHero(
                     decodeHeightPx = if (denseTv) with(density) { 210.dp.roundToPx() } else null
                 )
                 if (!denseTv && heroes.size > 1) {
-                    Text("${index + 1} / ${heroes.size}", color = White, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).padding(7.dp))
+                    Text("${index + 1} / ${heroes.size}", color = PosterWhite, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).padding(7.dp))
                 }
             }
         }
@@ -2002,7 +2006,7 @@ private fun MediaCard(
                     )
                 ) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 9.dp), contentAlignment = Alignment.Center) {
-                        Text("Remove", color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text("Remove", color = PosterWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -2025,7 +2029,7 @@ private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit, modifier: M
         onClick = onClick,
         modifier = modifier.size(buttonSize),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(17.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xCC070707), focusedContainerColor = Gold)
+        colors = ClickableSurfaceDefaults.colors(containerColor = if (LocalStbPalette.current == LightPalette) Color(0xFFFFF3D6) else Color(0xCC070707), focusedContainerColor = Gold)
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(if (isFavorite) "★" else "☆", color = GoldLight, fontSize = 19.sp)
@@ -2064,7 +2068,8 @@ private fun StbPlaySettingsScreen(
     onParentalModeChanged: (ParentalMode) -> Unit,
     onCheckUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onSwitchViewer: () -> Unit
 ) {
     var page by remember { mutableStateOf(SettingsPage.HOME) }
     var lastMenuTitle by rememberSaveable { mutableStateOf("Subscription") }
@@ -2118,7 +2123,8 @@ private fun StbPlaySettingsScreen(
                 }
                 item {
                     SettingsMenuGroup {
-                        SettingsMenuRow(Icons.Filled.Storage, "Content sources", "Manage portals") { page = SettingsPage.SOURCES }
+                        SettingsMenuRow(Icons.Filled.Person, "Who's watching?", state.viewerName, onClick = onSwitchViewer)
+                        if (!state.kidsProfile) SettingsMenuRow(Icons.Filled.Storage, "Content sources", "Manage portals") { page = SettingsPage.SOURCES }
                         SettingsMenuDivider()
                         SettingsMenuRow(Icons.Filled.Tv, "Content & storage", "Catalogue and history") { page = SettingsPage.CONTENT }
                     }
@@ -2129,7 +2135,7 @@ private fun StbPlaySettingsScreen(
                         SettingsMenuDivider()
                         SettingsMenuRow(Icons.Filled.Language, "Appearance & language", state.themePreference.displayName()) { page = SettingsPage.APPEARANCE }
                         SettingsMenuDivider()
-                        SettingsMenuRow(Icons.Filled.Lock, "Parental controls", "Change PIN") { page = SettingsPage.PARENTAL }
+                        if (!state.kidsProfile) SettingsMenuRow(Icons.Filled.Lock, "Parental controls", "Owner PIN") { page = SettingsPage.PARENTAL }
                     }
                 }
                 item {

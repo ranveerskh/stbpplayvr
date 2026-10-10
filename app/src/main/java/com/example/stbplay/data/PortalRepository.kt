@@ -69,6 +69,7 @@ class PortalRepository {
 
             LoginResponse(success = true)
         } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
             currentSession = null
             val message = error.message.orEmpty()
             val errorMsg = when {

@@ -271,7 +271,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
-            val parentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
+            val savedParentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
+            val activeViewer by settingsManager.activeViewer.collectAsState(initial = com.example.stbplay.data.ViewerProfile("owner", "Owner", 18))
+            val parentalMode = if (activeViewer.isKids) ParentalMode.HIDE_ADULT else savedParentalMode
             LaunchedEffect(themePreference) { LauncherIconManager.apply(applicationContext, themePreference) }
             STBPlayTheme(preference = themePreference, adultOnly = parentalMode == ParentalMode.ADULT_ONLY) {
                 StbPlayRoot(settingsManager, updateManager, ::queueUpdateDownload, ::shareApp, openUpdates)
@@ -380,6 +382,11 @@ private fun StbPlayRoot(
     val settingsLoaded = startupSettings != null
     val storedSettings = startupSettings?.activePortal ?: PortalSettings()
     val profiles = startupSettings?.profiles.orEmpty()
+    val viewerProfiles by settingsManager.viewerProfiles.collectAsState(initial = emptyList())
+    val phoneSetupComplete by settingsManager.phoneSetupComplete.collectAsState(initial = true)
+    var unlockedViewerId by remember { mutableStateOf<String?>(null) }
+    val phoneDevice = !isAndroidTv && com.example.stbplay.ui.useStaticUiScale(false, android.os.Build.MANUFACTURER, android.os.Build.BRAND, android.os.Build.MODEL)
+
     val favoriteIds by settingsManager.favoriteIds.collectAsState(initial = emptySet())
     val progressById by settingsManager.vodProgress.collectAsState(initial = emptyMap())
     val playerPreference by settingsManager.playerPreference.collectAsState(initial = PlayerPreference.AUTO)
@@ -389,9 +396,11 @@ private fun StbPlayRoot(
     val phoneCategoryPosition by settingsManager.phoneCategoryPosition.collectAsState(initial = CategoryDropdownPosition.TOP)
     val phoneMovieColumns by settingsManager.phoneMovieColumns.collectAsState(initial = 2)
     val searchHistory by settingsManager.searchHistory.collectAsState(initial = emptyList())
-    val parentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
+    val savedParentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
+    val activeViewer by settingsManager.activeViewer.collectAsState(initial = com.example.stbplay.data.ViewerProfile("owner", "Owner", 18))
+    val parentalMode = if (activeViewer.isKids) ParentalMode.HIDE_ADULT else savedParentalMode
     val catalogueLanguage by settingsManager.catalogueLanguage.collectAsState(initial = "All")
-    val searchSession = remember(storedSettings.id, storedSettings.url, storedSettings.mac, parentalMode, catalogueLanguage) { SearchSession() }
+    val searchSession = remember(storedSettings.id, storedSettings.url, storedSettings.mac, activeViewer.id, parentalMode, catalogueLanguage) { SearchSession() }
     val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = false)
     val privacyPrefs = remember(appContext) { appContext.getSharedPreferences("privacy_notice", Context.MODE_PRIVATE) }
     var acceptedPolicyVersion by remember(privacyPrefs) {
@@ -418,10 +427,11 @@ private fun StbPlayRoot(
     var liveStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var movieStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var seriesStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
-    var localFavoriteStreams by remember(storedSettings.id) { mutableStateOf<List<PortalStream>>(emptyList()) }
+    val viewerCatalogProfileId = if (activeViewer.id == "owner") storedSettings.id else "${storedSettings.id}:view:${activeViewer.id}"
+    var localFavoriteStreams by remember(viewerCatalogProfileId) { mutableStateOf<List<PortalStream>>(emptyList()) }
 
-    LaunchedEffect(storedSettings.id) {
-        localFavoriteStreams = catalogCache.readFavorites(storedSettings.id)
+    LaunchedEffect(viewerCatalogProfileId) {
+        localFavoriteStreams = catalogCache.readFavorites(viewerCatalogProfileId)
     }
     var remoteSearchStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
     var vodCatalogs by remember { mutableStateOf<Map<String, VodCatalogState>>(emptyMap()) }
@@ -521,6 +531,12 @@ private fun StbPlayRoot(
             updateInfo?.let { promptUpdate = it }
         }
     }
+
+    val kidsCategoryIds = remember(liveCategories, movieCategories, seriesCategories) {
+        liveCategories.filter { com.example.stbplay.data.isKidsCategory(it) }.mapTo(HashSet()) { it.id } to
+            (movieCategories + seriesCategories).filter { com.example.stbplay.data.isKidsCategory(it) }.mapTo(HashSet()) { it.id }
+    }
+    fun viewerAllows(stream: PortalStream) = !activeViewer.isKids || com.example.stbplay.data.isKidsContentAllowed(stream, if (stream.streamType == "live") kidsCategoryIds.first else kidsCategoryIds.second)
 
     fun portalKey(settings: PortalSettings) = "${settings.id}|${settings.url.trim()}|${settings.mac.trim()}"
 
@@ -636,7 +652,9 @@ private fun StbPlayRoot(
                         loadingStage = "Updating catalogue in background…"
                     }
                 }
-                val login = portalRepository.initialize(input)
+                val login = com.example.stbplay.data.retryPortalLogin {
+                    portalRepository.initialize(input)
+                }
                 if (!login.success) throw IllegalStateException(login.errorMessage ?: "Portal authentication failed.")
                 portalReady = true
                 subscription = portalRepository.getSubscription()
@@ -678,6 +696,7 @@ private fun StbPlayRoot(
                 screen = AppScreen.APP
                 startCategoryPreload(input)
             } catch (error: Throwable) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
                 val reason = error.message?.takeIf { it.isNotBlank() } ?: "Connection failed."
                 connectionError = "Could not connect to this portal ($reason). The portal may be unavailable, its details may have changed, or the provider service may have expired."
                 if (refreshingVisibleCatalogue || keepHomeVisible) screen = AppScreen.APP
@@ -852,7 +871,7 @@ private fun StbPlayRoot(
         scope.launch {
             settingsManager.setFavorite(media.id, save)
             if (stream != null) {
-                catalogCache.updateFavorite(storedSettings.id, stream, save)
+                catalogCache.updateFavorite(viewerCatalogProfileId, stream, save)
                 localFavoriteStreams = if (save) {
                     (localFavoriteStreams.filterNot { it.streamType == stream.streamType && it.id == stream.id } + stream)
                 } else {
@@ -871,6 +890,7 @@ private fun StbPlayRoot(
         contentId: String = stream.id,
         livePreview: Boolean = false
     ) {
+        if (!viewerAllows(stream)) return
         if (stream.streamType == "live") {
             if (!livePreview) focusedLiveChannelId = stream.id
             scope.launch { settingsManager.markRecentlyPlayed(stream.id) }
@@ -898,6 +918,7 @@ private fun StbPlayRoot(
     }
 
     fun openMedia(stream: PortalStream, resume: Float = 0f) {
+        if (!viewerAllows(stream)) return
         when (stream.streamType) {
             "live" -> if (isAndroidTv && selectedTab == StbPlayTab.LIVE) {
                 focusedLiveChannelId = stream.id
@@ -968,14 +989,14 @@ private fun StbPlayRoot(
     }
     val flaggedAdultVodCategoryIds = remember(allVod) { allVod.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId } }
     val flaggedAdultLiveCategoryIds = remember(liveStreams) { liveStreams.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId } }
-    val contentCategories = remember(movieCategories, seriesCategories, parentalMode, allVod) {
+    val contentCategories = remember(movieCategories, seriesCategories, parentalMode, allVod, activeViewer.isKids) {
         val categories = (movieCategories + seriesCategories).distinctBy { it.id }
         val flaggedIds = allVod.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId }
         val visible = when (parentalMode) {
             ParentalMode.ALL_CONTENT -> categories
             ParentalMode.HIDE_ADULT -> categories.filterNot { it.isAdultCategory() }
             ParentalMode.ADULT_ONLY -> categories.filter { it.isAdultCategory() || it.id in flaggedIds }
-        }.map { category ->
+        }.filter { !activeViewer.isKids || com.example.stbplay.data.isKidsCategory(it) }.map { category ->
             val properAdultCategory = category.isAdultCategory()
             UiCategory(
                 category.id,
@@ -987,13 +1008,13 @@ private fun StbPlayRoot(
         if (parentalMode == ParentalMode.ADULT_ONLY) listOf(UiCategory("adult-only", "Adult only", isAdult = true)) + visible
         else listOf(UiCategory("all", "All")) + visible
     }
-    val uiLiveCategories = remember(liveCategories, liveStreams, parentalMode) {
+    val uiLiveCategories = remember(liveCategories, liveStreams, parentalMode, activeViewer.isKids) {
         val flaggedIds = liveStreams.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId }
         val visible = when (parentalMode) {
             ParentalMode.ALL_CONTENT -> liveCategories
             ParentalMode.HIDE_ADULT -> liveCategories.filterNot { it.isAdultCategory() }
             ParentalMode.ADULT_ONLY -> liveCategories.filter { it.isAdultCategory() || it.id in flaggedIds }
-        }.map { category ->
+        }.filter { !activeViewer.isKids || com.example.stbplay.data.isKidsCategory(it) }.map { category ->
             val properAdultCategory = category.isAdultCategory()
             UiCategory(
                 category.id,
@@ -1018,6 +1039,7 @@ private fun StbPlayRoot(
             return
         }
         val stream = allStreamFor(media) ?: return
+        if (!viewerAllows(stream)) return
         if (selectedTab == StbPlayTab.CONTENT && stream.streamType != "live") {
             focusedContentId = stream.id
         }
@@ -1064,17 +1086,18 @@ private fun StbPlayRoot(
                 stream.isAdultContent() || stream.categoryId in explicitCategoryIds
             }
         }
+        val viewerEligible = if (activeViewer.isKids) eligible.filter(::viewerAllows) else eligible
         return when {
-            category == null || category.id == "all" -> eligible
-            category.id == "adult-only" -> eligible
-            category.isAdult && parentalMode == ParentalMode.ADULT_ONLY -> eligible.filter {
+            category == null || category.id == "all" -> viewerEligible
+            category.id == "adult-only" -> viewerEligible
+            category.isAdult && parentalMode == ParentalMode.ADULT_ONLY -> viewerEligible.filter {
                 it.categoryId == category.id && (it.isAdultContent() || category.id in explicitCategoryIds)
             }
-            else -> eligible.filter { it.categoryId == category.id }
+            else -> viewerEligible.filter { it.categoryId == category.id }
         }
     }
 
-    val filteredLive = remember(liveStreams, uiLiveCategories, liveCategoryIndex, parentalMode, explicitAdultVodCategoryIds, explicitAdultLiveCategoryIds, flaggedAdultVodCategoryIds, flaggedAdultLiveCategoryIds) {
+    val filteredLive = remember(activeViewer.id, kidsCategoryIds, liveStreams, uiLiveCategories, liveCategoryIndex, parentalMode, explicitAdultVodCategoryIds, explicitAdultLiveCategoryIds, flaggedAdultVodCategoryIds, flaggedAdultLiveCategoryIds) {
         filterByCategory(liveStreams, uiLiveCategories, liveCategoryIndex)
     }
     fun stepLiveChannel(direction: Int) {
@@ -1102,7 +1125,7 @@ private fun StbPlayRoot(
     val selectedVodKey = selectedContentCategory?.id ?: "all"
     val selectedVodCatalog = vodCatalogs[selectedVodKey]
     val categoryVod = if (selectedVodKey == "adult-only") allVod else selectedVodCatalog?.items.orEmpty()
-    val filteredVod = remember(categoryVod, catalogueLanguage, parentalMode, explicitAdultVodCategoryIds, explicitAdultLiveCategoryIds, flaggedAdultVodCategoryIds, flaggedAdultLiveCategoryIds, contentCategories, contentCategoryIndex) {
+    val filteredVod = remember(activeViewer.id, kidsCategoryIds, categoryVod, catalogueLanguage, parentalMode, explicitAdultVodCategoryIds, explicitAdultLiveCategoryIds, flaggedAdultVodCategoryIds, flaggedAdultLiveCategoryIds, contentCategories, contentCategoryIndex) {
         val parentalFiltered = filterByCategory(categoryVod, contentCategories, contentCategoryIndex)
         parentalFiltered.filter { stream ->
             val languageMatches = catalogueLanguage == "All" ||
@@ -1129,21 +1152,21 @@ private fun StbPlayRoot(
         if (selectedTab == StbPlayTab.CONTENT) filteredVod.map(::toUi) else emptyList()
     }
 
-    fun isAllowedInMode(stream: PortalStream, explicitAdultCategoryIds: Set<String>): Boolean = when (parentalMode) {
+    fun isAllowedInMode(stream: PortalStream, explicitAdultCategoryIds: Set<String>): Boolean = viewerAllows(stream) && when (parentalMode) {
         ParentalMode.ALL_CONTENT -> !stream.isAdultContent() && stream.categoryId !in explicitAdultCategoryIds
         ParentalMode.HIDE_ADULT -> !stream.isAdultContent() && stream.categoryId !in explicitAdultCategoryIds
         ParentalMode.ADULT_ONLY -> stream.isAdultContent() || stream.categoryId in explicitAdultCategoryIds
     }
-    val safeLive = remember(liveStreams, parentalMode, explicitAdultLiveCategoryIds) {
+    val safeLive = remember(activeViewer.id, kidsCategoryIds, liveStreams, parentalMode, explicitAdultLiveCategoryIds) {
         liveStreams.filter { isAllowedInMode(it, explicitAdultLiveCategoryIds) }
     }
-    val safeVod = remember(allVod, parentalMode, explicitAdultVodCategoryIds) {
+    val safeVod = remember(activeViewer.id, kidsCategoryIds, allVod, parentalMode, explicitAdultVodCategoryIds) {
         allVod.filter { isAllowedInMode(it, explicitAdultVodCategoryIds) }
     }
     val latestMovies = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "movie" }.take(18).toList() }
     val latestSeries = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "series" }.take(18).toList() }
-    LaunchedEffect(storedSettings.id, favoriteIds, liveStreams, movieStreams, seriesStreams, vodCatalogs) {
-        val profileId = storedSettings.id
+    LaunchedEffect(viewerCatalogProfileId, favoriteIds, liveStreams, movieStreams, seriesStreams, vodCatalogs) {
+        val profileId = viewerCatalogProfileId
         if (profileId.isNotBlank() && favoriteIds.isNotEmpty()) {
             delay(250)
             val known = liveStreams + movieStreams + seriesStreams + vodCatalogs.values.flatMap { it.items }
@@ -1151,7 +1174,7 @@ private fun StbPlayRoot(
             localFavoriteStreams = catalogCache.readFavorites(profileId)
         }
     }
-    val favoriteStreams = remember(liveStreams, allVod, localFavoriteStreams, favoriteIds, parentalMode, explicitAdultLiveCategoryIds, explicitAdultVodCategoryIds) {
+    val favoriteStreams = remember(activeViewer.id, kidsCategoryIds, liveStreams, allVod, localFavoriteStreams, favoriteIds, parentalMode, explicitAdultLiveCategoryIds, explicitAdultVodCategoryIds) {
         (liveStreams + allVod + localFavoriteStreams).filter { stream ->
             stream.id in favoriteIds && isAllowedInMode(
                 stream,
@@ -1294,6 +1317,8 @@ private fun StbPlayRoot(
         phoneCategoryPosition = phoneCategoryPosition,
         phoneMovieColumns = phoneMovieColumns,
         parentalMode = parentalMode,
+        kidsProfile = activeViewer.isKids,
+        viewerName = activeViewer.name,
         subtitlePreference = subtitlePreference,
         catalogueLanguage = catalogueLanguage,
         analyticsEnabled = analyticsEnabled,
@@ -1442,12 +1467,25 @@ private fun StbPlayRoot(
                         onLater = {}, onRetry = { checkUpdates(manual = true) }
                     )
                 }
-                !settingsLoaded -> Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
+                !settingsLoaded || viewerProfiles.isEmpty() -> Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
                 !policyAccepted -> FirstStartDisclaimer {
                     privacyPrefs.edit().putInt("policy_accepted_version", REQUIRED_POLICY_VERSION).apply()
                     acceptedPolicyVersion = REQUIRED_POLICY_VERSION
                     scope.launch { settingsManager.acknowledgeDisclaimer() }
                 }
+                viewerProfiles.isNotEmpty() && unlockedViewerId != activeViewer.id -> com.example.stbplay.ui.ViewerProfilesScreen(
+                    profiles = viewerProfiles, ownerPin = storedSettings.pin,
+                    onSelected = { viewer -> scope.launch { settingsManager.activateViewer(viewer.id); unlockedViewerId = viewer.id } },
+                    onSave = { viewer, pin -> scope.launch { settingsManager.saveViewer(viewer, pin) } },
+                    onSetOwnerPin = { pin -> scope.launch { settingsManager.updateParentalPin(storedSettings.pin, pin) } }
+                )
+                phoneDevice && !phoneSetupComplete && viewerProfiles.isNotEmpty() -> com.example.stbplay.ui.PhoneFirstSetup(
+                    phoneCategoryPosition, phoneMovieColumns, themePreference,
+                    onPosition = { scope.launch { settingsManager.setPhoneCategoryPosition(it) } },
+                    onColumns = { scope.launch { settingsManager.setPhoneMovieColumns(it) } },
+                    onTheme = { scope.launch { settingsManager.setThemePreference(it) } },
+                    onDone = { scope.launch { settingsManager.completePhoneSetup() } }
+                )
                 screen == AppScreen.APP && (storedSettings.url.isBlank() || storedSettings.mac.isBlank()) ->
                     Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
                 playRequest != null && !tvLivePreviewPlayback -> {
@@ -1479,7 +1517,7 @@ private fun StbPlayRoot(
                         if (currentRequest.contentId !in recoveryAttemptedContentIds) {
                             recoveryAttemptedContentIds = recoveryAttemptedContentIds + currentRequest.contentId
                             scope.launch {
-                                val login = portalRepository.initialize(storedSettings)
+                                val login = com.example.stbplay.data.retryPortalLogin { portalRepository.initialize(storedSettings) }
                                 if (login.success) {
                                     portalReady = true
                                     subscription = portalRepository.getSubscription()
@@ -1653,7 +1691,7 @@ private fun StbPlayRoot(
                         )
                         screen = AppScreen.SETUP
                     },
-                    onEditPortal = { profile -> editingPortal = profile.copy(pin = storedSettings.pin); screen = AppScreen.SETUP },
+                    onEditPortal = { profile -> if (!activeViewer.isKids) { editingPortal = profile.copy(pin = storedSettings.pin); screen = AppScreen.SETUP } },
                     onUsePortal = { profile ->
                         scope.launch { settingsManager.activatePortal(profile.id) }
                         autoConnectKey = null
@@ -1671,9 +1709,9 @@ private fun StbPlayRoot(
                     onSubtitlePreferenceChanged = { preference -> scope.launch { settingsManager.setSubtitlePreference(preference) } },
                     onCatalogueLanguageChanged = { language -> scope.launch { settingsManager.setCatalogueLanguage(language) } },
                     onAnalyticsChanged = { enabled -> scope.launch { settingsManager.setAnalyticsEnabled(enabled) } },
-                    onChangePin = { changingPin = true },
+                    onChangePin = { if (!activeViewer.isKids) changingPin = true },
                     onParentalModeChanged = { mode ->
-                        if (mode != parentalMode) {
+                        if (!activeViewer.isKids && mode != parentalMode) {
                             if (storedSettings.pin.isBlank()) scope.launch { settingsManager.setParentalMode(mode) }
                             else pendingParentalMode = mode
                         }
@@ -1690,6 +1728,12 @@ private fun StbPlayRoot(
                         }
                     },
                     onShare = onShare,
+                    onSwitchViewer = {
+                        playRequest = null; livePreviewStream = null; tvLivePreviewPlayback = false
+                        selectedMovie = null; selectedSeries = null; selectedLiveChannel = null
+                        unlockedAdultCategoryKey = null; pendingLockedMedia = null; pendingParentalMode = null
+                        unlockedViewerId = null; selectedTab = StbPlayTab.HOME
+                    },
                     searchSession = searchSession,
                     searchHistory = searchHistory,
                     onRememberSearch = { query -> scope.launch { settingsManager.addSearchHistory(query) } },
@@ -1757,7 +1801,7 @@ private fun StbPlayRoot(
                         if (previewRequest.contentId !in recoveryAttemptedContentIds) {
                             recoveryAttemptedContentIds = recoveryAttemptedContentIds + previewRequest.contentId
                             scope.launch {
-                                val login = portalRepository.initialize(storedSettings)
+                                val login = com.example.stbplay.data.retryPortalLogin { portalRepository.initialize(storedSettings) }
                                 if (login.success) {
                                     portalReady = true
                                     subscription = portalRepository.getSubscription()

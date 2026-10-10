@@ -23,6 +23,22 @@ class StalkerPortalClient(
         .build()
 ) {
 
+    /** Keep cancellation attached until response parsing finishes, including body reads. */
+    private suspend fun <T> executeCancellable(request: Request, consume: (okhttp3.Response) -> T): T =
+        kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+            val call = client.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, error: java.io.IOException) {
+                    if (continuation.isActive) continuation.resumeWith(Result.failure(error))
+                }
+                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                    val result = runCatching { response.use(consume) }
+                    if (continuation.isActive) continuation.resumeWith(result)
+                }
+            })
+        }
+
     suspend fun handshake(
         portalUrl: String,
         macAddress: String
@@ -54,7 +70,7 @@ class StalkerPortalClient(
             .get()
             .build()
 
-        client.newCall(request).execute().use { response ->
+        executeCancellable(request) { response ->
 
             val body = response.body?.string().orEmpty()
 
@@ -114,7 +130,7 @@ class StalkerPortalClient(
             .get()
             .build()
 
-        client.newCall(request).execute().use { response ->
+        executeCancellable(request) { response ->
 
             val body = response.body?.string().orEmpty()
 

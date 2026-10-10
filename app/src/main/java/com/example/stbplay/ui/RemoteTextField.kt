@@ -49,6 +49,7 @@ fun RemoteTextField(
     textStyle: TextStyle = TextStyle.Default,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: androidx.compose.ui.text.input.VisualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
     decorationBox: @Composable (@Composable () -> Unit) -> Unit = { it() }
 ) {
     val context = LocalContext.current
@@ -56,7 +57,7 @@ fun RemoteTextField(
     if (!television) {
         BasicTextField(
             value = value, onValueChange = onValueChange, modifier = modifier,
-            singleLine = singleLine, textStyle = textStyle,
+            singleLine = singleLine, textStyle = textStyle, visualTransformation = visualTransformation,
             keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
             decorationBox = decorationBox
         )
@@ -131,7 +132,7 @@ fun RemoteTextField(
                             editing = false
                         }
                     },
-                singleLine = singleLine, textStyle = textStyle,
+                singleLine = singleLine, textStyle = textStyle, visualTransformation = visualTransformation,
                 keyboardOptions = keyboardOptions.copy(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(
                     onDone = { finishEditing() },
@@ -140,7 +141,7 @@ fun RemoteTextField(
                 decorationBox = decorationBox
             )
         } else {
-            decorationBox { BasicText(value, style = textStyle, maxLines = if (singleLine) 1 else Int.MAX_VALUE) }
+            decorationBox { BasicText(visualTransformation.filter(androidx.compose.ui.text.AnnotatedString(value)).text.text, style = textStyle, maxLines = if (singleLine) 1 else Int.MAX_VALUE) }
         }
     }
 }
