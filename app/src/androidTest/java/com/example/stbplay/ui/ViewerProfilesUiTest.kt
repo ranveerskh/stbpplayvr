@@ -152,7 +152,10 @@ class ViewerProfilesUiTest {
         listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
         rule.onNodeWithText("Unlock").performClick()
         rule.onNodeWithText("Edit Owner").assertExists()
+        val television = InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice()
+        if (television) rule.onNode(hasText("Owner") and hasClickAction()).performScrollTo().performClick()
         rule.onAllNodes(hasSetTextAction())[0].performTextReplacement("Ranveer")
+        if (television) rule.onNode(hasSetTextAction()).performImeAction()
         rule.onNodeWithContentDescription("Punjabi Dad").performScrollTo().performClick()
         rule.onNodeWithText("Save profile").performScrollTo().performClick()
         rule.runOnIdle {
