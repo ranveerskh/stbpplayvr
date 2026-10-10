@@ -19,6 +19,13 @@ class ViewerPolicyTest {
         assertFalse(profile.copy(pinMode = ViewerPinMode.PROFILE_ENTRY).requiresRestrictedPin(plain, true))
         assertFalse(profile.copy(age = 10).requiresRestrictedPin(plain, true))
     }
+    @Test fun sharedEntryDoesNotGrantPortalAdministration() {
+        val shared = ViewerProfile("shared", "Adult", 30, pinMode = ViewerPinMode.RESTRICTED_ONLY)
+        assertTrue(shared.needsOwnerForPortalChanges)
+        assertFalse(shared.copy(id = "owner").needsOwnerForPortalChanges)
+        assertFalse(shared.copy(age = 10).needsOwnerForPortalChanges)
+        assertFalse(shared.copy(pinMode = ViewerPinMode.PROFILE_ENTRY).needsOwnerForPortalChanges)
+    }
     @Test fun ageBoundary() { assertTrue(ViewerProfile("a", "a", 17).isKids); assertFalse(ViewerProfile("a", "a", 18).isKids) }
     @Test fun pinsUseSaltAndRejectIncorrectValues() {
         val one = encodeViewerPin("1234"); val two = encodeViewerPin("1234")

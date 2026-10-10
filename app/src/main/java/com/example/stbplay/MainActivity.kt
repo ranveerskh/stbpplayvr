@@ -489,6 +489,8 @@ private fun StbPlayRoot(
     var progressResetGeneration by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var pendingLockedMedia by remember { mutableStateOf<PortalStream?>(null) }
     var pendingPersonalPlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var pendingPortalOwnerAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var portalSetupAuthorized by remember(activeViewer.id) { mutableStateOf(false) }
     var pendingCategory by remember { mutableStateOf<PendingCategory?>(null) }
     var pendingParentalMode by remember { mutableStateOf<ParentalMode?>(null) }
     var unlockedAdultCategoryKey by remember { mutableStateOf<String?>(null) }
@@ -887,6 +889,11 @@ private fun StbPlayRoot(
                 }
             }
         }
+    }
+
+    fun requestPortalOwnerAction(action: () -> Unit) {
+        if (activeViewer.isKids) return
+        if (activeViewer.needsOwnerForPortalChanges) pendingPortalOwnerAction = action else action()
     }
 
     fun launchPlayback(
@@ -1507,12 +1514,12 @@ private fun StbPlayRoot(
                     onTheme = { scope.launch { settingsManager.setThemePreference(it) } },
                     onDone = { scope.launch { settingsManager.completePhoneSetup() } }
                 )
-                activeViewer.isKids && (screen == AppScreen.SETUP || storedSettings.url.isBlank() || storedSettings.mac.isBlank()) -> {
+                (activeViewer.isKids || (activeViewer.needsOwnerForPortalChanges && !portalSetupAuthorized)) && (screen == AppScreen.SETUP || storedSettings.url.isBlank() || storedSettings.mac.isBlank()) -> {
                     androidx.compose.foundation.layout.Column(
                         Modifier.fillMaxSize().padding(24.dp),
                         verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
                     ) {
-                        androidx.tv.material3.Text("Ask the owner to connect a portal before using this Kids profile.")
+                        androidx.tv.material3.Text(if (activeViewer.isKids) "Ask the owner to connect a portal before using this Kids profile." else "Switch to Owner to connect a portal. Shared profiles use the existing portal.")
                         com.example.stbplay.ui.QuestButton(onClick = { unlockedViewerId = null }) {
                             androidx.tv.material3.Text("Switch profile")
                         }
@@ -1638,12 +1645,13 @@ private fun StbPlayRoot(
                     initialSettings = editingPortal ?: storedSettings,
                     onSave = { saved ->
                         val prepared = saved.withStableId()
+                        portalSetupAuthorized = false
                         scope.launch { settingsManager.upsertPortal(prepared) }
                         editingPortal = null
                         startConnection(prepared)
                     },
                     onProviderPair = ::startProviderPairing,
-                    onCancel = if (profiles.isNotEmpty()) ({ editingPortal = null; screen = AppScreen.APP }) else null
+                    onCancel = if (profiles.isNotEmpty()) ({ editingPortal = null; portalSetupAuthorized = false; screen = AppScreen.APP }) else null
                 )
                 screen == AppScreen.LOADING -> LoadingScreen(
                     portalName = storedSettings.name,
@@ -1651,7 +1659,7 @@ private fun StbPlayRoot(
                     progress = loadingProgress,
                     error = connectionError,
                     onRetry = { startConnection(storedSettings) },
-                    onEdit = { editingPortal = storedSettings; screen = AppScreen.SETUP }
+                    onEdit = { requestPortalOwnerAction { portalSetupAuthorized = true; editingPortal = storedSettings; screen = AppScreen.SETUP } }
                 )
                 else -> {
                   val renderApp: @Composable () -> Unit = { StbPlayApp(
@@ -1716,23 +1724,21 @@ private fun StbPlayRoot(
                         }
                     },
                     onClearHistory = { scope.launch { settingsManager.clearWatchHistory() } },
-                    onAddPortal = {
-                        editingPortal = PortalSettings(
-                            pin = storedSettings.pin,
-                            mac = if (isAndroidTv) storedSettings.mac else ""
-                        )
+                    onAddPortal = { requestPortalOwnerAction {
+                        portalSetupAuthorized = true
+                        editingPortal = PortalSettings(pin = storedSettings.pin, mac = if (isAndroidTv) storedSettings.mac else "")
                         screen = AppScreen.SETUP
-                    },
-                    onEditPortal = { profile -> if (!activeViewer.isKids) { editingPortal = profile.copy(pin = storedSettings.pin); screen = AppScreen.SETUP } },
-                    onUsePortal = { profile ->
+                    } },
+                    onEditPortal = { profile -> requestPortalOwnerAction {
+                        portalSetupAuthorized = true; editingPortal = profile.copy(pin = storedSettings.pin); screen = AppScreen.SETUP
+                    } },
+                    onUsePortal = { profile -> requestPortalOwnerAction {
                         scope.launch { settingsManager.activatePortal(profile.id) }
-                        autoConnectKey = null
-                        screen = AppScreen.LOADING
-                        loadingStage = "Switching portal…"
-                        loadingProgress = 0.04f
-                    },
-                    onDeletePortal = { profile -> scope.launch { settingsManager.deletePortal(profile.id) } },
-                    onProviderPair = ::startProviderPairing,
+                        autoConnectKey = null; screen = AppScreen.LOADING
+                        loadingStage = "Switching portal…"; loadingProgress = 0.04f
+                    } },
+                    onDeletePortal = { profile -> requestPortalOwnerAction { scope.launch { settingsManager.deletePortal(profile.id) }; Unit } },
+                    onProviderPair = { target -> requestPortalOwnerAction { startProviderPairing(target) } },
                     onPlayerPreferenceChanged = { preference -> scope.launch { settingsManager.setPlayerPreference(preference) } },
                     onAndroidBoxVideoCompatibilityChanged = { enabled -> scope.launch { settingsManager.setAndroidBoxVideoCompatibility(enabled) } },
                     onPhoneCategoryPositionChanged = { position -> scope.launch { settingsManager.setPhoneCategoryPosition(position) } },
@@ -1865,6 +1871,7 @@ private fun StbPlayRoot(
                                 selectedMovie = null; selectedSeries = null; selectedLiveChannel = null
                                 unlockedAdultCategoryKey = null; pendingLockedMedia = null; pendingParentalMode = null
                                 personalPinUnlockedIds = emptySet(); personalPinUnlockedCategory = null; pendingPersonalPlayback = null
+                                pendingPortalOwnerAction = null; portalSetupAuthorized = false
                                 pendingCategory = null; pendingPlaybackMedia = null; pendingEpisodePlayback = null; qualityContext = null
                                 settingsManager.activateViewer(viewer.id)
                                 unlockedViewerId = viewer.id; selectedTab = StbPlayTab.HOME
@@ -1876,6 +1883,11 @@ private fun StbPlayRoot(
                         onBack = { switchViewerVisible = false }
                     )
                 }
+            }
+            pendingPortalOwnerAction?.let { action ->
+                PinPrompt("Manage portals", storedSettings.pin,
+                    onVerified = { pendingPortalOwnerAction = null; action() },
+                    onCancel = { pendingPortalOwnerAction = null })
             }
             pendingLockedMedia?.let { locked ->
                 if (activeViewer.id != "owner" && activeViewer.pinHash.isNotBlank()) {

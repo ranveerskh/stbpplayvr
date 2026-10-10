@@ -10,6 +10,7 @@ enum class ViewerPinMode { PROFILE_ENTRY, RESTRICTED_ONLY }
 data class ViewerProfile(val id: String, val name: String, val age: Int, val avatar: String = "🙂", val pinHash: String = "", val allowedLiveCategories: Set<String> = emptySet(), val allowedVodCategories: Set<String> = emptySet(), val approvalPortalKey: String = "", val pinMode: ViewerPinMode = ViewerPinMode.PROFILE_ENTRY, val adultApproved: Boolean = true) {
     val isKids: Boolean get() = age < 18
     val needsEntryPin: Boolean get() = !isKids && pinMode == ViewerPinMode.PROFILE_ENTRY
+    val needsOwnerForPortalChanges: Boolean get() = !isKids && id != "owner" && pinMode == ViewerPinMode.RESTRICTED_ONLY
 }
 
 /** Restriction-only PIN applies to provider locks, ratings/flags and explicit adult categories. */
