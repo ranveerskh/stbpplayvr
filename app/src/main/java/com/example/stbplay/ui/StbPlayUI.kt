@@ -382,7 +382,10 @@ fun StbPlayApp(
     val railRequesters = remember { StbPlayTab.entries.associateWith { FocusRequester() } }
     val enterPageAction = remember { arrayOf<() -> Unit>({}) }
     fun returnToSelectedRail() { railRequesters.getValue(selectedTab).requestFocus() }
-    val searchFocusNavigation = remember(searchSession) { TvFocusNavigation(::returnToSelectedRail) {} }
+    val searchInputRequester = remember(searchSession) { FocusRequester() }
+    val searchFocusNavigation = remember(searchSession) {
+        TvFocusNavigation({ searchInputRequester.requestFocus() }) {}
+    }
     LaunchedEffect(tvLayout) {
         if (tvLayout) inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
     }
@@ -409,6 +412,7 @@ fun StbPlayApp(
                     toUi = searchMedia,
                     scope = searchSession.scope,
                     session = searchSession,
+                    inputFocusRequester = searchInputRequester,
                     searchHistory = searchHistory,
                     onRememberSearch = onRememberSearch,
                     onClearSearchHistory = onClearSearchHistory,
@@ -2536,6 +2540,7 @@ private fun StbPlaySearchScreen(
     toUi: (PortalStream) -> UiMedia,
     scope: StbPlayTab,
     session: SearchSession,
+    inputFocusRequester: FocusRequester,
     searchHistory: List<String>,
     onRememberSearch: (String) -> Unit,
     onClearSearchHistory: () -> Unit,
@@ -2553,7 +2558,7 @@ private fun StbPlaySearchScreen(
     val remotePage = session.remotePage
     val remoteHasMore = session.remoteHasMore
     val searchError = session.searchError
-    val requester = remember { FocusRequester() }
+    val requester = inputFocusRequester
     val resultRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) {
@@ -2642,12 +2647,13 @@ private fun StbPlaySearchScreen(
             .testTag("search-screen-root"),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(modifier = Modifier.testTag("search-header"), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.fillMaxWidth().testTag("search-header"), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("Search $scopeTitle", color = White, fontSize = if (isCompactAndroidLayout()) 22.sp else 30.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("Results stay within this section", color = Muted, fontSize = 13.sp)
+                Text("Results stay within this section", color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            HeaderAction("Back", onBack)
+            HeaderAction("Back", onBack, Modifier.width(84.dp))
         }
         Row(
             modifier = Modifier.fillMaxWidth().height(58.dp)
@@ -2689,8 +2695,8 @@ private fun StbPlaySearchScreen(
         }
         if (query.trim().length >= 2) {
             Row(modifier = Modifier.fillMaxWidth().testTag("search-count"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(if (scope == StbPlayTab.CONTENT) "${results.size} matching $resultType" else "${if (results.size == 200) "First " else ""}${results.size} matching $resultType · ${catalog.size} loaded", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                if (remoteHasMore && scope == StbPlayTab.CONTENT) WideAction(if (searching) "Loading…" else "More results", { if (!searching) session.remotePage++ }, Modifier.width(210.dp))
+                Text(if (scope == StbPlayTab.CONTENT) "${results.size} matching $resultType" else "${if (results.size == 200) "First " else ""}${results.size} matching $resultType · ${catalog.size} loaded", color = Muted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (remoteHasMore && scope == StbPlayTab.CONTENT) WideAction(if (searching) "Loading…" else "More results", { if (!searching) session.remotePage++ }, Modifier.width(if (isCompactAndroidLayout()) 120.dp else 210.dp))
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth().testTag("search-results-container")) {
@@ -2735,11 +2741,12 @@ private fun StbPlaySearchScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        gridItems(results, key = { "${it.streamType}:${it.id}" },
-                            contentType = { if (it.streamType == "live") "channel" else "title" }) { stream ->
+                        indexedGridItems(results, key = { _, stream -> "${stream.streamType}:${stream.id}" },
+                            contentType = { _, stream -> if (stream.streamType == "live") "channel" else "title" }) { index, stream ->
                             val media = toUi(stream)
                             MediaCard(media, { keyboard?.hide(); onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true,
                                 focusRequester = if ("${stream.streamType}:${stream.id}" == session.selectedResultKey) resultRequester else null,
+                                onReturnToCategory = if (isTelevisionLayout() && index % columns == 0) ({ requester.requestFocus() }) else null,
                                 interactionTag = "search-result:${stream.streamType}:${stream.id}")
                         }
                     }

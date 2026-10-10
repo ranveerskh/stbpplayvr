@@ -31,6 +31,8 @@ class SearchReturnRegressionTest {
             "$part=${rule.onNodeWithTag(part).fetchSemanticsNode().boundsInRoot}"
         }
         val container = rule.onNodeWithTag("search-results-container").fetchSemanticsNode().boundsInRoot
+        assertTrue("Search header must leave room for results", rule.onNodeWithTag("search-header").fetchSemanticsNode().boundsInRoot.height < screen.height / 3f)
+        assertTrue("Search results must have a usable viewport", container.height > screen.height / 3f)
         val grid = rule.onNodeWithTag("search-results").fetchSemanticsNode().boundsInRoot
         val result = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
         println("SEARCH_BOUNDS tag=$tag root=$root screen=$screen parts=[$parts] container=$container grid=$grid result=$result")
@@ -135,5 +137,13 @@ class SearchReturnRegressionTest {
         assertEquals("live", clicked?.streamType)
         rule.onNodeWithText("Search Live TV").assertIsDisplayed()
         rule.onNodeWithText("Channel 1").assertIsDisplayed()
+        if (InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice()) {
+            rule.onNodeWithTag("tv-focus:media:live:ch1").assertIsFocused()
+            UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressDPadLeft()
+            rule.waitForIdle()
+            rule.onNode(hasSetTextAction()).assertIsFocused()
+            assertTrue(session.open)
+            assertEquals("Channel", session.query)
+        }
     }
 }
