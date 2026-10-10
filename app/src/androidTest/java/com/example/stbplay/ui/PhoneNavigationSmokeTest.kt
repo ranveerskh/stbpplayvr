@@ -79,7 +79,10 @@ class PhoneNavigationSmokeTest {
         rule.runOnIdle { clicked = null }
         rule.waitForIdle()
         rule.onNodeWithTag("search-results").performScrollToIndex(0)
-        println("SEARCH_BOUNDS root=${rule.onRoot().fetchSemanticsNode().boundsInRoot} screen=${rule.onNodeWithTag("search-screen-root").fetchSemanticsNode().boundsInRoot} container=${rule.onNodeWithTag("search-results-container").fetchSemanticsNode().boundsInRoot} grid=${rule.onNodeWithTag("search-results").fetchSemanticsNode().boundsInRoot} result=${rule.onNodeWithTag("search-result:live:${channel.id}").fetchSemanticsNode().boundsInRoot}")
+        val searchParts = listOf("search-header", "search-input", "search-count").joinToString(" ") { part ->
+            "$part=${rule.onNodeWithTag(part).fetchSemanticsNode().boundsInRoot}"
+        }
+        println("SEARCH_BOUNDS root=${rule.onRoot().fetchSemanticsNode().boundsInRoot} screen=${rule.onNodeWithTag("search-screen-root").fetchSemanticsNode().boundsInRoot} parts=[$searchParts] container=${rule.onNodeWithTag("search-results-container").fetchSemanticsNode().boundsInRoot} grid=${rule.onNodeWithTag("search-results").fetchSemanticsNode().boundsInRoot} result=${rule.onNodeWithTag("search-result:live:${channel.id}").fetchSemanticsNode().boundsInRoot}")
         rule.onNodeWithTag("search-result:live:${channel.id}").assertIsDisplayed().performTouchInput { click() }
         rule.waitUntil(5_000) { clicked?.title == channel.title }
         assertEquals("same", clicked?.id)

@@ -27,10 +27,13 @@ class SearchReturnRegressionTest {
     private fun logSearchBounds(tag: String) {
         val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
         val screen = rule.onNodeWithTag("search-screen-root").fetchSemanticsNode().boundsInRoot
+        val parts = listOf("search-header", "search-input", "search-count").joinToString(" ") { part ->
+            "$part=${rule.onNodeWithTag(part).fetchSemanticsNode().boundsInRoot}"
+        }
         val container = rule.onNodeWithTag("search-results-container").fetchSemanticsNode().boundsInRoot
         val grid = rule.onNodeWithTag("search-results").fetchSemanticsNode().boundsInRoot
         val result = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
-        println("SEARCH_BOUNDS tag=$tag root=$root screen=$screen container=$container grid=$grid result=$result")
+        println("SEARCH_BOUNDS tag=$tag root=$root screen=$screen parts=[$parts] container=$container grid=$grid result=$result")
     }
 
     private fun activateResult(tvFocusTag: String, phoneTag: String) {

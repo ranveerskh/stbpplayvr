@@ -2642,7 +2642,7 @@ private fun StbPlaySearchScreen(
             .testTag("search-screen-root"),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.testTag("search-header"), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Search $scopeTitle", color = White, fontSize = if (isCompactAndroidLayout()) 22.sp else 30.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text("Results stay within this section", color = Muted, fontSize = 13.sp)
@@ -2652,7 +2652,8 @@ private fun StbPlaySearchScreen(
         Row(
             modifier = Modifier.fillMaxWidth().height(58.dp)
                 .background(Panel, RoundedCornerShape(12.dp))
-                .border(2.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(12.dp)),
+                .border(2.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                .testTag("search-input"),
             verticalAlignment = Alignment.CenterVertically
         ) {
             RemoteTextField(
@@ -2687,56 +2688,60 @@ private fun StbPlaySearchScreen(
             }
         }
         if (query.trim().length >= 2) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth().testTag("search-count"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(if (scope == StbPlayTab.CONTENT) "${results.size} matching $resultType" else "${if (results.size == 200) "First " else ""}${results.size} matching $resultType · ${catalog.size} loaded", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 if (remoteHasMore && scope == StbPlayTab.CONTENT) WideAction(if (searching) "Loading…" else "More results", { if (!searching) session.remotePage++ }, Modifier.width(210.dp))
             }
         }
-        when {
-            query.trim().length < 2 -> Column(Modifier.weight(1f).fillMaxWidth()) {
-                Text("Enter 2 or more characters to search.", color = Muted, fontSize = 14.sp)
-                if (searchHistory.isNotEmpty()) {
-                    Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Recent searches", color = White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        QuestSurface(
-                            onClick = onClearSearchHistory,
-                            modifier = Modifier.width(64.dp).height(36.dp).testTag("clear-search-history"),
-                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-                            colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = Gold.copy(alpha = 0.25f))
-                        ) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Clear", color = White, fontSize = 12.sp) } }
-                    }
-                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        columnItems(searchHistory, key = { it }) { recent ->
-                            QuestSurface(onClick = { session.updateQuery(recent); onRememberSearch(recent); keyboard?.hide() },
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).testTag("recent-search:$recent"),
-                                colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Gold.copy(alpha = 0.20f))) {
-                                Text(recent, color = White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
+        Box(Modifier.weight(1f).fillMaxWidth().testTag("search-results-container")) {
+            when {
+                query.trim().length < 2 -> Column(Modifier.fillMaxSize()) {
+                    Text("Enter 2 or more characters to search.", color = Muted, fontSize = 14.sp)
+                    if (searchHistory.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Recent searches", color = White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            QuestSurface(
+                                onClick = onClearSearchHistory,
+                                modifier = Modifier.width(64.dp).height(36.dp).testTag("clear-search-history"),
+                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                                colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = Gold.copy(alpha = 0.25f))
+                            ) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Clear", color = White, fontSize = 12.sp) } }
+                        }
+                        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            columnItems(searchHistory, key = { it }) { recent ->
+                                QuestSurface(onClick = { session.updateQuery(recent); onRememberSearch(recent); keyboard?.hide() },
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).testTag("recent-search:$recent"),
+                                    colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Gold.copy(alpha = 0.20f))) {
+                                    Text(recent, color = White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
+                                }
                             }
                         }
                     }
                 }
-            }
-            searching && results.isEmpty() -> Text("Searching…", color = Muted, fontSize = 14.sp)
-            results.isEmpty() -> EmptyState(
-                "No matching $resultType",
-                if (searchError != null) searchError!!
-                else "Try a shorter part of the channel or title name."
-            )
-            else -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("search-results-container")) {
-                val columns = if (isCompactAndroidLayout()) 2 else (maxWidth / 130.dp).toInt().coerceIn(4, 6)
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(columns), state = session.gridState,
-                    modifier = Modifier.fillMaxSize().testTag("search-results"),
-                    contentPadding = PaddingValues(bottom = 30.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    gridItems(results, key = { "${it.streamType}:${it.id}" },
-                        contentType = { if (it.streamType == "live") "channel" else "title" }) { stream ->
-                        val media = toUi(stream)
-                        MediaCard(media, { keyboard?.hide(); onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true,
-                            focusRequester = if ("${stream.streamType}:${stream.id}" == session.selectedResultKey) resultRequester else null,
-                            interactionTag = "search-result:${stream.streamType}:${stream.id}")
+                searching && results.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Searching…", color = Muted, fontSize = 14.sp)
+                }
+                results.isEmpty() -> EmptyState(
+                    "No matching $resultType",
+                    if (searchError != null) searchError!!
+                    else "Try a shorter part of the channel or title name."
+                )
+                else -> BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val columns = if (isCompactAndroidLayout()) 2 else (maxWidth / 130.dp).toInt().coerceIn(4, 6)
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns), state = session.gridState,
+                        modifier = Modifier.fillMaxSize().testTag("search-results"),
+                        contentPadding = PaddingValues(bottom = 30.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        gridItems(results, key = { "${it.streamType}:${it.id}" },
+                            contentType = { if (it.streamType == "live") "channel" else "title" }) { stream ->
+                            val media = toUi(stream)
+                            MediaCard(media, { keyboard?.hide(); onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true,
+                                focusRequester = if ("${stream.streamType}:${stream.id}" == session.selectedResultKey) resultRequester else null,
+                                interactionTag = "search-result:${stream.streamType}:${stream.id}")
+                        }
                     }
                 }
             }
