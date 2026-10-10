@@ -1501,10 +1501,29 @@ private fun StbPlayRoot(
                 }
                 viewerProfiles.isNotEmpty() && unlockedViewerId != activeViewer.id -> com.example.stbplay.ui.ViewerProfilesScreen(
                     profiles = viewerProfiles, ownerPin = storedSettings.pin,
+                    activeViewerId = activeViewer.id.takeIf { unlockedViewerId == it },
+                    onDelete = { id, actorId, authorized -> scope.launch {
+                        val deletingActive = id == activeViewer.id
+                        settingsManager.deleteViewer(id, actorId, authorized)
+                        if (deletingActive) {
+                            playRequest = null; livePreviewStream = null; tvLivePreviewPlayback = false
+                            selectedMovie = null; selectedSeries = null; selectedLiveChannel = null
+                            unlockedAdultCategoryKey = null; pendingLockedMedia = null; pendingParentalMode = null
+                            personalPinUnlockedIds = emptySet(); personalPinUnlockedCategory = null; pendingPersonalPlayback = null
+                            pendingPortalOwnerAction = null; portalSetupAuthorized = false
+                            pendingCategory = null; pendingPlaybackMedia = null; pendingEpisodePlayback = null; qualityContext = null
+                            unlockedViewerId = null; selectedTab = StbPlayTab.HOME
+                            switchViewerVisible = false
+                        }
+                    } },
                     liveCategories = liveCategories, vodCategories = (movieCategories + seriesCategories).distinctBy { it.id },
                     approvalPortalKey = portalKey(storedSettings),
                     onSelected = { viewer -> scope.launch { settingsManager.activateViewer(viewer.id); unlockedViewerId = viewer.id } },
-                    onSave = { viewer, pin -> scope.launch { settingsManager.saveViewer(viewer, pin) } },
+                    onSave = { viewer, pin -> scope.launch {
+                        val needsApproval = viewer.id == activeViewer.id && !viewer.isKids && !viewer.adultApproved
+                        settingsManager.saveViewer(viewer, pin)
+                        if (needsApproval) { unlockedViewerId = null; switchViewerVisible = false }
+                    } },
                     onSetOwnerPin = { pin -> scope.launch { settingsManager.updateParentalPin(storedSettings.pin, pin) } }
                 )
                 phoneDevice && !phoneSetupComplete && viewerProfiles.isNotEmpty() -> com.example.stbplay.ui.PhoneFirstSetup(
@@ -1862,6 +1881,21 @@ private fun StbPlayRoot(
                 com.example.stbplay.ui.ViewerSwitchDialog(onDismiss = { switchViewerVisible = false }) {
                     com.example.stbplay.ui.ViewerProfilesScreen(
                         profiles = viewerProfiles, ownerPin = storedSettings.pin,
+                        activeViewerId = activeViewer.id.takeIf { unlockedViewerId == it },
+                        onDelete = { id, actorId, authorized -> scope.launch {
+                            val deletingActive = id == activeViewer.id
+                            settingsManager.deleteViewer(id, actorId, authorized)
+                            if (deletingActive) {
+                                playRequest = null; livePreviewStream = null; tvLivePreviewPlayback = false
+                                selectedMovie = null; selectedSeries = null; selectedLiveChannel = null
+                                unlockedAdultCategoryKey = null; pendingLockedMedia = null; pendingParentalMode = null
+                                personalPinUnlockedIds = emptySet(); personalPinUnlockedCategory = null; pendingPersonalPlayback = null
+                                pendingPortalOwnerAction = null; portalSetupAuthorized = false
+                                pendingCategory = null; pendingPlaybackMedia = null; pendingEpisodePlayback = null; qualityContext = null
+                                unlockedViewerId = null; selectedTab = StbPlayTab.HOME
+                                switchViewerVisible = false
+                            }
+                        } },
                         liveCategories = liveCategories, vodCategories = (movieCategories + seriesCategories).distinctBy { it.id },
                         approvalPortalKey = portalKey(storedSettings),
                         onSelected = { viewer ->
@@ -1878,7 +1912,11 @@ private fun StbPlayRoot(
                                 switchViewerVisible = false
                             }
                         },
-                        onSave = { viewer, pin -> scope.launch { settingsManager.saveViewer(viewer, pin) } },
+                        onSave = { viewer, pin -> scope.launch {
+                            val needsApproval = viewer.id == activeViewer.id && !viewer.isKids && !viewer.adultApproved
+                            settingsManager.saveViewer(viewer, pin)
+                            if (needsApproval) { unlockedViewerId = null; switchViewerVisible = false }
+                        } },
                         onSetOwnerPin = { pin -> scope.launch { settingsManager.updateParentalPin(storedSettings.pin, pin) } },
                         onBack = { switchViewerVisible = false }
                     )
