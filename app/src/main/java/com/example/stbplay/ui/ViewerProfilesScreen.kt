@@ -3,6 +3,11 @@ package com.example.stbplay.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.tv.material3.ButtonDefaults
+import com.example.stbplay.data.ViewerPinMode
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +27,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
+/** Keeps Settings mounted so cancel/back restores its subsection, scroll and focus. */
+@Composable
+fun ViewerSwitchDialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false), content = content)
+}
+
 @Composable
 fun ViewerProfilesScreen(
     profiles: List<ViewerProfile>, ownerPin: String,
@@ -38,6 +50,9 @@ fun ViewerProfilesScreen(
     val uploadScope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<ViewerProfile?>(null) }
     var managing by remember { mutableStateOf(false) }
+    var ownerAuthorized by remember { mutableStateOf(false) }
+    var approvingAdult by remember { mutableStateOf(false) }
+    var pinMode by remember { mutableStateOf(ViewerPinMode.PROFILE_ENTRY) }
     var authorizeManagement by remember { mutableStateOf(false) }
     var setOwner by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ViewerProfile?>(null) }
@@ -67,75 +82,133 @@ fun ViewerProfilesScreen(
         }
     }
 
-    BackHandler(enabled = managing || onBack != null) { if (managing) managing = false else onBack?.invoke() }
-    Column(Modifier.fillMaxSize().background(palette.background).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (managing) "Manage profiles" else "Who's watching?", color = palette.text, fontSize = 26.sp)
+    fun newProfile() {
+        editing = null; name = ""; age = ""; pin = ""; avatar = "🙂"
+        allowedLive = emptySet(); allowedVod = emptySet(); pinMode = ViewerPinMode.PROFILE_ENTRY
+        error = null; managing = true
+    }
+    fun saveProfile() {
+        val years = age.toInt()
+        onSave(ViewerProfile(editing?.id ?: UUID.randomUUID().toString(), name.trim(), years, avatar,
+            if (years < 18) "" else editing?.pinHash.orEmpty(), allowedLive, allowedVod,
+            approvalPortalKey, pinMode), if (years < 18) "" else pin)
+        managing = false; error = null
+    }
+    BackHandler(enabled = managing || onBack != null) {
+        if (managing) { managing = false; error = null } else onBack?.invoke()
+    }
+    Column(Modifier.fillMaxSize().background(palette.background).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(if (managing) (if (editing == null) "Add profile" else "Edit profile") else "Who's watching?", color = palette.text, fontSize = 26.sp)
+        Text(if (managing) "Your favourites, history and movie grid stay with your profile." else "Choose your space. Each profile keeps its own favourites and history.", color = palette.muted, fontSize = 14.sp)
         if (!managing) {
-            profiles.forEachIndexed { index, profile ->
-                QuestButton(onClick = { pending = profile }, modifier = Modifier.then(if (index == 0) Modifier.questInitialFocus() else Modifier).fillMaxWidth().height(56.dp)) {
-                    if (profile.avatar.startsWith("/")) coil.compose.AsyncImage(profile.avatar, "Avatar", Modifier.size(36.dp))
-                    else Text(profile.avatar)
-                    Text("  ${profile.name}${if (profile.isKids) " · Kids" else ""}")
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val columns = if (maxWidth >= 700.dp) 3 else 2
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    profiles.chunked(columns).forEachIndexed { rowIndex, row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            row.forEachIndexed { index, profile ->
+                                ProfileButton(onClick = { pending = profile }, modifier = Modifier.weight(1f).height(128.dp)
+                                    .then(if (rowIndex == 0 && index == 0) Modifier.questInitialFocus() else Modifier)) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        ProfileAvatar(profile.avatar, 44)
+                                        Text(profile.name, maxLines = 1)
+                                        Text(if (profile.isKids) "Kids · No PIN" else if (profile.id == "owner") "Owner" else if (profile.needsEntryPin) "Profile PIN" else "Restricted content PIN", fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
                 }
             }
-            QuestButton(onClick = { if (ownerPin.isBlank()) setOwner = true else authorizeManagement = true }) { Text("Manage profiles · Owner PIN") }
-            onBack?.let { QuestButton(onClick = it) { Text("Back") } }
+            ProfileButton(onClick = { ownerAuthorized = false; newProfile() }, modifier = Modifier.fillMaxWidth()) { Text("Add profile") }
+            ProfileButton(onClick = { if (ownerPin.isBlank()) setOwner = true else authorizeManagement = true }, modifier = Modifier.fillMaxWidth()) { Text("Manage profiles · Owner PIN") }
+            onBack?.let { ProfileButton(onClick = it, modifier = Modifier.fillMaxWidth()) { Text("Back") } }
         } else {
-            profiles.filter { it.id != "owner" }.forEach { existing ->
-                QuestButton(onClick = {
-                    editing = existing; name = existing.name; age = existing.age.toString(); avatar = existing.avatar; pin = ""
-                    allowedLive = if (existing.approvalPortalKey == approvalPortalKey) existing.allowedLiveCategories else emptySet()
-                    allowedVod = if (existing.approvalPortalKey == approvalPortalKey) existing.allowedVodCategories else emptySet()
-                }) { Text("Edit ${existing.name}") }
-            }
-            QuestButton(onClick = { editing = null; name = ""; age = ""; pin = ""; avatar = "🙂"; allowedLive = emptySet(); allowedVod = emptySet() }) { Text("New profile") }
-            ProfileField("Name", name) { name = it.take(32) }
-            ProfileField("Your age (years)", age, true) { age = it.filter(Char::isDigit).take(3) }
-            Text("Age is self-declared. Under 18 uses Kids mode. Owner approval is required for each allowed category.", color = palette.muted, fontSize = 13.sp)
-            ProfileField("Personal PIN (4–8 digits, optional for Kids)", pin, true) { pin = it.filter(Char::isDigit).take(8) }
-            if ((age.toIntOrNull() ?: 18) < 18) {
-                Text("Approve Kids categories", color = palette.text)
-                Text("Only checked categories will appear. Provider flags always apply. Empty selection hides all content.", color = palette.muted, fontSize = 12.sp)
-                (liveCategories.filter { com.example.stbplay.data.isKidsCategory(it) }).forEach { category ->
-                    QuestButton(onClick = { allowedLive = if (category.id in allowedLive) allowedLive - category.id else allowedLive + category.id }) { Text("${if (category.id in allowedLive) "✓ " else ""}Live · ${category.name}") }
+            if (ownerAuthorized) {
+                profiles.filter { it.id != "owner" }.forEach { existing ->
+                    ProfileButton(onClick = {
+                        editing = existing; name = existing.name; age = existing.age.toString(); avatar = existing.avatar; pin = ""; pinMode = existing.pinMode; error = null
+                        allowedLive = if (existing.approvalPortalKey == approvalPortalKey) existing.allowedLiveCategories else emptySet()
+                        allowedVod = if (existing.approvalPortalKey == approvalPortalKey) existing.allowedVodCategories else emptySet()
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Edit ${existing.name}") }
                 }
-                (vodCategories.filter { com.example.stbplay.data.isKidsCategory(it) }).forEach { category ->
-                    QuestButton(onClick = { allowedVod = if (category.id in allowedVod) allowedVod - category.id else allowedVod + category.id }) { Text("${if (category.id in allowedVod) "✓ " else ""}Movies/Series · ${category.name}") }
+                ProfileButton(onClick = { newProfile() }, modifier = Modifier.fillMaxWidth()) { Text("New profile") }
+            }
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(palette.panel).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileField("Name", name) { name = it.take(32); error = null }
+                ProfileField("Your age (years)", age, true) { age = it.filter(Char::isDigit).take(3); error = null }
+                val kids = age.toIntOrNull()?.let { it < 18 } == true
+                Text(if (kids) "Kids enter without a PIN. Only owner-approved Kids categories appear." else "Age is self-declared. Adult profiles need owner approval when created.", color = palette.muted, fontSize = 13.sp)
+                if (!kids) {
+                    ProfileField(if (editing == null) "Personal PIN (4–8 digits)" else "New personal PIN (blank keeps current PIN)", pin, true) { pin = it.filter(Char::isDigit).take(8); error = null }
+                    Text("When should we ask for your PIN?", color = palette.text, fontSize = 14.sp)
+                    ProfileButton(onClick = { pinMode = ViewerPinMode.PROFILE_ENTRY }, modifier = Modifier.fillMaxWidth()) { Text("${if (pinMode == ViewerPinMode.PROFILE_ENTRY) "✓ " else ""}Every time I enter my profile") }
+                    ProfileButton(onClick = { pinMode = ViewerPinMode.RESTRICTED_ONLY }, modifier = Modifier.fillMaxWidth()) { Text("${if (pinMode == ViewerPinMode.RESTRICTED_ONLY) "✓ " else ""}Only for restricted content") }
                 }
-                if (liveCategories.isEmpty() && vodCategories.isEmpty()) Text("Connect the portal, then edit this profile to approve categories.", color = palette.muted)
+                if (kids && ownerAuthorized) {
+                    Text("Approve Kids categories", color = palette.text)
+                    Text("Only checked categories appear. Provider adult flags always apply.", color = palette.muted, fontSize = 12.sp)
+                    liveCategories.filter { com.example.stbplay.data.isKidsCategory(it) }.forEach { category ->
+                        ProfileButton(onClick = { allowedLive = if (category.id in allowedLive) allowedLive - category.id else allowedLive + category.id }, modifier = Modifier.fillMaxWidth()) { Text("${if (category.id in allowedLive) "✓ " else ""}Live · ${category.name}") }
+                    }
+                    vodCategories.filter { com.example.stbplay.data.isKidsCategory(it) }.forEach { category ->
+                        ProfileButton(onClick = { allowedVod = if (category.id in allowedVod) allowedVod - category.id else allowedVod + category.id }, modifier = Modifier.fillMaxWidth()) { Text("${if (category.id in allowedVod) "✓ " else ""}Movies/Series · ${category.name}") }
+                    }
+                    if (liveCategories.isEmpty() && vodCategories.isEmpty()) Text("Connect the portal, then approve categories here.", color = palette.muted)
+                }
+                Text("Avatar", color = palette.text)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("🙂", "🦊", "🐼", "🚀").forEach { face -> ProfileButton(onClick = { avatar = face }, modifier = Modifier.weight(1f)) { Text(face) } }
+                }
+                ProfileButton(onClick = { runCatching { avatarPicker.launch("image/*") }.onFailure { error = "No photo picker is available. Choose a built-in avatar instead." } }, modifier = Modifier.fillMaxWidth()) { Text("Upload avatar photo") }
+                ProfileAvatar(avatar, 56)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("🙂", "🦊", "🐼", "🚀").forEach { face -> QuestButton(onClick = { avatar = face }) { Text(face) } }
-            }
-            QuestButton(onClick = { runCatching { avatarPicker.launch("image/*") }.onFailure { error = "No photo picker is available. Choose a built-in avatar instead." } }) { Text("Upload avatar photo") }
-            if (avatar.startsWith("/")) coil.compose.AsyncImage(avatar, "Selected avatar", Modifier.size(64.dp))
-            else Text("Avatar: $avatar", color = palette.text)
             error?.let { Text(it, color = palette.danger) }
-            QuestButton(onClick = {
+            ProfileButton(onClick = {
                 val years = age.toIntOrNull()
                 error = when {
                     name.isBlank() || years == null || years !in 1..120 -> "Enter a name and age from 1 to 120."
-                    (years >= 18 && editing?.pinHash.isNullOrBlank() || pin.isNotEmpty()) && pin.length !in 4..8 -> "Use a 4–8 digit personal PIN."
+                    years >= 18 && ((editing?.pinHash.isNullOrBlank() && pin.isEmpty()) || (pin.isNotEmpty() && pin.length !in 4..8)) -> "Use a 4–8 digit personal PIN."
                     else -> null
                 }
                 if (error == null) {
-                    onSave(ViewerProfile(editing?.id ?: UUID.randomUUID().toString(), name.trim(), years!!, avatar, editing?.pinHash.orEmpty(), allowedLive, allowedVod, approvalPortalKey), pin)
-                    name = ""; age = ""; pin = ""; editing = null; allowedLive = emptySet(); allowedVod = emptySet(); managing = false
+                    if (years!! >= 18 && !ownerAuthorized) approvingAdult = true else saveProfile()
                 }
-            }) { Text("Save profile") }
-            QuestButton(onClick = { managing = false }) { Text("Cancel") }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Save profile") }
+            ProfileButton(onClick = { managing = false; error = null }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
         }
     }
-    if (setOwner) ProviderPinSetupPrompt(onSave = { onSetOwnerPin(it); setOwner = false; managing = true }, onCancel = { setOwner = false })
-    if (authorizeManagement) PinPrompt("profile management", ownerPin, { authorizeManagement = false; managing = true }, { authorizeManagement = false })
+    if (setOwner) ProviderPinSetupPrompt(onSave = { onSetOwnerPin(it); setOwner = false; ownerAuthorized = true; newProfile() }, onCancel = { setOwner = false })
+    if (authorizeManagement) PinPrompt("profile management", ownerPin, { authorizeManagement = false; ownerAuthorized = true; newProfile() }, { authorizeManagement = false })
+    if (approvingAdult) {
+        if (ownerPin.isBlank()) ProviderPinSetupPrompt(onSave = { onSetOwnerPin(it); approvingAdult = false; saveProfile() }, onCancel = { approvingAdult = false })
+        else PinPrompt("Approve adult profile", ownerPin, { approvingAdult = false; saveProfile() }, { approvingAdult = false })
+    }
     pending?.let { profile ->
         if (profile.id == "owner") {
             if (ownerPin.isBlank()) ProviderPinSetupPrompt(onSave = { onSetOwnerPin(it); pending = null; onSelected(profile) }, onCancel = { pending = null })
             else PinPrompt(profile.name, ownerPin, { pending = null; onSelected(profile) }, { pending = null })
-        } else if (profile.pinHash.isBlank()) {
+        } else if (!profile.needsEntryPin || profile.pinHash.isBlank()) {
             LaunchedEffect(profile.id) { pending = null; onSelected(profile) }
         } else ViewerPinPrompt(profile, { pending = null; onSelected(profile) }, { pending = null })
     }
+}
+
+@Composable
+private fun ProfileButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    val p = LocalStbPalette.current
+    QuestButton(onClick, modifier.heightIn(min = 48.dp), colors = ButtonDefaults.colors(
+        containerColor = p.panelSoft, contentColor = p.text,
+        focusedContainerColor = p.focusedAccent, focusedContentColor = p.onAccent,
+        pressedContainerColor = p.accent, pressedContentColor = p.onAccent
+    ), focusScale = 1f, content = content)
+}
+
+@Composable
+private fun ProfileAvatar(avatar: String, size: Int) {
+    if (avatar.startsWith("/")) coil.compose.AsyncImage(avatar, "Avatar", Modifier.size(size.dp).clip(RoundedCornerShape(12.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+    else Text(avatar, fontSize = (size * 0.65).sp)
 }
 
 @Composable
@@ -148,7 +221,7 @@ private fun ProfileField(label: String, value: String, number: Boolean = false, 
 }
 
 @Composable
-private fun ViewerPinPrompt(profile: ViewerProfile, onVerified: () -> Unit, onCancel: () -> Unit) {
+fun ViewerPinPrompt(profile: ViewerProfile, onVerified: () -> Unit, onCancel: () -> Unit, title: String = profile.name) {
     val scope = rememberCoroutineScope()
     var pin by remember { mutableStateOf("") }
     var failed by remember { mutableStateOf(false) }
@@ -156,14 +229,14 @@ private fun ViewerPinPrompt(profile: ViewerProfile, onVerified: () -> Unit, onCa
     androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
         val p = LocalStbPalette.current
         Column(Modifier.fillMaxWidth().background(p.panel).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("${profile.name} · Personal PIN", color = p.text)
+            Text("$title · Personal PIN", color = p.text)
             ProfileField("PIN", pin, true) { pin = it.filter(Char::isDigit).take(8); failed = false }
             if (failed) Text("Incorrect PIN", color = p.danger)
-            QuestButton(onClick = { if (!busy) { busy = true; scope.launch {
+            ProfileButton(onClick = { if (!busy) { busy = true; scope.launch {
                 val valid = withContext(Dispatchers.Default) { verifyViewerPin(pin, profile.pinHash) }
                 busy = false; if (valid) onVerified() else failed = true
             } } }) { Text(if (busy) "Checking…" else "Continue") }
-            QuestButton(onClick = onCancel) { Text("Cancel") }
+            ProfileButton(onClick = onCancel) { Text("Cancel") }
         }
     }
 }

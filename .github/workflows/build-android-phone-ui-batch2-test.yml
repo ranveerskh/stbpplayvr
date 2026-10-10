@@ -44,8 +44,8 @@ jobs:
           STB_RELEASE_KEY_ALIAS: ${{ secrets.STB_RELEASE_KEY_ALIAS }}
           STB_RELEASE_KEY_PASSWORD: ${{ secrets.STB_RELEASE_KEY_PASSWORD }}
         run: |
-          grep -Fq 'versionCode = 73' app/build.gradle.kts
-          grep -Fq 'versionName = "2.0.20.4"' app/build.gradle.kts
+          grep -Fq 'versionCode = 74' app/build.gradle.kts
+          grep -Fq 'versionName = "2.0.20.5"' app/build.gradle.kts
           chmod +x ./gradlew
           ./gradlew --no-daemon testDebugUnitTest assembleRelease assembleDebugAndroidTest
       - name: Serve generated playback fixture to the emulators
@@ -103,9 +103,9 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/stb-apk-verification.txt"
           grep -Fq 'Signer #1 certificate SHA-256 digest: 91943d0efc4125eb6aeda132ba6b8d79855496e030477c2d5cd00e9bedd4fdb0' "$RUNNER_TEMP/stb-apk-verification.txt"
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" > "$RUNNER_TEMP/stb-apk-badging.txt"
-          grep -F "package: name='com.example.stbplay' versionCode='73' versionName='2.0.20.4'" "$RUNNER_TEMP/stb-apk-badging.txt"
-          cp "$apk" STB-PLAY-Android-2.0.20.4-phone-test.apk
-          sha256sum STB-PLAY-Android-2.0.20.4-phone-test.apk > "$RUNNER_TEMP/stb-apk-sha256.txt"
+          grep -F "package: name='com.example.stbplay' versionCode='74' versionName='2.0.20.5'" "$RUNNER_TEMP/stb-apk-badging.txt"
+          cp "$apk" STB-PLAY-Android-2.0.20.5-phone-test.apk
+          sha256sum STB-PLAY-Android-2.0.20.5-phone-test.apk > "$RUNNER_TEMP/stb-apk-sha256.txt"
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -125,7 +125,7 @@ jobs:
       - name: Upload verified test APK only
         uses: actions/upload-artifact@v4
         with:
-          name: STB-PLAY-Android-2.0.20.4-phone-test-signed
-          path: STB-PLAY-Android-2.0.20.4-phone-test.apk
+          name: STB-PLAY-Android-2.0.20.5-phone-test-signed
+          path: STB-PLAY-Android-2.0.20.5-phone-test.apk
           if-no-files-found: error
           retention-days: 14

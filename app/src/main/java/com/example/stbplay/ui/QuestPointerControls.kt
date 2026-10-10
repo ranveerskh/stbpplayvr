@@ -35,6 +35,7 @@ fun QuestButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     colors: ButtonColors = ButtonDefaults.colors(),
+    focusScale: Float? = null,
     content: @Composable RowScope.() -> Unit
 ) {
     val context = LocalContext.current
@@ -48,7 +49,7 @@ fun QuestButton(
         enabled = enabled,
         colors = colors,
         scale = if (staticScale) ButtonDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
-            else ButtonDefaults.scale(focusedScale = 1.1f),
+            else ButtonDefaults.scale(focusedScale = focusScale ?: 1.1f),
         content = content
     )
 }
