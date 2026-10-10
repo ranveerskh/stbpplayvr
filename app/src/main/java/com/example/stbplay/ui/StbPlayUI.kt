@@ -175,6 +175,7 @@ private val OnAccent: Color @Composable get() = LocalStbPalette.current.onAccent
 private val Danger: Color @Composable get() = LocalStbPalette.current.danger
 private val Good: Color @Composable get() = LocalStbPalette.current.good
 private val PosterWhite = Color.White
+private val FocusGold: Color @Composable get() = LocalStbPalette.current.focusedAccent
 
 @Composable
 private fun isCompactAndroidLayout(): Boolean {
@@ -1042,7 +1043,7 @@ private fun RotatingHero(
                     if (!denseTv) QuestButton(
                         onClick = { onMediaClick(item) },
                         modifier = Modifier.height(38.dp),
-                        colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)
+                        colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = FocusGold, focusedContentColor = OnAccent)
                     ) { Text("Play", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                     else Text("Select for details", color = Muted, fontSize = 11.sp)
                     if (!denseTv) FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
@@ -2530,7 +2531,7 @@ private fun WideAction(title: String, onClick: () -> Unit, modifier: Modifier = 
 
 @Composable
 private fun PrimaryAction(title: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    QuestButton(onClick = onClick, modifier = modifier, colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)) {
+    QuestButton(onClick = onClick, modifier = modifier, colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = FocusGold, focusedContentColor = OnAccent)) {
         Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -2882,7 +2883,7 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
                     onClick = onAccept,
                     enabled = agreed,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = GoldLight, focusedContentColor = OnAccent)
+                    colors = ButtonDefaults.colors(containerColor = Gold, contentColor = OnAccent, focusedContainerColor = FocusGold, focusedContentColor = OnAccent)
                 ) { Text("Agree and continue", fontWeight = FontWeight.Bold) }
             }
         }
@@ -2910,7 +2911,7 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
         ) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Protected content", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("Enter your parental PIN to open $title", color = White, fontSize = 14.sp, textAlign = TextAlign.Center, maxLines = 2)
+                Text("Enter your owner PIN to open $title", color = White, fontSize = 14.sp, textAlign = TextAlign.Center, maxLines = 2)
                 Text(
                     text = "•".repeat(pin.length).ifEmpty { "Enter PIN" },
                     color = if (pin.isEmpty()) Muted else White,
@@ -2970,9 +2971,9 @@ fun ProviderPinSetupPrompt(onSave: (String) -> Unit, onCancel: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Set parental PIN", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("Set owner PIN", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    "Create a 4–8 digit PIN to protect parental settings and restricted content.",
+                    "Create a 4–8 digit owner PIN to protect profile management and restricted content.",
                     color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center
                 )
                 PinField("New PIN", next, initialFocus = true, focusRequester = newPinFocus,
@@ -3012,7 +3013,7 @@ fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () 
             colors = SurfaceDefaults.colors(containerColor = Panel)
         ) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(13.dp)) {
-                Text("Change parental PIN", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("Change owner PIN", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 PinField("Current PIN", current, initialFocus = true, focusRequester = currentPinFocus,
                     nextFocusRequester = newPinFocus, imeAction = ImeAction.Next) { current = it; error = "" }
                 PinField("New PIN", next, focusRequester = newPinFocus, previousFocusRequester = currentPinFocus,

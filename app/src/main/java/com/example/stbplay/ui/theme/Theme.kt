@@ -21,6 +21,7 @@ data class StbPalette(
     val text: Color,
     val muted: Color,
     val onAccent: Color,
+    val focusedAccent: Color = accentLight,
     val danger: Color = Color(0xFFFFA4A4),
     val good: Color = Color(0xFF87E7B0)
 )
@@ -35,6 +36,7 @@ val LightPalette = StbPalette(
     background = Color(0xFFF4F7FC), rail = Color(0xFFEAF0F8), panel = Color(0xFFFFFFFF),
     panelSoft = Color(0xFFE5ECF6), accent = Color(0xFFFFD166), accentLight = Color(0xFF795000),
     text = Color(0xFF162237), muted = Color(0xFF52627A), onAccent = Color(0xFF101827),
+    focusedAccent = Color(0xFFFFE4A3),
     danger = Color(0xFFB4233F), good = Color(0xFF176B45)
 )
 val BlackPalette = StbPalette(

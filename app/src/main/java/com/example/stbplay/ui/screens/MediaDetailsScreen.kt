@@ -47,6 +47,7 @@ private val DetailNavy: Color @Composable get() = LocalStbPalette.current.backgr
 private val DetailPanel: Color @Composable get() = LocalStbPalette.current.panelSoft
 private val DetailGold: Color @Composable get() = LocalStbPalette.current.accent
 private val DetailGoldLight: Color @Composable get() = LocalStbPalette.current.accentLight
+private val DetailFocusGold: Color @Composable get() = LocalStbPalette.current.focusedAccent
 private val DetailWhite: Color @Composable get() = LocalStbPalette.current.text
 private val DetailMuted: Color @Composable get() = LocalStbPalette.current.muted
 private val DetailOnAccent: Color @Composable get() = LocalStbPalette.current.onAccent
@@ -91,7 +92,7 @@ fun MovieDetailsScreen(
             QuestButton(
                 onClick = onPlay,
                 modifier = Modifier.fillMaxWidth().questInitialFocus(),
-                colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailOnAccent, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailOnAccent)
+                colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailOnAccent, focusedContainerColor = DetailFocusGold, focusedContentColor = DetailOnAccent)
             ) { Text("Play", fontWeight = FontWeight.Bold) }
             if (item.progress > 0f) QuestButton(onClick = onResume, modifier = Modifier.fillMaxWidth()) {
                 Text("Resume ${(item.progress * 100).toInt()}%")
@@ -141,7 +142,7 @@ fun MovieDetailsScreen(
                 item.cast?.takeIf { it.isNotBlank() }?.let { Text("Cast: $it", color = DetailMuted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 Spacer(Modifier.height(7.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    QuestButton(onClick = onPlay, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailOnAccent, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailOnAccent)) {
+                    QuestButton(onClick = onPlay, modifier = Modifier.questInitialFocus(), colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailOnAccent, focusedContainerColor = DetailFocusGold, focusedContentColor = DetailOnAccent)) {
                         Text("Play", fontWeight = FontWeight.Bold)
                     }
                     if (item.progress > 0f) {
@@ -186,7 +187,7 @@ fun QualitySelectionScreen(
                         QuestButton(
                             onClick = { onOptionClick(option) },
                             modifier = Modifier.then(if (index == 0) Modifier.questInitialFocus() else Modifier).fillMaxWidth(),
-                            colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailOnAccent, focusedContainerColor = DetailGoldLight, focusedContentColor = DetailOnAccent)
+                            colors = ButtonDefaults.colors(containerColor = DetailGold, contentColor = DetailOnAccent, focusedContainerColor = DetailFocusGold, focusedContentColor = DetailOnAccent)
                         ) { Text(option.label, fontWeight = FontWeight.Bold) }
                     }
                 }

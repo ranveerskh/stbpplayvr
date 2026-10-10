@@ -55,6 +55,7 @@ private val SetupNavy: Color @Composable get() = LocalStbPalette.current.backgro
 private val SetupPanel: Color @Composable get() = LocalStbPalette.current.panel
 private val SetupGold: Color @Composable get() = LocalStbPalette.current.accent
 private val SetupGoldLight: Color @Composable get() = LocalStbPalette.current.accentLight
+private val SetupFocusGold: Color @Composable get() = LocalStbPalette.current.focusedAccent
 private val SetupText: Color @Composable get() = LocalStbPalette.current.text
 private val SetupMuted: Color @Composable get() = LocalStbPalette.current.muted
 private val SetupError: Color @Composable get() = LocalStbPalette.current.danger
@@ -139,7 +140,7 @@ fun SetupScreen(
                         colors = ButtonDefaults.colors(
                             containerColor = LocalStbPalette.current.panelSoft,
                             contentColor = SetupText,
-                            focusedContainerColor = SetupGoldLight,
+                            focusedContainerColor = SetupFocusGold,
                             focusedContentColor = SetupOnAccent
                         )
                     ) { Text("Link with provider", fontWeight = FontWeight.SemiBold) }
@@ -209,7 +210,7 @@ fun SetupScreen(
                     colors = ButtonDefaults.colors(
                         containerColor = LocalStbPalette.current.panelSoft,
                         contentColor = SetupText,
-                        focusedContainerColor = SetupGoldLight,
+                        focusedContainerColor = SetupFocusGold,
                         focusedContentColor = SetupOnAccent
                     )
                 ) { Text("Link with provider", fontWeight = FontWeight.SemiBold) }
@@ -257,7 +258,7 @@ fun SetupScreen(
                     colors = ButtonDefaults.colors(
                         containerColor = SetupGold,
                         contentColor = SetupOnAccent,
-                        focusedContainerColor = SetupGoldLight,
+                        focusedContainerColor = SetupFocusGold,
                         focusedContentColor = SetupOnAccent
                     )
                 ) { Text("Save & Connect", fontWeight = FontWeight.Bold) }

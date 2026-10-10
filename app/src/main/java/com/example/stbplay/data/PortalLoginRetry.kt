@@ -12,12 +12,13 @@ internal fun isRetryablePortalFailure(message: String?): Boolean {
 /** One initial attempt, then at most three retries within a 30 second window. */
 internal suspend fun retryPortalLogin(
     pause: suspend (Long) -> Unit = { delay(it) },
+    retryWindowMillis: Long = 30_000L,
     login: suspend () -> LoginResponse
 ): LoginResponse {
     val first = login()
     if (first.success || !isRetryablePortalFailure(first.errorMessage)) return first
     var last = first
-    return withTimeoutOrNull(30_000L) {
+    return withTimeoutOrNull(retryWindowMillis) {
         for (wait in listOf(2_000L, 4_000L, 6_000L)) {
             pause(wait)
             last = login()

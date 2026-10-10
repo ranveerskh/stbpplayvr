@@ -28,4 +28,13 @@ class PortalLoginRetryTest {
         retryPortalLogin(pause = {}) { calls++; LoginResponse(false, "Portal access denied.") }
         assertEquals(1, calls)
     }
+    @Test fun retryWindowCancelsAnUnresponsiveAttempt() = runBlocking {
+        var calls = 0
+        val result = retryPortalLogin(pause = {}, retryWindowMillis = 30L) {
+            calls++
+            if (calls == 1) LoginResponse(false, "Network timeout") else kotlinx.coroutines.awaitCancellation()
+        }
+        assertFalse(result.success)
+        assertEquals(2, calls)
+    }
 }

@@ -33,4 +33,13 @@ class ViewerProfilesUiTest {
         rule.onNodeWithText("Cancel").performClick()
         rule.onNodeWithText("Who's watching?").assertIsDisplayed()
     }
+    @Test fun kidsSettingsHideOwnerControls() {
+        prewarmBatch2PhoneCast(rule)
+        rule.setContent { STBPlayTheme(ThemePreference.LIGHT) {
+            Batch2AppFixture(selected = StbPlayTab.SETTINGS, settings = StbPlaySettingsState(kidsProfile = true, viewerName = "Kid"), session = SearchSession())
+        } }
+        rule.onNodeWithText("Who's watching?").assertIsDisplayed()
+        rule.onNodeWithText("Parental controls").assertDoesNotExist()
+        rule.onNodeWithText("Content sources").assertDoesNotExist()
+    }
 }

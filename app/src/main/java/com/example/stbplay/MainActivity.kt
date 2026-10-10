@@ -1735,6 +1735,7 @@ private fun StbPlayRoot(
                         playRequest = null; livePreviewStream = null; tvLivePreviewPlayback = false
                         selectedMovie = null; selectedSeries = null; selectedLiveChannel = null
                         unlockedAdultCategoryKey = null; pendingLockedMedia = null; pendingParentalMode = null
+                        pendingCategory = null; pendingPlaybackMedia = null; pendingEpisodePlayback = null; qualityContext = null
                         unlockedViewerId = null; selectedTab = StbPlayTab.HOME
                     },
                     searchSession = searchSession,
@@ -1770,7 +1771,7 @@ private fun StbPlayRoot(
                         }
                     }
                   ) }
-                  if (isAndroidTv) appUiStateHolder.SaveableStateProvider(storedSettings.id.ifBlank { "setup" }) {
+                  if (isAndroidTv) appUiStateHolder.SaveableStateProvider("${storedSettings.id.ifBlank { "setup" }}:${activeViewer.id}") {
                       Box(Modifier.fillMaxSize().then(if (livePreviewFullscreen) Modifier.focusProperties { canFocus = false } else Modifier)) { renderApp() }
                   }
                   else renderApp()
