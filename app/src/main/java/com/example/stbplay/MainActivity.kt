@@ -1489,6 +1489,17 @@ private fun StbPlayRoot(
                     onTheme = { scope.launch { settingsManager.setThemePreference(it) } },
                     onDone = { scope.launch { settingsManager.completePhoneSetup() } }
                 )
+                activeViewer.isKids && (screen == AppScreen.SETUP || storedSettings.url.isBlank() || storedSettings.mac.isBlank()) -> {
+                    androidx.compose.foundation.layout.Column(
+                        Modifier.fillMaxSize().padding(24.dp),
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
+                    ) {
+                        androidx.tv.material3.Text("Ask the owner to connect a portal before using this Kids profile.")
+                        com.example.stbplay.ui.QuestButton(onClick = { unlockedViewerId = null }) {
+                            androidx.tv.material3.Text("Switch profile")
+                        }
+                    }
+                }
                 screen == AppScreen.APP && (storedSettings.url.isBlank() || storedSettings.mac.isBlank()) ->
                     Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
                 playRequest != null && !tvLivePreviewPlayback -> {
