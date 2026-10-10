@@ -62,13 +62,17 @@ class SettingsManager(private val context: Context) {
             val viewers = parseViewers(prefs[keyViewers]).filterNot { it.id == viewer.id } + viewer.copy(pinHash = hash)
             prefs[keyViewers] = JSONArray().apply { viewers.forEach { v -> put(JSONObject().apply {
                 put("id", v.id); put("name", v.name); put("age", v.age); put("avatar", v.avatar); put("pinHash", v.pinHash)
+                put("approvalPortalKey", v.approvalPortalKey)
+                put("allowedLive", JSONArray(v.allowedLiveCategories.toList())); put("allowedVod", JSONArray(v.allowedVodCategories.toList()))
             }) } }.toString()
         }
     }
     private fun parseViewers(raw: String?): List<ViewerProfile> = runCatching {
         val array = JSONArray(raw ?: "[]")
         (0 until array.length()).map { index -> array.getJSONObject(index).let { v ->
-            ViewerProfile(v.getString("id"), v.getString("name"), v.getInt("age"), v.optString("avatar", "🙂"), v.optString("pinHash"))
+            ViewerProfile(v.getString("id"), v.getString("name"), v.getInt("age"), v.optString("avatar", "🙂"), v.optString("pinHash"),
+                v.optJSONArray("allowedLive").let { a -> if (a == null) emptySet() else (0 until a.length()).mapTo(HashSet()) { a.getString(it) } },
+                v.optJSONArray("allowedVod").let { a -> if (a == null) emptySet() else (0 until a.length()).mapTo(HashSet()) { a.getString(it) } }, v.optString("approvalPortalKey"))
         } }.ifEmpty { listOf(ViewerProfile("owner", "Owner", 18)) }
     }.getOrElse { listOf(ViewerProfile("owner", "Owner", 18)) }
     private fun personalProfileId(prefs: androidx.datastore.preferences.core.Preferences): String {

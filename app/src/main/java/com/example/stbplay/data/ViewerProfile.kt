@@ -5,7 +5,7 @@ import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
-data class ViewerProfile(val id: String, val name: String, val age: Int, val avatar: String = "🙂", val pinHash: String = "") {
+data class ViewerProfile(val id: String, val name: String, val age: Int, val avatar: String = "🙂", val pinHash: String = "", val allowedLiveCategories: Set<String> = emptySet(), val allowedVodCategories: Set<String> = emptySet(), val approvalPortalKey: String = "") {
     val isKids: Boolean get() = age < 18
 }
 

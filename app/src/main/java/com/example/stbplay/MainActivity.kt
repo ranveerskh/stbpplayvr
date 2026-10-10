@@ -400,7 +400,7 @@ private fun StbPlayRoot(
     val activeViewer by settingsManager.activeViewer.collectAsState(initial = com.example.stbplay.data.ViewerProfile("owner", "Owner", 18))
     val parentalMode = if (activeViewer.isKids) ParentalMode.HIDE_ADULT else savedParentalMode
     val catalogueLanguage by settingsManager.catalogueLanguage.collectAsState(initial = "All")
-    val searchSession = remember(storedSettings.id, storedSettings.url, storedSettings.mac, activeViewer.id, parentalMode, catalogueLanguage) { SearchSession() }
+    val searchSession = remember(storedSettings.id, storedSettings.url, storedSettings.mac, activeViewer, parentalMode, catalogueLanguage) { SearchSession() }
     val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = false)
     val privacyPrefs = remember(appContext) { appContext.getSharedPreferences("privacy_notice", Context.MODE_PRIVATE) }
     var acceptedPolicyVersion by remember(privacyPrefs) {
@@ -532,13 +532,14 @@ private fun StbPlayRoot(
         }
     }
 
-    val kidsCategoryIds = remember(liveCategories, movieCategories, seriesCategories) {
-        liveCategories.filter { com.example.stbplay.data.isKidsCategory(it) }.mapTo(HashSet()) { it.id } to
-            (movieCategories + seriesCategories).filter { com.example.stbplay.data.isKidsCategory(it) }.mapTo(HashSet()) { it.id }
+    fun portalKey(settings: PortalSettings) = "${settings.id}|${settings.url.trim()}|${settings.mac.trim()}"
+    val kidsCategoryIds = remember(activeViewer, storedSettings, liveCategories, movieCategories, seriesCategories) {
+        val allowedLive = liveCategories.filter { activeViewer.approvalPortalKey == portalKey(storedSettings) && !it.isAdultCategory() && it.id in activeViewer.allowedLiveCategories }.mapTo(HashSet()) { it.id }
+        val allowedVod = (movieCategories + seriesCategories).filter { activeViewer.approvalPortalKey == portalKey(storedSettings) && !it.isAdultCategory() && it.id in activeViewer.allowedVodCategories }.mapTo(HashSet()) { it.id }
+        allowedLive to allowedVod
     }
     fun viewerAllows(stream: PortalStream) = !activeViewer.isKids || com.example.stbplay.data.isKidsContentAllowed(stream, if (stream.streamType == "live") kidsCategoryIds.first else kidsCategoryIds.second)
 
-    fun portalKey(settings: PortalSettings) = "${settings.id}|${settings.url.trim()}|${settings.mac.trim()}"
 
     fun catalogSnapshot() = CatalogSnapshot(
         liveStreams = liveStreams,
@@ -989,14 +990,14 @@ private fun StbPlayRoot(
     }
     val flaggedAdultVodCategoryIds = remember(allVod) { allVod.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId } }
     val flaggedAdultLiveCategoryIds = remember(liveStreams) { liveStreams.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId } }
-    val contentCategories = remember(movieCategories, seriesCategories, parentalMode, allVod, activeViewer.isKids) {
+    val contentCategories = remember(movieCategories, seriesCategories, parentalMode, allVod, activeViewer, kidsCategoryIds) {
         val categories = (movieCategories + seriesCategories).distinctBy { it.id }
         val flaggedIds = allVod.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId }
         val visible = when (parentalMode) {
             ParentalMode.ALL_CONTENT -> categories
             ParentalMode.HIDE_ADULT -> categories.filterNot { it.isAdultCategory() }
             ParentalMode.ADULT_ONLY -> categories.filter { it.isAdultCategory() || it.id in flaggedIds }
-        }.filter { !activeViewer.isKids || com.example.stbplay.data.isKidsCategory(it) }.map { category ->
+        }.filter { !activeViewer.isKids || it.id in kidsCategoryIds.second }.map { category ->
             val properAdultCategory = category.isAdultCategory()
             UiCategory(
                 category.id,
@@ -1008,13 +1009,13 @@ private fun StbPlayRoot(
         if (parentalMode == ParentalMode.ADULT_ONLY) listOf(UiCategory("adult-only", "Adult only", isAdult = true)) + visible
         else listOf(UiCategory("all", "All")) + visible
     }
-    val uiLiveCategories = remember(liveCategories, liveStreams, parentalMode, activeViewer.isKids) {
+    val uiLiveCategories = remember(liveCategories, liveStreams, parentalMode, activeViewer, kidsCategoryIds) {
         val flaggedIds = liveStreams.filter { it.isAdultContent() }.mapNotNullTo(HashSet()) { it.categoryId }
         val visible = when (parentalMode) {
             ParentalMode.ALL_CONTENT -> liveCategories
             ParentalMode.HIDE_ADULT -> liveCategories.filterNot { it.isAdultCategory() }
             ParentalMode.ADULT_ONLY -> liveCategories.filter { it.isAdultCategory() || it.id in flaggedIds }
-        }.filter { !activeViewer.isKids || com.example.stbplay.data.isKidsCategory(it) }.map { category ->
+        }.filter { !activeViewer.isKids || it.id in kidsCategoryIds.first }.map { category ->
             val properAdultCategory = category.isAdultCategory()
             UiCategory(
                 category.id,
@@ -1475,6 +1476,8 @@ private fun StbPlayRoot(
                 }
                 viewerProfiles.isNotEmpty() && unlockedViewerId != activeViewer.id -> com.example.stbplay.ui.ViewerProfilesScreen(
                     profiles = viewerProfiles, ownerPin = storedSettings.pin,
+                    liveCategories = liveCategories, vodCategories = (movieCategories + seriesCategories).distinctBy { it.id },
+                    approvalPortalKey = portalKey(storedSettings),
                     onSelected = { viewer -> scope.launch { settingsManager.activateViewer(viewer.id); unlockedViewerId = viewer.id } },
                     onSave = { viewer, pin -> scope.launch { settingsManager.saveViewer(viewer, pin) } },
                     onSetOwnerPin = { pin -> scope.launch { settingsManager.updateParentalPin(storedSettings.pin, pin) } }

@@ -66,7 +66,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.TvNavigationFocusTest,com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.screens.PlaybackSmokeTest,com.example.stbplay.ui.SearchReturnRegressionTest,com.example.stbplay.data.SettingsSearchHistoryTest
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.TvNavigationFocusTest,com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.screens.PlaybackSmokeTest,com.example.stbplay.ui.SearchReturnRegressionTest,com.example.stbplay.data.SettingsSearchHistoryTest,com.example.stbplay.ui.ViewerStorageTest,com.example.stbplay.ui.ViewerProfilesUiTest
             mkdir -p "$RUNNER_TEMP/theme-previews"
             for image in $(adb shell ls /sdcard/Pictures/STBPlayThemePreviews | tr -d '\r'); do adb pull "/sdcard/Pictures/STBPlayThemePreviews/$image" "$RUNNER_TEMP/theme-previews/$image"; done
             test "$(find "$RUNNER_TEMP/theme-previews" -name 'tv-*.png' | wc -l)" -eq 9
@@ -87,7 +87,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.PhoneNavigationSmokeTest,com.example.stbplay.ui.PhoneUiBatch2Test,com.example.stbplay.ui.screens.PlaybackSmokeTest,com.example.stbplay.ui.SearchReturnRegressionTest,com.example.stbplay.data.SettingsSearchHistoryTest
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.PhoneNavigationSmokeTest,com.example.stbplay.ui.PhoneUiBatch2Test,com.example.stbplay.ui.screens.PlaybackSmokeTest,com.example.stbplay.ui.SearchReturnRegressionTest,com.example.stbplay.data.SettingsSearchHistoryTest,com.example.stbplay.ui.ViewerStorageTest,com.example.stbplay.ui.ViewerProfilesUiTest
             mkdir -p "$RUNNER_TEMP/theme-previews"
             for image in $(adb shell ls /sdcard/Pictures/STBPlayThemePreviews | tr -d '\r'); do adb pull "/sdcard/Pictures/STBPlayThemePreviews/$image" "$RUNNER_TEMP/theme-previews/$image"; done
             test "$(find "$RUNNER_TEMP/theme-previews" -name 'phone-*.png' | wc -l)" -eq 11
