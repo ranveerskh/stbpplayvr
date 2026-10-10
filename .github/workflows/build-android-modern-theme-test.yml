@@ -68,7 +68,8 @@ jobs:
           script: |
             ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.TvNavigationFocusTest,com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.screens.PlaybackSmokeTest
             mkdir -p "$RUNNER_TEMP/theme-previews"
-            for image in $(adb shell run-as com.example.stbplay ls files/theme-previews | tr -d '\r'); do adb exec-out run-as com.example.stbplay cat "files/theme-previews/$image" > "$RUNNER_TEMP/theme-previews/$image"; done
+            for image in $(adb shell ls /sdcard/Pictures/STBPlayThemePreviews | tr -d '\r'); do adb pull "/sdcard/Pictures/STBPlayThemePreviews/$image" "$RUNNER_TEMP/theme-previews/$image"; done
+            test "$(find "$RUNNER_TEMP/theme-previews" -name 'tv-*.png' | wc -l)" -eq 9
       - name: Preserve TV reports before the phone run
         if: always()
         run: |
@@ -87,7 +88,8 @@ jobs:
           script: |
             ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.PhoneNavigationSmokeTest,com.example.stbplay.ui.screens.PlaybackSmokeTest
             mkdir -p "$RUNNER_TEMP/theme-previews"
-            for image in $(adb shell run-as com.example.stbplay ls files/theme-previews | tr -d '\r'); do adb exec-out run-as com.example.stbplay cat "files/theme-previews/$image" > "$RUNNER_TEMP/theme-previews/$image"; done
+            for image in $(adb shell ls /sdcard/Pictures/STBPlayThemePreviews | tr -d '\r'); do adb pull "/sdcard/Pictures/STBPlayThemePreviews/$image" "$RUNNER_TEMP/theme-previews/$image"; done
+            test "$(find "$RUNNER_TEMP/theme-previews" -name 'phone-*.png' | wc -l)" -eq 6
       - name: Preserve phone reports
         if: always()
         run: |
