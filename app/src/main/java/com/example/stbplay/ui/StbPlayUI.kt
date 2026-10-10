@@ -989,10 +989,10 @@ private fun RotatingHero(
                 modifier = Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp, horizontal = if (isCompactAndroidLayout()) 5.dp else 12.dp),
                 verticalArrangement = Arrangement.spacedBy(if (isCompactAndroidLayout() || denseTv) 5.dp else 8.dp)
             ) {
-                Text(item.badge ?: item.streamType.uppercase(), color = Color(0xFFF6D896), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text(item.title, color = PosterWhite, fontSize = if (isCompactAndroidLayout() || denseTv) 20.sp else 28.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.badge ?: item.streamType.uppercase(), color = GoldLight, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(item.title, color = White, fontSize = if (isCompactAndroidLayout() || denseTv) 20.sp else 28.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 item.description?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, color = Color(0xFFD3DBE6), fontSize = 12.sp, maxLines = if (isCompactAndroidLayout()) 2 else 3, overflow = TextOverflow.Ellipsis)
+                    Text(it, color = Muted, fontSize = 12.sp, maxLines = if (isCompactAndroidLayout()) 2 else 3, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.weight(1f))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
