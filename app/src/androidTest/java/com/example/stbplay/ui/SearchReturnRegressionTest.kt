@@ -24,14 +24,14 @@ class SearchReturnRegressionTest {
     @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
     @org.junit.Before fun setupPhoneCast() = prewarmBatch2PhoneCast(rule)
 
-    private fun activateResult(tvFocusTag: String, phoneLabel: String) {
+    private fun activateResult(tvFocusTag: String, phoneTag: String) {
         if (InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice()) {
             rule.onNodeWithTag(tvFocusTag).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
             rule.waitForIdle()
             rule.onNodeWithTag(tvFocusTag).assertIsFocused().assertIsDisplayed()
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressDPadCenter()
             rule.waitForIdle()
-        } else rule.onNodeWithText(phoneLabel).performClick()
+        } else rule.onNodeWithTag(phoneTag).assertIsDisplayed().performClick()
     }
 
     private fun returnFromPlayer() {
@@ -69,7 +69,7 @@ class SearchReturnRegressionTest {
         rule.waitForIdle()
         val index = session.gridState.firstVisibleItemIndex
         val offset = session.gridState.firstVisibleItemScrollOffset
-        activateResult("tv-focus:media:movie:film13", "Film 13")
+        activateResult("tv-focus:media:movie:film13", "search-result:movie:film13")
         assertEquals("film13", selectedMedia?.id)
         rule.onNodeWithTag("return-from-player").assertIsDisplayed()
         returnFromPlayer()
@@ -108,7 +108,7 @@ class SearchReturnRegressionTest {
         if (!InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice())
             rule.onNode(hasSetTextAction()).performImeAction()
         rule.waitForIdle()
-        activateResult("tv-focus:media:live:ch1", "Channel 1")
+        activateResult("tv-focus:media:live:ch1", "search-result:live:ch1")
         assertEquals("ch1", clicked?.id)
         rule.onNodeWithTag("return-from-player").assertIsDisplayed()
         returnFromPlayer()

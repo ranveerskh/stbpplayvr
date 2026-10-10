@@ -79,7 +79,7 @@ class PhoneNavigationSmokeTest {
         rule.runOnIdle { clicked = null }
         rule.waitForIdle()
         rule.onNodeWithTag("search-results").performScrollToIndex(0)
-        rule.onNodeWithText(channel.title).assertIsDisplayed().performTouchInput { click() }
+        rule.onNodeWithTag("search-result:live:${channel.id}").assertIsDisplayed().performTouchInput { click() }
         rule.waitUntil(5_000) { clicked?.title == channel.title }
         assertEquals("same", clicked?.id)
         assertEquals("live", clicked?.streamType)

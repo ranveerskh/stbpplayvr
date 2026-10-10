@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1924,7 +1925,8 @@ private fun MediaCard(
     focusRequester: FocusRequester? = null,
     onFocusDown: (() -> Unit)? = null,
     onFocusUp: (() -> Unit)? = null,
-    onFocused: () -> Unit = {}
+    onFocused: () -> Unit = {},
+    interactionTag: String? = null
 ) {
     val denseTv = isTelevisionLayout()
     if (denseTv) {
@@ -1955,6 +1957,7 @@ private fun MediaCard(
       QuestSurface(
         onClick = onClick,
         modifier = Modifier
+            .then(if (interactionTag != null) Modifier.testTag(interactionTag) else Modifier)
             .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
             .then(if (initialFocus && denseTv) Modifier.questInitialFocus() else Modifier)
             .fillMaxSize().onPreviewKeyEvent { event ->
@@ -2631,7 +2634,12 @@ private fun StbPlaySearchScreen(
         StbPlayTab.FAVOURITES -> "saved items"
         else -> "titles"
     }
-    Column(modifier = Modifier.fillMaxSize().background(Navy).padding(if (isCompactAndroidLayout()) 14.dp else 36.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(Navy)
+            .then(if (isCompactAndroidLayout()) Modifier.imePadding() else Modifier)
+            .padding(if (isCompactAndroidLayout()) 14.dp else 36.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Search $scopeTitle", color = White, fontSize = if (isCompactAndroidLayout()) 22.sp else 30.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -2725,7 +2733,8 @@ private fun StbPlaySearchScreen(
                         contentType = { if (it.streamType == "live") "channel" else "title" }) { stream ->
                         val media = toUi(stream)
                         MediaCard(media, { keyboard?.hide(); onMediaClick(media) }, { onToggleFavorite(media) }, compactGrid = true,
-                            focusRequester = if ("${stream.streamType}:${stream.id}" == session.selectedResultKey) resultRequester else null)
+                            focusRequester = if ("${stream.streamType}:${stream.id}" == session.selectedResultKey) resultRequester else null,
+                            interactionTag = "search-result:${stream.streamType}:${stream.id}")
                     }
                 }
             }
