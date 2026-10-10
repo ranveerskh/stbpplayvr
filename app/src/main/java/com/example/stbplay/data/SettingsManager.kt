@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -20,6 +21,7 @@ private val Context.dataStore by preferencesDataStore(name = "stb_play_settings"
 
 enum class PlayerPreference { AUTO, INTERNAL, VLC }
 enum class ThemePreference { BLUE, LIGHT, BLACK }
+enum class CategoryDropdownPosition { TOP, BOTTOM }
 enum class ParentalMode { ALL_CONTENT, HIDE_ADULT, ADULT_ONLY }
 enum class SubtitlePreference { AUTO, OFF, ENGLISH, HINDI, PUNJABI }
 
@@ -51,6 +53,8 @@ class SettingsManager(private val context: Context) {
     private val keyProgressPrefix = "vod_progress_"
     private val keyPlayer = stringPreferencesKey("player_preference")
     private val keyAndroidBoxVideoCompatibility = booleanPreferencesKey("android_box_video_compatibility")
+    private val keyPhoneCategoryPosition = stringPreferencesKey("phone_category_position")
+    private val keyPhoneMovieColumns = intPreferencesKey("phone_movie_columns")
     private val keyTheme = stringPreferencesKey("theme_preference")
     private val keySubtitles = stringPreferencesKey("subtitle_preference")
     private val keyLanguage = stringPreferencesKey("catalogue_language")
@@ -125,6 +129,19 @@ class SettingsManager(private val context: Context) {
             ThemePreference.LIGHT.name -> ThemePreference.LIGHT
             else -> ThemePreference.BLUE
         }
+    }
+
+    val phoneCategoryPosition: Flow<CategoryDropdownPosition> = context.dataStore.data.map {
+        runCatching { CategoryDropdownPosition.valueOf(it[keyPhoneCategoryPosition] ?: "TOP") }
+            .getOrDefault(CategoryDropdownPosition.TOP)
+    }
+    val phoneMovieColumns: Flow<Int> = context.dataStore.data.map { (it[keyPhoneMovieColumns] ?: 2).coerceIn(2, 4) }
+
+    suspend fun setPhoneCategoryPosition(value: CategoryDropdownPosition) {
+        context.dataStore.edit { it[keyPhoneCategoryPosition] = value.name }
+    }
+    suspend fun setPhoneMovieColumns(value: Int) {
+        context.dataStore.edit { it[keyPhoneMovieColumns] = value.coerceIn(2, 4) }
     }
 
     val parentalMode: Flow<ParentalMode> = context.dataStore.data.map {

@@ -2,7 +2,7 @@
 
 package com.example.stbplay.ui
 
-import android.content.pm.PackageManager
+import android.os.Build
 import com.example.stbplay.isAndroidTvDevice
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxScope
@@ -41,12 +41,13 @@ fun QuestButton(
     val isAndroidTv = remember(context) {
         context.isAndroidTvDevice()
     }
+    val staticScale = useStaticUiScale(isAndroidTv, Build.MANUFACTURER, Build.BRAND, Build.MODEL)
     TvButton(
         onClick = onClick,
         modifier = modifier.questPointerTap(enabled, onClick),
         enabled = enabled,
         colors = colors,
-        scale = if (isAndroidTv) ButtonDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
+        scale = if (staticScale) ButtonDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
             else ButtonDefaults.scale(focusedScale = 1.1f),
         content = content
     )
@@ -69,7 +70,8 @@ fun QuestSurface(
     val isAndroidTv = remember(context) {
         context.isAndroidTvDevice()
     }
-    val resolvedFocusScale = if (isAndroidTv) 1f else focusScale ?: 1.1f
+    val staticScale = useStaticUiScale(isAndroidTv, Build.MANUFACTURER, Build.BRAND, Build.MODEL)
+    val resolvedFocusScale = if (staticScale) 1f else focusScale ?: 1.1f
     if (isAndroidTv && enabled && tvContainerColor != null) {
         TvHomeSurface(onClick, modifier, tvContainerColor, tvFocusedContainerColor ?: tvContainerColor, content)
         return
@@ -81,7 +83,7 @@ fun QuestSurface(
         shape = shape,
         colors = colors,
         border = border,
-        scale = if (isAndroidTv) ClickableSurfaceDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
+        scale = if (staticScale) ClickableSurfaceDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
             else ClickableSurfaceDefaults.scale(focusedScale = resolvedFocusScale),
         content = content
     )
