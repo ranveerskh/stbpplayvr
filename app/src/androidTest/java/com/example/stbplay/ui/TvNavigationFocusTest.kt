@@ -104,14 +104,20 @@ class TvNavigationFocusTest {
 
     @Test fun modernThemesKeepFocusVisibleAcrossHomeLiveAndMovies() {
         start()
-        ThemePreference.entries.forEach { preference ->
+        ThemePreference.entries.forEachIndexed { index, preference ->
             rule.runOnIdle { theme = preference }
             rule.waitForIdle()
             rail(StbPlayTab.HOME); right(); focused("tv-focus:home:hero")
             saveThemePreview(rule, "tv-home-${preference.name.lowercase()}")
-            rail(StbPlayTab.LIVE); right(); right(); focused("tv-focus:live:ch1")
+            rail(StbPlayTab.LIVE); right()
+            // First entry starts at categories; subsequent entries restore the channel.
+            if (index == 0) { focused("tv-focus:category:all"); right() }
+            focused("tv-focus:live:ch1")
             saveThemePreview(rule, "tv-live-${preference.name.lowercase()}")
-            rail(StbPlayTab.CONTENT); ok(); right(); focused("tv-focus:media:movie:film1")
+            rail(StbPlayTab.CONTENT); ok()
+            // The remembered movie is the entry target after the first theme.
+            if (index == 0) { focused("tv-focus:category:all"); right() }
+            focused("tv-focus:media:movie:film1")
             saveThemePreview(rule, "tv-movies-${preference.name.lowercase()}")
         }
     }
