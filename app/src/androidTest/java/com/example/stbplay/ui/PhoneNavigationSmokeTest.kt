@@ -79,6 +79,7 @@ class PhoneNavigationSmokeTest {
         rule.runOnIdle { clicked = null }
         rule.waitForIdle()
         rule.onNodeWithTag("search-results").performScrollToIndex(0)
+        println("SEARCH_BOUNDS root=${rule.onRoot().fetchSemanticsNode().boundsInRoot} grid=${rule.onNodeWithTag("search-results").fetchSemanticsNode().boundsInRoot} result=${rule.onNodeWithTag("search-result:live:${channel.id}").fetchSemanticsNode().boundsInRoot}")
         rule.onNodeWithTag("search-result:live:${channel.id}").assertIsDisplayed().performTouchInput { click() }
         rule.waitUntil(5_000) { clicked?.title == channel.title }
         assertEquals("same", clicked?.id)

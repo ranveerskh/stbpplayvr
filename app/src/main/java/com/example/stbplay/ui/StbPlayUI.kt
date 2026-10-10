@@ -32,7 +32,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -398,7 +397,10 @@ fun StbPlayApp(
     }
 
     if (searchOpen) {
-        CompositionLocalProvider(LocalTvFocusNavigation provides if (tvLayout) searchFocusNavigation else null) {
+        CompositionLocalProvider(
+            LocalTvFocusNavigation provides if (tvLayout) searchFocusNavigation else null,
+            LocalBringIntoViewSpec provides if (tvLayout) TvVerticalBringIntoViewSpec else LocalBringIntoViewSpec.current
+        ) {
             Box(Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
                 StbPlaySearchScreen(
                     catalog = searchCatalog,
@@ -2636,7 +2638,6 @@ private fun StbPlaySearchScreen(
     }
     Column(
         modifier = Modifier.fillMaxSize().background(Navy)
-            .then(if (isCompactAndroidLayout()) Modifier.imePadding() else Modifier)
             .padding(if (isCompactAndroidLayout()) 14.dp else 36.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
