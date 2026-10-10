@@ -62,6 +62,9 @@ class SearchReturnRegressionTest {
             }
         }
         rule.waitUntil(10_000) { session.results.size == 48 && !session.searching }
+        if (!InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice())
+            rule.onNode(hasSetTextAction()).performImeAction()
+        rule.waitForIdle()
         rule.onNodeWithTag("search-results").performScrollToIndex(12)
         rule.waitForIdle()
         val index = session.gridState.firstVisibleItemIndex
@@ -102,6 +105,9 @@ class SearchReturnRegressionTest {
             }
         }
         rule.waitUntil(10_000) { session.results.isNotEmpty() && !session.searching }
+        if (!InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice())
+            rule.onNode(hasSetTextAction()).performImeAction()
+        rule.waitForIdle()
         activateResult("tv-focus:media:live:ch1", "Channel 1")
         assertEquals("ch1", clicked?.id)
         rule.onNodeWithTag("return-from-player").assertIsDisplayed()

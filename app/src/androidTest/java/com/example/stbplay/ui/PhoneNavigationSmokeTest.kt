@@ -74,13 +74,11 @@ class PhoneNavigationSmokeTest {
         rule.onNodeWithText("⌕").performClick()
         // Keep the query different from the result title so the matcher cannot hit the text field.
         rule.onNode(hasSetTextAction()).performTextInput("Fixture chan")
+        rule.onNode(hasSetTextAction()).performImeAction()
         rule.waitUntil(10_000) { rule.onAllNodesWithText(channel.title).fetchSemanticsNodes().isNotEmpty() }
-        rule.runOnIdle {
-            val input = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-            input.hideSoftInputFromWindow(rule.activity.window.decorView.windowToken, 0)
-            clicked = null
-        }
+        rule.runOnIdle { clicked = null }
         rule.waitForIdle()
+        rule.onNodeWithTag("search-results").performScrollToIndex(0)
         rule.onNodeWithText(channel.title).assertIsDisplayed().performTouchInput { click() }
         rule.waitUntil(5_000) { clicked?.title == channel.title }
         assertEquals("same", clicked?.id)

@@ -382,6 +382,7 @@ fun StbPlayApp(
     val railRequesters = remember { StbPlayTab.entries.associateWith { FocusRequester() } }
     val enterPageAction = remember { arrayOf<() -> Unit>({}) }
     fun returnToSelectedRail() { railRequesters.getValue(selectedTab).requestFocus() }
+    val searchFocusNavigation = remember(searchSession) { TvFocusNavigation(::returnToSelectedRail) {} }
     LaunchedEffect(tvLayout) {
         if (tvLayout) inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
     }
@@ -396,29 +397,31 @@ fun StbPlayApp(
     }
 
     if (searchOpen) {
-        Box(Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
-            StbPlaySearchScreen(
-                catalog = searchCatalog,
-                searchRemote = searchRemote,
-                onSearchResults = onSearchResults,
-                toUi = searchMedia,
-                scope = searchSession.scope,
-                session = searchSession,
-                searchHistory = searchHistory,
-                onRememberSearch = onRememberSearch,
-                onClearSearchHistory = onClearSearchHistory,
-                hasMore = selectedTab == StbPlayTab.CONTENT && contentState.hasMore,
-                loadingMore = contentState.loadingMore,
-                onLoadMore = onLoadMoreContent,
-                onMediaClick = { media ->
-                    searchSession.selectedResultKey = "${media.streamType}:${media.id}"
-                    searchSession.returningToResult = true
-                    onRememberSearch(searchSession.query)
-                    onMediaClick(media)
-                },
-                onToggleFavorite = onToggleFavorite,
-                onBack = { searchSession.open = false; onSearchVisibilityChanged(false) }
-            )
+        CompositionLocalProvider(LocalTvFocusNavigation provides if (tvLayout) searchFocusNavigation else null) {
+            Box(Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
+                StbPlaySearchScreen(
+                    catalog = searchCatalog,
+                    searchRemote = searchRemote,
+                    onSearchResults = onSearchResults,
+                    toUi = searchMedia,
+                    scope = searchSession.scope,
+                    session = searchSession,
+                    searchHistory = searchHistory,
+                    onRememberSearch = onRememberSearch,
+                    onClearSearchHistory = onClearSearchHistory,
+                    hasMore = selectedTab == StbPlayTab.CONTENT && contentState.hasMore,
+                    loadingMore = contentState.loadingMore,
+                    onLoadMore = onLoadMoreContent,
+                    onMediaClick = { media ->
+                        searchSession.selectedResultKey = "${media.streamType}:${media.id}"
+                        searchSession.returningToResult = true
+                        onRememberSearch(searchSession.query)
+                        onMediaClick(media)
+                    },
+                    onToggleFavorite = onToggleFavorite,
+                    onBack = { searchSession.open = false; onSearchVisibilityChanged(false) }
+                )
+            }
         }
         return
     }
