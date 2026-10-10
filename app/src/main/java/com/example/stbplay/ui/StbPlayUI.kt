@@ -2638,7 +2638,8 @@ private fun StbPlaySearchScreen(
     }
     Column(
         modifier = Modifier.fillMaxSize().background(Navy)
-            .padding(if (isCompactAndroidLayout()) 14.dp else 36.dp),
+            .padding(if (isCompactAndroidLayout()) 14.dp else 36.dp)
+            .testTag("search-screen-root"),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2721,7 +2722,7 @@ private fun StbPlaySearchScreen(
                 if (searchError != null) searchError!!
                 else "Try a shorter part of the channel or title name."
             )
-            else -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            else -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("search-results-container")) {
                 val columns = if (isCompactAndroidLayout()) 2 else (maxWidth / 130.dp).toInt().coerceIn(4, 6)
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(columns), state = session.gridState,

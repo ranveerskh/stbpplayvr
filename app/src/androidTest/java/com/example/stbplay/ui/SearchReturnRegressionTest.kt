@@ -26,9 +26,11 @@ class SearchReturnRegressionTest {
 
     private fun logSearchBounds(tag: String) {
         val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        val screen = rule.onNodeWithTag("search-screen-root").fetchSemanticsNode().boundsInRoot
+        val container = rule.onNodeWithTag("search-results-container").fetchSemanticsNode().boundsInRoot
         val grid = rule.onNodeWithTag("search-results").fetchSemanticsNode().boundsInRoot
         val result = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
-        println("SEARCH_BOUNDS tag=$tag root=$root grid=$grid result=$result")
+        println("SEARCH_BOUNDS tag=$tag root=$root screen=$screen container=$container grid=$grid result=$result")
     }
 
     private fun activateResult(tvFocusTag: String, phoneTag: String) {
@@ -79,7 +81,7 @@ class SearchReturnRegressionTest {
         rule.waitForIdle()
         rule.onNodeWithTag("search-results").performScrollToIndex(12)
         rule.waitForIdle()
-        println("SEARCH_VISIBLE_ITEMS=${session.gridState.layoutInfo.visibleItemsInfo.map { it.index to (it.offset to it.size) }}")
+        println("SEARCH_VISIBLE_ITEMS viewport=${session.gridState.layoutInfo.viewportSize} items=${session.gridState.layoutInfo.visibleItemsInfo.map { it.index to (it.offset to it.size) }}")
         val index = session.gridState.firstVisibleItemIndex
         val offset = session.gridState.firstVisibleItemScrollOffset
         activateResult("tv-focus:media:movie:film13", "search-result:movie:film13")
@@ -121,7 +123,7 @@ class SearchReturnRegressionTest {
         if (!InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice())
             rule.onNode(hasSetTextAction()).performImeAction()
         rule.waitForIdle()
-        println("SEARCH_VISIBLE_ITEMS=${session.gridState.layoutInfo.visibleItemsInfo.map { it.index to (it.offset to it.size) }}")
+        println("SEARCH_VISIBLE_ITEMS viewport=${session.gridState.layoutInfo.viewportSize} items=${session.gridState.layoutInfo.visibleItemsInfo.map { it.index to (it.offset to it.size) }}")
         activateResult("tv-focus:media:live:ch1", "search-result:live:ch1")
         assertEquals("ch1", clicked?.id)
         rule.onNodeWithTag("return-from-player").assertIsDisplayed()
