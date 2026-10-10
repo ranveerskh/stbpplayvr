@@ -77,6 +77,7 @@ jobs:
           if [ -d app/build/outputs/androidTest-results ]; then cp -R app/build/outputs/androidTest-results "$RUNNER_TEMP/optimization-reports/tv/"; fi
           if [ -d app/build/reports/androidTests ]; then cp -R app/build/reports/androidTests "$RUNNER_TEMP/optimization-reports/tv/"; fi
       - name: Verify phone touch, keyboard, catalogue reuse and playback
+        if: ${{ always() && !cancelled() }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
