@@ -9,6 +9,16 @@ class ViewerPolicyTest {
         assertTrue(ViewerProfile("a", "Adult", 30).needsEntryPin)
         assertFalse(ViewerProfile("a", "Adult", 30, pinMode = ViewerPinMode.RESTRICTED_ONLY).needsEntryPin)
     }
+    @Test fun restrictedPinCoversFlagsLocksAndAdultCategoriesOnly() {
+        val profile = ViewerProfile("a", "Adult", 30, pinMode = ViewerPinMode.RESTRICTED_ONLY)
+        val plain = PortalStream("normal", "Example", null, "general", "live")
+        assertFalse(profile.requiresRestrictedPin(plain, false))
+        assertTrue(profile.requiresRestrictedPin(plain.copy(isLocked = true), false))
+        assertTrue(profile.requiresRestrictedPin(plain.copy(rating = "18+"), false))
+        assertTrue(profile.requiresRestrictedPin(plain, true))
+        assertFalse(profile.copy(pinMode = ViewerPinMode.PROFILE_ENTRY).requiresRestrictedPin(plain, true))
+        assertFalse(profile.copy(age = 10).requiresRestrictedPin(plain, true))
+    }
     @Test fun ageBoundary() { assertTrue(ViewerProfile("a", "a", 17).isKids); assertFalse(ViewerProfile("a", "a", 18).isKids) }
     @Test fun pinsUseSaltAndRejectIncorrectValues() {
         val one = encodeViewerPin("1234"); val two = encodeViewerPin("1234")

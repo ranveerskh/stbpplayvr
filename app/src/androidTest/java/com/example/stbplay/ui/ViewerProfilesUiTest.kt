@@ -58,7 +58,7 @@ class ViewerProfilesUiTest {
         } }
         rule.onNodeWithText("Who's watching?").performClick()
         rule.onNodeWithText("Add profile").assertIsDisplayed()
-        rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
         rule.waitForIdle()
         rule.runOnIdle { assertFalse(visible) }
         rule.onNodeWithText("Content sources").assertIsDisplayed()
@@ -78,10 +78,11 @@ class ViewerProfilesUiTest {
         rule.onNodeWithText("Add profile").performClick()
         rule.onNodeWithText("Name").assertIsDisplayed()
         rule.onNodeWithText("Protected content").assertDoesNotExist()
-        rule.onNodeWithText("Every time I enter my profile").assertExists()
+        rule.onNodeWithText("✓ Every time I enter my profile").assertExists()
         rule.onNodeWithText("Only for restricted content").performScrollTo().performClick()
         rule.onNodeWithText("✓ Only for restricted content").assertExists()
-        rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        saveThemePreview(rule, "profile-form-$device-ivory")
+        androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
         rule.onNodeWithText("Kid").performClick()
         rule.runOnIdle { assertEquals("kid", selected?.id) }
         rule.onNodeWithText("PIN").assertDoesNotExist()

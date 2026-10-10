@@ -67,6 +67,7 @@ import com.example.stbplay.data.model.PortalQualityOption
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.data.model.PortalSubscription
 import com.example.stbplay.domain.model.PortalSettings
+import com.example.stbplay.data.requiresRestrictedPin
 import com.example.stbplay.ui.ChangePinPrompt
 import com.example.stbplay.ui.FirstStartDisclaimer
 import com.example.stbplay.ui.PinPrompt
@@ -402,6 +403,8 @@ private fun StbPlayRoot(
     val savedParentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
     val activeViewer by settingsManager.activeViewer.collectAsState(initial = com.example.stbplay.data.ViewerProfile("owner", "Owner", 18))
     val parentalMode = if (activeViewer.isKids) ParentalMode.HIDE_ADULT else if (activeViewer.pinMode == com.example.stbplay.data.ViewerPinMode.RESTRICTED_ONLY && savedParentalMode == ParentalMode.ADULT_ONLY) ParentalMode.ALL_CONTENT else savedParentalMode
+    var personalPinUnlockedIds by remember(activeViewer, storedSettings.id, storedSettings.url, storedSettings.mac) { mutableStateOf<Set<String>>(emptySet()) }
+    var personalPinUnlockedCategory by remember(activeViewer, storedSettings.id, storedSettings.url, storedSettings.mac) { mutableStateOf<String?>(null) }
     val catalogueLanguage by settingsManager.catalogueLanguage.collectAsState(initial = "All")
     val searchSession = remember(storedSettings.id, storedSettings.url, storedSettings.mac, activeViewer, parentalMode, catalogueLanguage) { SearchSession() }
     val analyticsEnabled by settingsManager.analyticsEnabled.collectAsState(initial = false)
@@ -485,6 +488,7 @@ private fun StbPlayRoot(
     var pendingEpisodeList by remember { mutableStateOf<List<PortalEpisode>>(emptyList()) }
     var progressResetGeneration by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var pendingLockedMedia by remember { mutableStateOf<PortalStream?>(null) }
+    var pendingPersonalPlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
     var pendingCategory by remember { mutableStateOf<PendingCategory?>(null) }
     var pendingParentalMode by remember { mutableStateOf<ParentalMode?>(null) }
     var unlockedAdultCategoryKey by remember { mutableStateOf<String?>(null) }
@@ -895,6 +899,14 @@ private fun StbPlayRoot(
         livePreview: Boolean = false
     ) {
         if (!viewerAllows(stream)) return
+        val explicitAdult = (if (stream.streamType == "live") liveCategories else movieCategories + seriesCategories)
+            .any { it.id == stream.categoryId && it.isAdultCategory() }
+        if (activeViewer.requiresRestrictedPin(stream, explicitAdult) && stream.id !in personalPinUnlockedIds &&
+            (stream.categoryId == null || stream.categoryId != personalPinUnlockedCategory)) {
+            pendingPersonalPlayback = { launchPlayback(stream, command, seriesValue, episode, resumeFraction, contentId, livePreview) }
+            pendingLockedMedia = stream
+            return
+        }
         if (stream.streamType == "live") {
             if (!livePreview) focusedLiveChannelId = stream.id
             scope.launch { settingsManager.markRecentlyPlayed(stream.id) }
@@ -1064,7 +1076,9 @@ private fun StbPlayRoot(
             else -> stream.categoryId in explicitAdultVodCategoryIds
         }
         val needsPin = stream.isLocked || (parentalMode == ParentalMode.ALL_CONTENT && (properAdultCategory || (activeViewer.pinMode == com.example.stbplay.data.ViewerPinMode.RESTRICTED_ONLY && stream.isAdultContent())))
-        if (needsPin && parentalMode != ParentalMode.ADULT_ONLY && !categoryUnlocked && !(activeViewer.id != "owner" && activeViewer.needsEntryPin && activeViewer.pinHash.isNotBlank() && unlockedViewerId == activeViewer.id)) pendingLockedMedia = stream else openMedia(stream, media.progress)
+        val personalContentUnlocked = activeViewer.pinMode == com.example.stbplay.data.ViewerPinMode.RESTRICTED_ONLY &&
+            (stream.id in personalPinUnlockedIds || (stream.categoryId != null && stream.categoryId == personalPinUnlockedCategory))
+        if (needsPin && parentalMode != ParentalMode.ADULT_ONLY && !categoryUnlocked && !personalContentUnlocked && !(activeViewer.id != "owner" && activeViewer.needsEntryPin && activeViewer.pinHash.isNotBlank() && unlockedViewerId == activeViewer.id)) pendingLockedMedia = stream else openMedia(stream, media.progress)
     }
 
     LaunchedEffect(portalReady, connecting, pendingPlaybackMedia) {
@@ -1850,6 +1864,7 @@ private fun StbPlayRoot(
                                 playRequest = null; livePreviewStream = null; tvLivePreviewPlayback = false
                                 selectedMovie = null; selectedSeries = null; selectedLiveChannel = null
                                 unlockedAdultCategoryKey = null; pendingLockedMedia = null; pendingParentalMode = null
+                                personalPinUnlockedIds = emptySet(); personalPinUnlockedCategory = null; pendingPersonalPlayback = null
                                 pendingCategory = null; pendingPlaybackMedia = null; pendingEpisodePlayback = null; qualityContext = null
                                 settingsManager.activateViewer(viewer.id)
                                 unlockedViewerId = viewer.id; selectedTab = StbPlayTab.HOME
@@ -1865,8 +1880,12 @@ private fun StbPlayRoot(
             pendingLockedMedia?.let { locked ->
                 if (activeViewer.id != "owner" && activeViewer.pinHash.isNotBlank()) {
                     com.example.stbplay.ui.ViewerPinPrompt(activeViewer,
-                        onVerified = { pendingLockedMedia = null; openMedia(locked) },
-                        onCancel = { pendingLockedMedia = null }, title = locked.name)
+                        onVerified = {
+                            personalPinUnlockedIds = personalPinUnlockedIds + locked.id; pendingLockedMedia = null
+                            val resumePlayback = pendingPersonalPlayback; pendingPersonalPlayback = null
+                            if (resumePlayback != null) resumePlayback() else openMedia(locked)
+                        },
+                        onCancel = { pendingLockedMedia = null; pendingPersonalPlayback = null }, title = locked.name)
                 } else PinPrompt(
                     title = locked.name, expectedPin = storedSettings.pin,
                     onVerified = { pendingLockedMedia = null; openMedia(locked) },
@@ -1896,6 +1915,9 @@ private fun StbPlayRoot(
             pendingCategory?.let { pending ->
                 val verified = {
                     unlockedAdultCategoryKey = "${pending.tab.name}:${pending.index}"
+                    if (activeViewer.pinMode == com.example.stbplay.data.ViewerPinMode.RESTRICTED_ONLY) {
+                        personalPinUnlockedCategory = (if (pending.tab == StbPlayTab.LIVE) uiLiveCategories else contentCategories).getOrNull(pending.index)?.id
+                    }
                     applyCategorySelection(pending.tab, pending.index)
                     pendingCategory = null
                 }

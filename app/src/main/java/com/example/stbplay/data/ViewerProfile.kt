@@ -12,6 +12,11 @@ data class ViewerProfile(val id: String, val name: String, val age: Int, val ava
     val needsEntryPin: Boolean get() = !isKids && pinMode == ViewerPinMode.PROFILE_ENTRY
 }
 
+/** Restriction-only PIN applies to provider locks, ratings/flags and explicit adult categories. */
+fun ViewerProfile.requiresRestrictedPin(stream: com.example.stbplay.data.model.PortalStream, explicitAdultCategory: Boolean): Boolean =
+    !isKids && pinMode == ViewerPinMode.RESTRICTED_ONLY &&
+        (stream.isLocked || stream.isAdultContent() || explicitAdultCategory)
+
 internal fun encodeViewerPin(pin: String): String {
     require(pin.length in 4..8 && pin.all(Char::isDigit))
     val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
