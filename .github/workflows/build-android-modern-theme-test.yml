@@ -1,0 +1,128 @@
+name: Verify and build Android modern theme batch 1 test APK
+
+on:
+  push:
+    branches: [optimize/android-modern-theme-batch1]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-modern-theme-batch1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install Android SDK 36
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Restore existing signing key for in-place testing
+        env:
+          STB_SIGNING_KEYSTORE_B64: ${{ secrets.STB_SIGNING_KEYSTORE_B64 }}
+          STB_RELEASE_STORE_PASSWORD: ${{ secrets.STB_RELEASE_STORE_PASSWORD }}
+          STB_RELEASE_KEY_ALIAS: ${{ secrets.STB_RELEASE_KEY_ALIAS }}
+          STB_RELEASE_KEY_PASSWORD: ${{ secrets.STB_RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$STB_SIGNING_KEYSTORE_B64" && test -n "$STB_RELEASE_STORE_PASSWORD" && test -n "$STB_RELEASE_KEY_ALIAS" && test -n "$STB_RELEASE_KEY_PASSWORD" || { echo 'Existing Android signing secrets are required.'; exit 1; }
+          printf '%s' "$STB_SIGNING_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/stb-release.jks"
+          chmod 600 "$RUNNER_TEMP/stb-release.jks"
+      - name: Run unit tests and build signed candidate
+        env:
+          STB_RELEASE_KEYSTORE: ${{ runner.temp }}/stb-release.jks
+          STB_RELEASE_STORE_PASSWORD: ${{ secrets.STB_RELEASE_STORE_PASSWORD }}
+          STB_RELEASE_KEY_ALIAS: ${{ secrets.STB_RELEASE_KEY_ALIAS }}
+          STB_RELEASE_KEY_PASSWORD: ${{ secrets.STB_RELEASE_KEY_PASSWORD }}
+        run: |
+          grep -Fq 'versionCode = 72' app/build.gradle.kts
+          grep -Fq 'versionName = "2.0.20.2"' app/build.gradle.kts
+          chmod +x ./gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease assembleDebugAndroidTest
+      - name: Serve generated playback fixture to the emulators
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory app/src/androidTest/assets > "$RUNNER_TEMP/playback-fixture-server.log" 2>&1 &
+      - name: Enable KVM for emulator checks
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify TV focus, catalogue reuse and real fixture playback
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.TvNavigationFocusTest,com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.screens.PlaybackSmokeTest
+            mkdir -p "$RUNNER_TEMP/theme-previews"
+            for image in $(adb shell run-as com.example.stbplay ls files/theme-previews | tr -d '\r'); do adb exec-out run-as com.example.stbplay cat "files/theme-previews/$image" > "$RUNNER_TEMP/theme-previews/$image"; done
+      - name: Preserve TV reports before the phone run
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/optimization-reports/tv"
+          if [ -d app/build/outputs/androidTest-results ]; then cp -R app/build/outputs/androidTest-results "$RUNNER_TEMP/optimization-reports/tv/"; fi
+          if [ -d app/build/reports/androidTests ]; then cp -R app/build/reports/androidTests "$RUNNER_TEMP/optimization-reports/tv/"; fi
+      - name: Verify phone touch, keyboard, catalogue reuse and playback
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.PhoneNavigationSmokeTest,com.example.stbplay.ui.screens.PlaybackSmokeTest
+            mkdir -p "$RUNNER_TEMP/theme-previews"
+            for image in $(adb shell run-as com.example.stbplay ls files/theme-previews | tr -d '\r'); do adb exec-out run-as com.example.stbplay cat "files/theme-previews/$image" > "$RUNNER_TEMP/theme-previews/$image"; done
+      - name: Preserve phone reports
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/optimization-reports/phone"
+          if [ -d app/build/outputs/androidTest-results ]; then cp -R app/build/outputs/androidTest-results "$RUNNER_TEMP/optimization-reports/phone/"; fi
+          if [ -d app/build/reports/androidTests ]; then cp -R app/build/reports/androidTests "$RUNNER_TEMP/optimization-reports/phone/"; fi
+      - name: Verify update identity and existing release certificate
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/stb-apk-verification.txt"
+          grep -Fq 'Signer #1 certificate SHA-256 digest: 91943d0efc4125eb6aeda132ba6b8d79855496e030477c2d5cd00e9bedd4fdb0' "$RUNNER_TEMP/stb-apk-verification.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" > "$RUNNER_TEMP/stb-apk-badging.txt"
+          grep -F "package: name='com.example.stbplay' versionCode='72' versionName='2.0.20.2'" "$RUNNER_TEMP/stb-apk-badging.txt"
+          cp "$apk" STB-PLAY-Android-2.0.20.2-modern-test.apk
+          sha256sum STB-PLAY-Android-2.0.20.2-modern-test.apk > "$RUNNER_TEMP/stb-apk-sha256.txt"
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-modern-theme-batch1-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            ${{ runner.temp }}/optimization-reports/
+            ${{ runner.temp }}/theme-previews/
+            ${{ runner.temp }}/playback-fixture-server.log
+            ${{ runner.temp }}/stb-apk-verification.txt
+            ${{ runner.temp }}/stb-apk-badging.txt
+            ${{ runner.temp }}/stb-apk-sha256.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload verified test APK only
+        uses: actions/upload-artifact@v4
+        with:
+          name: STB-PLAY-Android-2.0.20.2-modern-test-signed
+          path: STB-PLAY-Android-2.0.20.2-modern-test.apk
+          if-no-files-found: error
+          retention-days: 14

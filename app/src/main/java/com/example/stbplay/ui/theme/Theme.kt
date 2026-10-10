@@ -25,26 +25,27 @@ data class StbPalette(
     val good: Color = Color(0xFF87E7B0)
 )
 
+// Flat, cool surfaces keep artwork prominent; warm yellow remains the TV focus cue.
 val BluePalette = StbPalette(
-    background = Color(0xFF0A1019), rail = Color(0xFF101A27), panel = Color(0xFF1B2635),
-    panelSoft = Color(0xFF263447), accent = Color(0xFFD6AC58), accentLight = Color(0xFFF6D896),
-    text = Color(0xFFF6F8FC), muted = Color(0xFFB1BECE), onAccent = Color(0xFF0A1019)
+    background = Color(0xFF0B1020), rail = Color(0xFF10182A), panel = Color(0xFF172238),
+    panelSoft = Color(0xFF202D45), accent = Color(0xFFFFD166), accentLight = Color(0xFFFFE4A3),
+    text = Color(0xFFF4F7FC), muted = Color(0xFFAEBBD0), onAccent = Color(0xFF101827)
 )
 val LightPalette = StbPalette(
-    background = Color(0xFFF5F2EB), rail = Color(0xFFEDE8DF), panel = Color(0xFFFFFFFF),
-    panelSoft = Color(0xFFF1ECE3), accent = Color(0xFFA1702F), accentLight = Color(0xFF81591E),
-    text = Color(0xFF182638), muted = Color(0xFF5D6976), onAccent = Color(0xFF101B2B),
-    danger = Color(0xFFB23D45), good = Color(0xFF277B58)
+    background = Color(0xFFF4F7FC), rail = Color(0xFFEAF0F8), panel = Color(0xFFFFFFFF),
+    panelSoft = Color(0xFFE5ECF6), accent = Color(0xFFFFD166), accentLight = Color(0xFF795000),
+    text = Color(0xFF162237), muted = Color(0xFF52627A), onAccent = Color(0xFF101827),
+    danger = Color(0xFFB4233F), good = Color(0xFF176B45)
 )
 val BlackPalette = StbPalette(
-    background = Color(0xFF070707), rail = Color(0xFF111111), panel = Color(0xFF181818),
-    panelSoft = Color(0xFF252525), accent = Color(0xFFC9CDD2), accentLight = Color(0xFFF3F4F5),
-    text = Color(0xFFF4F6FA), muted = Color(0xFF9AA8B8), onAccent = Color(0xFF070707)
+    background = Color(0xFF080B10), rail = Color(0xFF10151D), panel = Color(0xFF191F29),
+    panelSoft = Color(0xFF252E3B), accent = Color(0xFFFFD166), accentLight = Color(0xFFFFE4A3),
+    text = Color(0xFFF5F7FA), muted = Color(0xFFADB9CA), onAccent = Color(0xFF101827)
 )
 val AfterDarkPalette = StbPalette(
-    background = Color(0xFF09070B), rail = Color(0xFF140E15), panel = Color(0xFF211720),
-    panelSoft = Color(0xFF30202B), accent = Color(0xFFB44C72), accentLight = Color(0xFFE08AA5),
-    text = Color(0xFFF8F2F5), muted = Color(0xFFC0AEB8), onAccent = Color(0xFF120910)
+    background = Color(0xFF100D16), rail = Color(0xFF191320), panel = Color(0xFF241C2E),
+    panelSoft = Color(0xFF32263F), accent = Color(0xFFE879A8), accentLight = Color(0xFFF7B7D1),
+    text = Color(0xFFFAF5FC), muted = Color(0xFFC5B5CF), onAccent = Color(0xFF1A1021)
 )
 
 val LocalStbPalette = staticCompositionLocalOf { BluePalette }

@@ -31,14 +31,15 @@ internal fun TvHomeSurface(
     content: @Composable BoxScope.() -> Unit
 ) {
     val palette = LocalStbPalette.current
-    val shape = remember { RoundedCornerShape(6.dp) }
+    val shape = remember { RoundedCornerShape(10.dp) }
     val interactions = remember { MutableInteractionSource() }
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier.onFocusChanged { focused = it.isFocused }
             .clip(shape)
             .background(if (focused) focusedContainerColor else containerColor)
-            .border(2.dp, if (focused) palette.accent else Color.Transparent, shape)
+            .border(if (focused) 2.dp else 1.dp,
+                if (focused) palette.accent else palette.text.copy(alpha = 0.08f), shape)
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
         content = content
     )

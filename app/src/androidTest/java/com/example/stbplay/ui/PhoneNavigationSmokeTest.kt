@@ -15,6 +15,7 @@ import com.example.stbplay.data.VodCatalogBatch
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.isAndroidTvDevice
 import com.example.stbplay.ui.theme.STBPlayTheme
+import com.example.stbplay.data.ThemePreference
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -38,15 +39,16 @@ class PhoneNavigationSmokeTest {
         val channel = UiMedia("same", "Fixture channel", streamType = "live")
         val movieStream = PortalStream(movie.id, movie.title, null, null, "movie")
         val channelStream = PortalStream(channel.id, channel.title, null, null, "live")
+        var theme by mutableStateOf(ThemePreference.BLUE)
         var selected by mutableStateOf(StbPlayTab.HOME)
         var clicked: UiMedia? = null
         rule.setContent {
-            STBPlayTheme {
+            STBPlayTheme(preference = theme) {
                 StbPlayApp(
                     homeState = StbPlayHomeState(heroes = listOf(movie)),
                     liveState = StbPlayLibraryState(categories = listOf(UiCategory("all", "All")), items = listOf(channel)),
                     contentState = StbPlayLibraryState(categories = listOf(UiCategory("all", "All")), items = listOf(movie)),
-                    favouritesState = StbPlayLibraryState(items = listOf(channel, movie)), settingsState = StbPlaySettingsState(),
+                    favouritesState = StbPlayLibraryState(items = listOf(channel, movie)), settingsState = StbPlaySettingsState(themePreference = theme),
                     onActivateLicense = {}, selectedTab = selected, liveChannelListState = rememberLazyListState(),
                     focusedLiveChannelId = null, focusedContentId = null, contentGridState = rememberLazyGridState(),
                     onTabSelected = { selected = it }, onLoadMoreContent = {}, onCategorySelected = { _, _ -> },
@@ -84,5 +86,17 @@ class PhoneNavigationSmokeTest {
         assertEquals("same", clicked?.id)
         assertEquals("live", clicked?.streamType)
         assertEquals(StbPlayTab.HOME, selected)
+        ThemePreference.entries.forEach { preference ->
+            rule.runOnIdle { theme = preference }
+            rule.waitForIdle()
+            saveThemePreview(rule, "phone-home-${preference.name.lowercase()}")
+            rule.runOnIdle { clicked = null }
+            rule.onNodeWithContentDescription("Movies").performClick()
+            rule.onNodeWithText(movie.title).assertIsDisplayed().performTouchInput { click() }
+            rule.waitUntil(5_000) { clicked?.title == movie.title }
+            saveThemePreview(rule, "phone-movies-${preference.name.lowercase()}")
+            rule.onNodeWithContentDescription("Home").performClick()
+        }
+
     }
 }
