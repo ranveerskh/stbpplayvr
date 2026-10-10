@@ -400,10 +400,7 @@ fun StbPlayApp(
     }
 
     if (searchOpen) {
-        CompositionLocalProvider(
-            LocalTvFocusNavigation provides if (tvLayout) searchFocusNavigation else null,
-            LocalBringIntoViewSpec provides if (tvLayout) TvVerticalBringIntoViewSpec else LocalBringIntoViewSpec.current
-        ) {
+        CompositionLocalProvider(LocalTvFocusNavigation provides if (tvLayout) searchFocusNavigation else null) {
             Box(Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
                 StbPlaySearchScreen(
                     catalog = searchCatalog,
@@ -2665,7 +2662,7 @@ private fun StbPlaySearchScreen(
             RemoteTextField(
                 value = query,
                 onValueChange = session::updateQuery,
-                modifier = Modifier.weight(1f).fillMaxHeight().focusRequester(requester)
+                modifier = Modifier.weight(1f).fillMaxHeight().focusRequester(requester).testTag("search-query")
                     .padding(horizontal = 18.dp, vertical = 17.dp),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),

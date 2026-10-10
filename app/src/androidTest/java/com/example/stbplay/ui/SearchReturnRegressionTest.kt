@@ -70,12 +70,19 @@ class SearchReturnRegressionTest {
         var history by mutableStateOf(emptyList<String>())
         var calls = 0
         var selectedMedia: UiMedia? = null
+        var playbackIndex = -1
+        var playbackOffset = -1
         val streams = (1..48).map { PortalStream("film$it", "Film $it", null, null, "movie") }
         rule.setContent {
             STBPlayTheme {
                 if (playing) Box(Modifier.fillMaxSize()) { QuestButton({ playing = false }, Modifier.testTag("return-from-player")) { androidx.tv.material3.Text("Return from player") } }
                 else Batch2AppFixture(StbPlayTab.CONTENT, session = session,
-                    onPlay = { selectedMedia = it; playing = true }, history = history,
+                    onPlay = {
+                        selectedMedia = it
+                        playbackIndex = session.gridState.firstVisibleItemIndex
+                        playbackOffset = session.gridState.firstVisibleItemScrollOffset
+                        playing = true
+                    }, history = history,
                     rememberSearch = { history = updatedSearchHistory(history, it) }, clearHistory = { history = emptyList() },
                     remote = { _, _ -> calls++; VodCatalogBatch(streams, 1, 48, false) })
             }
@@ -87,8 +94,6 @@ class SearchReturnRegressionTest {
         rule.onNodeWithTag("search-results").performScrollToIndex(12)
         rule.waitForIdle()
         println("SEARCH_VISIBLE_ITEMS viewport=${session.gridState.layoutInfo.viewportSize} items=${session.gridState.layoutInfo.visibleItemsInfo.map { it.index to (it.offset to it.size) }}")
-        val index = session.gridState.firstVisibleItemIndex
-        val offset = session.gridState.firstVisibleItemScrollOffset
         activateResult("tv-focus:media:movie:film13", "search-result:movie:film13")
         assertEquals("film13", selectedMedia?.id)
         rule.onNodeWithTag("return-from-player").assertIsDisplayed()
@@ -98,8 +103,8 @@ class SearchReturnRegressionTest {
         assertEquals("Film", session.query)
         assertEquals(48, session.results.size)
         assertEquals(1, calls)
-        assertEquals(index, session.gridState.firstVisibleItemIndex)
-        assertEquals(offset, session.gridState.firstVisibleItemScrollOffset)
+        assertEquals(playbackIndex, session.gridState.firstVisibleItemIndex)
+        assertEquals(playbackOffset, session.gridState.firstVisibleItemScrollOffset)
         rule.onNodeWithText("Search Movies & Series").assertIsDisplayed()
         rule.onNodeWithText("Film 13").assertIsDisplayed()
         if (InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice())
@@ -141,7 +146,8 @@ class SearchReturnRegressionTest {
             rule.onNodeWithTag("tv-focus:media:live:ch1").assertIsFocused()
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressDPadLeft()
             rule.waitForIdle()
-            rule.onNode(hasSetTextAction()).assertIsFocused()
+            rule.onNodeWithTag("search-query").assertIsFocused()
+            rule.onNode(hasSetTextAction()).assertDoesNotExist()
             assertTrue(session.open)
             assertEquals("Channel", session.query)
         }
