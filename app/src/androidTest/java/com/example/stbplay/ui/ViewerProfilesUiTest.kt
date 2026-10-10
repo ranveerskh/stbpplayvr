@@ -98,4 +98,22 @@ class ViewerProfilesUiTest {
         rule.onNodeWithText("PIN").assertDoesNotExist()
     }
 
+    @Test fun newAdultCannotEnterBeforeOwnerApproval() {
+        var selected: ViewerProfile? = null
+        val profile = ViewerProfile("new-adult", "New adult", 30, pinHash = "stored",
+            pinMode = ViewerPinMode.RESTRICTED_ONLY, adultApproved = false)
+        var approved: ViewerProfile? = null
+        rule.setContent { STBPlayTheme {
+            ViewerProfilesScreen(listOf(profile), "1234", onSelected = { selected = it },
+                onSave = { saved, _ -> approved = saved }, onSetOwnerPin = {})
+        } }
+        rule.onNodeWithText("New adult").performClick()
+        rule.onNodeWithText("Unlock").performClick()
+        rule.onNodeWithText("Incorrect PIN").assertIsDisplayed()
+        rule.runOnIdle { assertNull(selected); assertNull(approved) }
+        listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
+        rule.onNodeWithText("Unlock").performClick()
+        rule.runOnIdle { assertEquals(true, approved?.adultApproved); assertEquals(approved, selected) }
+    }
+
 }
