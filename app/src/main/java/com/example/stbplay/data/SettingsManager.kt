@@ -59,14 +59,34 @@ class SettingsManager(private val context: Context) {
     suspend fun saveViewer(viewer: ViewerProfile, pin: String) {
         val hash = if (viewer.isKids) "" else if (pin.isBlank()) viewer.pinHash else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { encodeViewerPin(pin) }
         context.dataStore.edit { prefs ->
-            val viewers = parseViewers(prefs[keyViewers]).filterNot { it.id == viewer.id } + viewer.copy(pinHash = hash)
-            prefs[keyViewers] = JSONArray().apply { viewers.forEach { v -> put(JSONObject().apply {
+            val current = parseViewers(prefs[keyViewers])
+            val saved = viewer.copy(pinHash = hash)
+            val viewers = if (current.any { it.id == viewer.id }) current.map { if (it.id == viewer.id) saved else it } else current + saved
+            prefs[keyViewers] = serializeViewers(viewers)
+        }
+    }
+    /** UI supplies an authenticated owner session or the currently unlocked profile. */
+    suspend fun deleteViewer(id: String, actorId: String, ownerAuthorized: Boolean = false) {
+        require(id != "owner") { "The owner profile cannot be deleted." }
+        context.dataStore.edit { prefs ->
+            val viewers = parseViewers(prefs[keyViewers])
+            require(viewers.any { it.id == actorId }) { "Unknown profile." }
+            require((actorId == "owner" && ownerAuthorized) || (actorId == id && prefs[keyActiveViewer] == actorId)) { "You can only delete your own profile." }
+            prefs[keyViewers] = serializeViewers(viewers.filterNot { it.id == id })
+            if (prefs[keyActiveViewer] == id) prefs[keyActiveViewer] = "owner"
+            prefs.asMap().keys.filter { key ->
+                key.name.endsWith(":view:$id") && listOf(keyFavoritesPrefix, keySearchHistoryPrefix, keyProgressPrefix).any { key.name.startsWith(it) }
+            }.forEach { key -> prefs.remove(key) }
+            prefs.remove(intPreferencesKey("phone_movie_columns_viewer_$id"))
+        }
+    }
+    private fun serializeViewers(viewers: List<ViewerProfile>): String {
+        return JSONArray().apply { viewers.forEach { v -> put(JSONObject().apply {
                 put("id", v.id); put("name", v.name); put("age", v.age); put("avatar", v.avatar); put("pinHash", v.pinHash)
                 put("pinMode", v.pinMode.name); put("adultApproved", v.adultApproved)
                 put("approvalPortalKey", v.approvalPortalKey)
                 put("allowedLive", JSONArray(v.allowedLiveCategories.toList())); put("allowedVod", JSONArray(v.allowedVodCategories.toList()))
             }) } }.toString()
-        }
     }
     private fun parseViewers(raw: String?): List<ViewerProfile> = runCatching {
         val array = JSONArray(raw ?: "[]")

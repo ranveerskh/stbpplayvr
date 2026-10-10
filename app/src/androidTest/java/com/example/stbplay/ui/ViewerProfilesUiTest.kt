@@ -32,7 +32,7 @@ class ViewerProfilesUiTest {
         listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
         rule.onNodeWithText("Unlock").performClick()
         rule.runOnIdle { assertEquals(owner, selected) }
-        rule.onNodeWithText("Manage profiles · Owner PIN").performClick()
+        rule.onNodeWithText("Manage profiles").performClick()
         rule.onNodeWithText("Protected content").assertIsDisplayed()
         rule.onNodeWithText("Cancel").performClick()
         rule.onNodeWithText("Who's watching?").assertIsDisplayed()
@@ -114,6 +114,51 @@ class ViewerProfilesUiTest {
         listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
         rule.onNodeWithText("Unlock").performClick()
         rule.runOnIdle { assertEquals(true, approved?.adultApproved); assertEquals(approved, selected) }
+    }
+
+    @Test fun profileTilesShowOnlyNamesAndSelfDeletionNeedsConfirmation() {
+        val profile = ViewerProfile("self-delete", "Aman", 19, avatar = "family:punjabi_boy")
+        var deleted: String? = null
+        rule.setContent { STBPlayTheme {
+            ViewerProfilesScreen(listOf(ViewerProfile("owner", "Owner", 18), profile), "1234",
+                activeViewerId = profile.id, onSelected = {}, onSave = { _, _ -> }, onSetOwnerPin = {},
+                onDelete = { id, actor, owner ->
+                    assertEquals(profile.id, actor); assertFalse(owner); deleted = id
+                })
+        } }
+        rule.onNodeWithText("Profile PIN").assertDoesNotExist()
+        rule.onNodeWithText("Restricted content PIN").assertDoesNotExist()
+        rule.onNodeWithText("Kids · No PIN").assertDoesNotExist()
+        rule.onNodeWithText("Edit my profile").performScrollTo().performClick()
+        rule.onNodeWithText("Edit Owner").assertDoesNotExist()
+        rule.onNodeWithText("Delete profile").performScrollTo().performClick()
+        rule.runOnIdle { assertNull(deleted) }
+        rule.onNodeWithText("Delete Aman?").assertIsDisplayed()
+        rule.onNode(hasText("Cancel") and hasAnyAncestor(isDialog())).performClick()
+        rule.runOnIdle { assertNull(deleted) }
+        rule.onNodeWithText("Delete profile").performScrollTo().performClick()
+        rule.onNode(hasText("Delete profile") and hasAnyAncestor(isDialog())).performClick()
+        rule.runOnIdle { assertEquals(profile.id, deleted) }
+    }
+
+    @Test fun ownerCanEditOwnNameAndAvatarWithoutChangingOwnerPin() {
+        var saved: ViewerProfile? = null
+        val owner = ViewerProfile("owner", "Owner", 18)
+        rule.setContent { STBPlayTheme {
+            ViewerProfilesScreen(listOf(owner), "1234", onSelected = {},
+                onSave = { profile, pin -> assertEquals("", pin); saved = profile }, onSetOwnerPin = {})
+        } }
+        rule.onNodeWithText("Manage profiles").performScrollTo().performClick()
+        listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
+        rule.onNodeWithText("Unlock").performClick()
+        rule.onNodeWithText("Edit Owner").assertExists()
+        rule.onAllNodes(hasSetTextAction())[0].performTextReplacement("Ranveer")
+        rule.onNodeWithContentDescription("Punjabi Dad").performScrollTo().performClick()
+        rule.onNodeWithText("Save profile").performScrollTo().performClick()
+        rule.runOnIdle {
+            assertEquals("owner", saved?.id); assertEquals("Ranveer", saved?.name)
+            assertEquals("family:punjabi_dad", saved?.avatar)
+        }
     }
 
 }

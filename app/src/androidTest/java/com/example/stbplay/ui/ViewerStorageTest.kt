@@ -53,4 +53,35 @@ class ViewerStorageTest {
             if (previousPortal.id.isNotBlank()) manager.activatePortal(previousPortal.id)
         }
     }
+    @Test fun profileDeletionEnforcesPermissionsAndClearsOnlyItsRecords() = runBlocking {
+        val manager = SettingsManager(InstrumentationRegistry.getInstrumentation().targetContext)
+        val previousPortal = manager.portalSettings.first()
+        val previousViewer = manager.activeViewer.first()
+        val portal = PortalSettings(id = "delete-viewer-fixture", name = "Fixture", url = "https://fixture.invalid", mac = "00:1A:79:00:00:02")
+        val first = ViewerProfile("delete-test-one", "One", 10)
+        val second = ViewerProfile("delete-test-two", "Two", 10)
+        try {
+            manager.upsertPortal(portal)
+            manager.saveViewer(first, ""); manager.saveViewer(second, "")
+            manager.activateViewer(second.id); manager.setFavorite("keep", true)
+            assertTrue(runCatching { manager.deleteViewer(first.id, second.id) }.isFailure)
+            assertTrue(runCatching { manager.deleteViewer(first.id, "owner") }.isFailure)
+            assertTrue(runCatching { manager.deleteViewer("owner", "owner", true) }.isFailure)
+            manager.activateViewer(first.id)
+            manager.setFavorite("remove", true); manager.addSearchHistory("Remove this query"); manager.setPhoneMovieColumns(4)
+            manager.deleteViewer(first.id, first.id)
+            assertEquals("owner", manager.activeViewer.first().id)
+            assertFalse(manager.viewerProfiles.first().any { it.id == first.id })
+            manager.saveViewer(first, ""); manager.activateViewer(first.id)
+            assertTrue(manager.favoriteIds.first().isEmpty()); assertTrue(manager.searchHistory.first().isEmpty())
+            assertEquals(2, manager.phoneMovieColumns.first())
+            manager.activateViewer(second.id); assertEquals(setOf("keep"), manager.favoriteIds.first())
+            manager.deleteViewer(first.id, "owner", true)
+        } finally {
+            for (id in listOf(first.id, second.id)) manager.deleteViewer(id, "owner", true)
+            manager.activateViewer(previousViewer.id); manager.deletePortal(portal.id)
+            if (previousPortal.id.isNotBlank()) manager.activatePortal(previousPortal.id)
+        }
+    }
+
 }
