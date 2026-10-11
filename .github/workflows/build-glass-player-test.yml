@@ -2,7 +2,7 @@ name: Verify phone gestures and VOD seek test APK
 
 on:
   push:
-    branches: [feature/android-glass-player-2.0.20.7]
+    branches: [feature/android-glass-player-2.0.20.6]
 
 permissions:
   contents: read
