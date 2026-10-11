@@ -115,7 +115,11 @@ class PlaybackSmokeTest {
             }
         }
         val (_, player) = awaitVideo()
-        rule.runOnIdle { assertTrue(player.isPlaying) }
+        rule.runOnIdle {
+            assertTrue(player.isPlaying)
+            assertEquals(10_000L, player.seekForwardIncrement)
+            assertEquals(5_000L, player.seekBackIncrement)
+        }
         rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.waitForIdle()
         assertEquals(1, backCount)
