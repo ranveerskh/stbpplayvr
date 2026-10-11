@@ -18,6 +18,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Intercepts only deliberate single-finger vertical movement on unobstructed video. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class PhonePlaybackGestures(private val host: SeekablePlayerView) {
     private var activity: Activity? = null
     private var originalBrightness = -1f
