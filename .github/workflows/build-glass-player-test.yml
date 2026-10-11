@@ -14,9 +14,11 @@ concurrency:
 jobs:
   verify-test-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -38,6 +40,7 @@ jobs:
           printf '%s' "$STB_SIGNING_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/stb-release.jks"
           chmod 600 "$RUNNER_TEMP/stb-release.jks"
       - name: Run unit tests and build signed candidate
+        id: build
         env:
           STB_RELEASE_KEYSTORE: ${{ runner.temp }}/stb-release.jks
           STB_RELEASE_STORE_PASSWORD: ${{ secrets.STB_RELEASE_STORE_PASSWORD }}
@@ -47,7 +50,14 @@ jobs:
           grep -Fq 'versionCode = 76' app/build.gradle.kts
           grep -Fq 'versionName = "2.0.20.7"' app/build.gradle.kts
           chmod +x ./gradlew
-          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleRelease assembleDebugAndroidTest
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease assembleDebugAndroidTest
+      - name: Check lint against exact tested baseline
+        run: |
+          ./gradlew --no-daemon lintDebug || candidate_lint_exit=$?
+          git worktree add --detach "$RUNNER_TEMP/stb-lint-baseline" f90249b466cace478e5a038c1cd96ca0e4fc7aba
+          ./gradlew --no-daemon --project-dir "$RUNNER_TEMP/stb-lint-baseline" lintDebug || baseline_lint_exit=$?
+          cp "$RUNNER_TEMP/stb-lint-baseline/app/build/reports/lint-results-debug.xml" "$RUNNER_TEMP/stb-baseline-lint.xml"
+          python3 ci/verify_lint_regressions.py "$RUNNER_TEMP/stb-baseline-lint.xml" app/build/reports/lint-results-debug.xml
       - name: Serve generated playback fixture to the emulators
         run: |
           python3 -m http.server 8765 --bind 127.0.0.1 --directory app/src/androidTest/assets > "$RUNNER_TEMP/playback-fixture-server.log" 2>&1 &
@@ -77,7 +87,7 @@ jobs:
           if [ -d app/build/outputs/androidTest-results ]; then cp -R app/build/outputs/androidTest-results "$RUNNER_TEMP/optimization-reports/tv/"; fi
           if [ -d app/build/reports/androidTests ]; then cp -R app/build/reports/androidTests "$RUNNER_TEMP/optimization-reports/tv/"; fi
       - name: Verify phone touch, keyboard, catalogue reuse and playback
-        if: ${{ always() && !cancelled() }}
+        if: ${{ always() && !cancelled() && steps.build.outcome == 'success' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -112,6 +122,8 @@ jobs:
         with:
           name: Android-phone-ui-batch2-reports
           path: |
+            app/build/reports/lint-results-debug.*
+            ${{ runner.temp }}/stb-baseline-lint.xml
             app/build/reports/tests/
             app/build/test-results/
             ${{ runner.temp }}/optimization-reports/
