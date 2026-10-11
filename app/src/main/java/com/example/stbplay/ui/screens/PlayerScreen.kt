@@ -290,6 +290,7 @@ private fun NativePlayerScreen(
         }
         val renderersFactory = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         ExoPlayer.Builder(context, renderersFactory)
+            .setSeekForwardIncrementMs(if (allowSeeking) 10_000L else 15_000L)
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build()
@@ -348,7 +349,7 @@ private fun NativePlayerScreen(
         lastRemoteSeekDirection = direction
         lastRemoteSeekAt = now
         val stepMs = when (remoteSeekCount) {
-            in 1..3 -> 15_000L
+            in 1..3 -> if (allowSeeking && direction > 0) 10_000L else 15_000L
             in 4..6 -> 30_000L
             in 7..11 -> 60_000L
             else -> 120_000L
@@ -617,6 +618,10 @@ private fun NativePlayerScreen(
                 }
             },
             update = {
+                it.configurePhoneGestures(
+                    phoneFullscreen && compactLayout && hasTouchscreen && !isAndroidTv && !isMetaQuest && !embeddedMode,
+                    phoneActivity
+                )
                 if (it.player !== activePlayer) it.player = activePlayer
                 it.isFocusable = !embeddedMode
                 it.isFocusableInTouchMode = !embeddedMode
