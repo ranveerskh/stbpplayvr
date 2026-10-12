@@ -620,6 +620,8 @@ private fun NativePlayerScreen(
                 }
             },
             update = {
+                it.setShowPreviousButton(false)
+                it.setShowNextButton(false)
                 it.configureGlassControls(glassControls)
                 it.configurePhoneGestures(
                     phoneFullscreen && compactLayout && hasTouchscreen && !isAndroidTv && !isMetaQuest && !embeddedMode,
@@ -635,56 +637,14 @@ private fun NativePlayerScreen(
         if (!embedded && playerControlsVisible && playerError == null) {
             val phoneActionBar = compactLayout && !isMetaQuest && !isAndroidTv && phoneActivity != null
             if (phoneActionBar) {
-                Row(
-                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp)
-                        .onFocusChanged { if (it.hasFocus) revealPlayerControls() },
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val actionColors = ButtonDefaults.colors(
-                        containerColor = playerControlTint(0xCC070707), contentColor = Color.White,
-                        focusedContainerColor = Color(0xEE070707), focusedContentColor = Color.White
-                    )
-                    QuestButton(
-                        onClick = { revealPlayerControls(); onBack() },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = actionColors
-                    ) { Text("← Back", fontSize = 12.sp, maxLines = 1) }
-                    QuestButton(
-                        onClick = { setPhoneFullscreen(!phoneFullscreen) },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = actionColors
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Icon(
-                                imageVector = if (phoneFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text("Full", fontSize = 11.sp, maxLines = 1)
-                        }
-                    }
-                    if (episodeTitles.isNotEmpty()) QuestButton(
-                        onClick = { episodePickerVisible = true; revealPlayerControls() },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = actionColors
-                    ) { Text("Episodes", fontSize = 11.sp, maxLines = 1) }
-                    Box(
-                        modifier = Modifier.weight(1f).height(48.dp)
-                            .background(playerControlTint(0xCC070707), RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CompositionLocalProvider(LocalContentColor provides Color.White) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                MediaRouteButton(modifier = Modifier.size(36.dp))
-                                Text("Cast", color = Color.White, fontSize = 11.sp, maxLines = 1)
-                            }
-                        }
-                    }
-                }
+                com.example.stbplay.ui.MatchingCastButton(
+                    Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(top = 8.dp, end = 10.dp).width(76.dp).height(48.dp)
+                )
+                if (episodeTitles.isNotEmpty()) QuestButton(
+                    onClick = { episodePickerVisible = true; revealPlayerControls() },
+                    modifier = Modifier.align(Alignment.TopStart).padding(10.dp).height(48.dp)
+                ) { Text("Episodes", fontSize = 11.sp) }
             } else {
                 if (!isAndroidTv && !isMetaQuest) Row(
                     modifier = Modifier.align(Alignment.TopStart).padding(if (compactLayout) 12.dp else 18.dp),
@@ -748,67 +708,32 @@ private fun NativePlayerScreen(
                     modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)
                 ) { Text("Episodes") }
             }
-            if (isMetaQuest) {
-                Row(
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 112.dp)
-                        .background(playerControlTint(0x99070707), RoundedCornerShape(12.dp)).padding(6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    QuestButton(
-                        onClick = { revealPlayerControls(); onBack() },
-                        modifier = Modifier.widthIn(min = 92.dp).height(52.dp),
-                        colors = ButtonDefaults.colors(containerColor = playerControlTint(0xAA070707), contentColor = Color.White)
-                    ) { Text("← Back", fontSize = 15.sp) }
-                    if (showChannelStepButtons) {
-                        ChannelStepControl(Icons.Filled.SkipPrevious, "Previous channel", {
-                            onChannelStep(-1); revealPlayerControls()
-                        }, cornerRadius = 7.dp)
-                        ChannelStepControl(Icons.Filled.SkipNext, "Next channel", {
-                            onChannelStep(1); revealPlayerControls()
-                        }, cornerRadius = 7.dp)
+            Row(
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(start = 10.dp, end = 10.dp, bottom = 108.dp)
+                    .fillMaxWidth(if (compactLayout) 1f else 0.55f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val colors = ButtonDefaults.colors(containerColor = playerControlTint(0xCC070707),
+                    contentColor = Color.White, focusedContainerColor = Color(0xEE070707), focusedContentColor = Color.White)
+                QuestButton(onClick = { revealPlayerControls(); onBack() },
+                    modifier = Modifier.weight(1f).height(48.dp), colors = colors) { Text("← Back", fontSize = 11.sp) }
+                if (showChannelStepButtons) {
+                    QuestButton(onClick = { onChannelStep(-1); revealPlayerControls() },
+                        modifier = Modifier.weight(1f).height(48.dp), colors = colors) {
+                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel", modifier = Modifier.size(22.dp))
+                    }
+                    QuestButton(onClick = { onChannelStep(1); revealPlayerControls() },
+                        modifier = Modifier.weight(1f).height(48.dp), colors = colors) {
+                        Icon(Icons.Filled.SkipNext, contentDescription = "Next channel", modifier = Modifier.size(22.dp))
                     }
                 }
-            }
-            if (showChannelStepButtons && compactLayout && !isMetaQuest) {
-                if (compactLayout && !isMetaQuest) {
-                    Row(
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)
-                            .background(playerControlTint(0x99070707), RoundedCornerShape(9.dp)).padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ChannelStepControl(Icons.Filled.SkipPrevious, "Previous channel", {
-                            onChannelStep(-1); revealPlayerControls()
-                        }, cornerRadius = 5.dp)
-                        ChannelStepControl(Icons.Filled.SkipNext, "Next channel", {
-                            onChannelStep(1); revealPlayerControls()
-                        }, cornerRadius = 5.dp)
-                    }
-                } else Column(
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 42.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    QuestButton(
-                        onClick = { onChannelStep(-1); revealPlayerControls() },
-                        modifier = Modifier.width(68.dp).height(58.dp),
-                        colors = ButtonDefaults.colors(
-                            containerColor = playerControlTint(0xAA070707), contentColor = Color.White,
-                            focusedContainerColor = playerControlTint(0xCC070707), focusedContentColor = Color.White
-                        )
-                    ) {
-                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel", tint = Color.White, modifier = Modifier.size(30.dp))
-                    }
-                    QuestButton(
-                        onClick = { onChannelStep(1); revealPlayerControls() },
-                        modifier = Modifier.width(68.dp).height(58.dp),
-                        colors = ButtonDefaults.colors(
-                            containerColor = playerControlTint(0xAA070707), contentColor = Color.White,
-                            focusedContainerColor = playerControlTint(0xCC070707), focusedContentColor = Color.White
-                        )
-                    ) {
-                        Icon(Icons.Filled.SkipNext, contentDescription = "Next channel", tint = Color.White, modifier = Modifier.size(30.dp))
-                    }
+                if (phoneActionBar) QuestButton(onClick = { setPhoneFullscreen(!phoneFullscreen) },
+                    modifier = Modifier.weight(1f).height(48.dp), colors = colors) {
+                    Icon(if (phoneFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                        contentDescription = "Fullscreen", modifier = Modifier.size(22.dp))
                 }
             }
             if (isMetaQuest) {

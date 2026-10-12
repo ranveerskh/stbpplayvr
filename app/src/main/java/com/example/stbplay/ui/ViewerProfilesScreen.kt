@@ -306,6 +306,15 @@ fun ViewerPinPrompt(profile: ViewerProfile, onVerified: () -> Unit, onCancel: ()
     var pin by remember { mutableStateOf("") }
     var failed by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var verified by remember { mutableStateOf(false) }
+    LaunchedEffect(pin) {
+        if (pin.length >= 4 && !verified) {
+            busy = true
+            val valid = withContext(Dispatchers.Default) { verifyViewerPin(pin, profile.pinHash) }
+            busy = false
+            if (valid && !verified) { verified = true; onVerified() }
+        }
+    }
     androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
         val p = LocalStbPalette.current
         Column(Modifier.fillMaxWidth().background(p.panel).glassEdge(18.dp).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -314,8 +323,8 @@ fun ViewerPinPrompt(profile: ViewerProfile, onVerified: () -> Unit, onCancel: ()
             if (failed) Text("Incorrect PIN", color = p.danger)
             ProfileButton(onClick = { if (!busy) { busy = true; scope.launch {
                 val valid = withContext(Dispatchers.Default) { verifyViewerPin(pin, profile.pinHash) }
-                busy = false; if (valid) onVerified() else failed = true
-            } } }) { Text(if (busy) "Checking…" else "Continue") }
+                busy = false; if (valid && !verified) { verified = true; onVerified() } else if (!valid) failed = true
+            } } }, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text(if (busy) "Checking…" else "Unlock") }
             ProfileButton(onClick = onCancel) { Text("Cancel") }
         }
     }

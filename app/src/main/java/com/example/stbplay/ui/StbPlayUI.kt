@@ -153,6 +153,7 @@ import com.example.stbplay.isAndroidTvDevice
 import com.example.stbplay.ui.theme.glassSurfaceBorder
 import com.example.stbplay.ui.theme.glassSheen
 import com.example.stbplay.ui.theme.stbBackdrop
+import com.example.stbplay.ui.MatchingCastButton
 import com.example.stbplay.ui.theme.glassEdge
 import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.data.model.PortalStream
@@ -544,6 +545,7 @@ fun StbPlayApp(
             StbPlayHeader(
                 selectedTab = selectedTab,
                 themePreference = settingsState.themePreference,
+                viewerName = settingsState.viewerName,
                 onSearchClick = { searchSession.show(selectedTab); onSearchVisibilityChanged(true) },
                 compact = true
             )
@@ -571,6 +573,7 @@ fun StbPlayApp(
                 StbPlayHeader(
                     selectedTab = selectedTab,
                     themePreference = settingsState.themePreference,
+                viewerName = settingsState.viewerName,
                     onSearchClick = { searchSession.show(selectedTab); onSearchVisibilityChanged(true) },
                     denseTv = tvLayout
                 )
@@ -777,6 +780,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compac
 private fun StbPlayHeader(
     selectedTab: StbPlayTab,
     themePreference: ThemePreference,
+    viewerName: String,
     onSearchClick: () -> Unit,
     compact: Boolean = false,
     denseTv: Boolean = false
@@ -789,7 +793,7 @@ private fun StbPlayHeader(
         Column {
             Text(
                 when (selectedTab) {
-                    StbPlayTab.HOME -> "Welcome back"
+                    StbPlayTab.HOME -> "${viewerName.ifBlank { "Owner" }}’s Space"
                     StbPlayTab.LIVE -> "Live TV"
                     StbPlayTab.CONTENT -> "Movies & Series"
                     StbPlayTab.FAVOURITES -> "Favourites"
@@ -803,14 +807,7 @@ private fun StbPlayHeader(
         Spacer(modifier = Modifier.weight(1f))
         HeaderAction(if (compact) "⌕" else "Search", onSearchClick, modifier = Modifier.width(if (compact) 44.dp else if (denseTv) 92.dp else 120.dp))
         Spacer(modifier = Modifier.width(if (compact) 6.dp else 10.dp))
-        if (compact) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CompositionLocalProvider(LocalContentColor provides White) {
-                    MediaRouteButton(modifier = Modifier.size(44.dp))
-                }
-                Text("Cast", color = White, fontSize = 12.sp)
-            }
-        }
+        if (compact) MatchingCastButton(Modifier.width(72.dp).height(44.dp))
     }
 }
 
@@ -1034,16 +1031,6 @@ private fun RotatingHero(
     val density = LocalDensity.current
     val glassHero = LocalStbPalette.current.glass
     val heroContent: @Composable BoxScope.() -> Unit = {
-        if (glassHero && !item.imageUrl.isNullOrBlank()) {
-            ArtworkImage(
-                imageUrl = item.imageUrl, title = item.title, modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop, requestHeaders = item.imageHeaders, fallbackText = null,
-                decodeWidthPx = 1280, decodeHeightPx = 720
-            )
-            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
-                listOf(Color(0xE509101B), Color(0xBB09101B), Color(0x2209101B))
-            )))
-        }
         Row(Modifier.fillMaxSize().padding(if (isCompactAndroidLayout() || denseTv) 10.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(
                 modifier = Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp, horizontal = if (isCompactAndroidLayout()) 5.dp else 12.dp),
@@ -1065,8 +1052,7 @@ private fun RotatingHero(
                     if (!denseTv) FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
                 }
             }
-            if (glassHero) Spacer(Modifier.weight(if (isCompactAndroidLayout()) 0.45f else 0.8f))
-            if (!glassHero) Box(
+            Box(
                 Modifier.width(if (isCompactAndroidLayout()) 112.dp else if (denseTv) 155.dp else 190.dp)
                     .fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(Panel)
             ) {
@@ -1241,6 +1227,13 @@ private fun LiveTvScreen(
     TvPageEntry(localFocusedChannelId?.takeIf { id -> state.items.any { it.id == id } }?.let { "live:$it" }
         ?: state.categories.getOrNull(state.selectedCategory)?.let { "category:${it.id}" })
     val focusNavigation = LocalTvFocusNavigation.current
+    LaunchedEffect(categoryKey, state.loading, state.items.firstOrNull()?.id) {
+        if (denseTv && state.categories.getOrNull(state.selectedCategory)?.isAdult == true && !state.loading && state.items.isNotEmpty() && localFocusedChannelId == null) {
+            val first = state.items.first().id
+            localFocusedChannelId = first
+            focusNavigation?.enterPage()
+        }
+    }
     val channelIndices = remember(state.items) { state.items.mapIndexed { index, item -> item.id to index }.toMap() }
     val navigationScope = rememberCoroutineScope()
     var navigationJob by remember { mutableStateOf<Job?>(null) }
@@ -1280,7 +1273,7 @@ private fun LiveTvScreen(
             if (options.categoryPosition == CategoryDropdownPosition.TOP)
                 CompactCategorySelector(state.categories, state.selectedCategory, onCategorySelected)
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Live TV", color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(state.categories.getOrNull(state.selectedCategory)?.title ?: "Channels", color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 Text(state.totalItemsText.ifBlank { "${state.items.size} channels" }, color = Muted, fontSize = 11.sp)
             }
@@ -1346,7 +1339,7 @@ private fun LiveTvScreen(
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text("Live TV", color = White, fontSize = if (denseTv) 23.sp else 30.sp, fontWeight = FontWeight.Bold)
+                    Text(state.categories.getOrNull(state.selectedCategory)?.title ?: "Channels", color = White, fontSize = if (denseTv) 23.sp else 30.sp, fontWeight = FontWeight.Bold)
                     Text("Choose a channel from your provider", color = Muted, fontSize = 13.sp)
                 }
                 Spacer(modifier = Modifier.weight(1f))
@@ -1916,7 +1909,6 @@ private fun FavouritesScreen(
         verticalArrangement = Arrangement.spacedBy(28.dp)
     ) {
         item {
-            Text("Favourites", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Text("Channels and titles saved on this device", color = Muted, fontSize = 13.sp)
         }
         item {
@@ -2919,10 +2911,14 @@ private fun PolicySection(title: String, body: String) {
 fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCancel: () -> Unit) {
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
+    var verified by remember { mutableStateOf(false) }
+    LaunchedEffect(pin, expectedPin) {
+        if (!verified && expectedPin.isNotBlank() && pin == expectedPin) { verified = true; onVerified() }
+    }
     BackHandler(onBack = onCancel)
     Box(Modifier.fillMaxSize().background(Color(0xD9070707)), contentAlignment = Alignment.Center) {
         Surface(
-            modifier = Modifier.widthIn(min = 370.dp, max = 520.dp),
+            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 520.dp),
             shape = RoundedCornerShape(18.dp),
             colors = SurfaceDefaults.colors(containerColor = Panel)
         ) {
@@ -2960,8 +2956,8 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
                 }
                 if (error) Text("Incorrect PIN", color = Danger, fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryAction("Unlock") { if (expectedPin.isNotBlank() && pin == expectedPin) onVerified() else error = true }
-                    WideAction("Cancel", onCancel)
+                    PrimaryAction("Unlock", Modifier.width(210.dp).height(48.dp)) { if (!verified && expectedPin.isNotBlank() && pin == expectedPin) { verified = true; onVerified() } else error = true }
+                    WideAction("Cancel", onCancel, Modifier.width(88.dp))
                 }
             }
         }

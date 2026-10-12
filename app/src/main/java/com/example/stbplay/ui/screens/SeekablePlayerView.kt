@@ -47,6 +47,13 @@ class SeekablePlayerView @JvmOverloads constructor(
     private var originalControlMargins: IntArray? = null
     private val originalButtonBackgrounds = mutableMapOf<View, android.graphics.drawable.Drawable?>()
     private var glassControlsApplied = false
+    private val savedGlassLayout = mutableMapOf<View, IntArray>()
+
+    private fun rememberLayout(view: View, params: android.view.ViewGroup.MarginLayoutParams) {
+        savedGlassLayout[view] = intArrayOf(params.width, params.height, params.leftMargin,
+            params.topMargin, params.rightMargin, params.bottomMargin,
+            (params as? android.widget.FrameLayout.LayoutParams)?.gravity ?: -1)
+    }
 
     fun configureGlassControls(enabled: Boolean) {
         if (enabled == glassControlsApplied) return
@@ -55,6 +62,30 @@ class SeekablePlayerView @JvmOverloads constructor(
         val margins = bar.layoutParams as? android.view.ViewGroup.MarginLayoutParams
         if (enabled) {
             originalControlBackground = bar.background
+            if (margins != null) {
+                rememberLayout(bar, margins)
+                margins.height = (80 * density).toInt()
+            }
+            findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.let { progress ->
+                (progress.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { params ->
+                    rememberLayout(progress, params)
+                    val inset = (28 * density).toInt()
+                    params.setMargins(inset, params.topMargin, inset, (60 * density).toInt())
+                    progress.layoutParams = params
+                }
+            }
+            listOf(androidx.media3.ui.R.id.exo_time, androidx.media3.ui.R.id.exo_basic_controls,
+                androidx.media3.ui.R.id.exo_extra_controls_scroll_view).forEach { id ->
+                findViewById<View>(id)?.let { view ->
+                    (view.layoutParams as? android.widget.FrameLayout.LayoutParams)?.let { params ->
+                        rememberLayout(view, params)
+                        params.gravity = android.view.Gravity.BOTTOM or
+                            (if (id == androidx.media3.ui.R.id.exo_time) android.view.Gravity.START else android.view.Gravity.END)
+                        params.bottomMargin = (6 * density).toInt()
+                        view.layoutParams = params
+                    }
+                }
+            }
             bar.background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
                 intArrayOf(0xB34A5665.toInt(), 0xB3101927.toInt(), 0xD908101B.toInt())
@@ -92,6 +123,15 @@ class SeekablePlayerView @JvmOverloads constructor(
             }
             originalButtonBackgrounds.forEach { (button, background) -> button.background = background }
             originalButtonBackgrounds.clear()
+            savedGlassLayout.forEach { (view, old) ->
+                (view.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { params ->
+                    params.width = old[0]; params.height = old[1]
+                    params.setMargins(old[2], old[3], old[4], old[5])
+                    if (params is android.widget.FrameLayout.LayoutParams && old[6] != -1) params.gravity = old[6]
+                    view.layoutParams = params
+                }
+            }
+            savedGlassLayout.clear()
         }
         glassControlsApplied = enabled
     }

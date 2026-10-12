@@ -1170,9 +1170,15 @@ private fun StbPlayRoot(
 
     // Preloading VOD changes catalogue state in the background. Keep the visible
     // screen's mapped rows stable so those updates do not rebuild every channel.
-    val liveUiItems = remember(filteredLive, progressById, favoriteIds, catalogGeneration, selectedTab) {
-        if (selectedTab == StbPlayTab.LIVE) filteredLive.map(::toUi) else emptyList()
+    // Project provider rows off the UI thread. Never display rows from a previous category.
+    val liveProjection by androidx.compose.runtime.produceState<Pair<List<PortalStream>, List<UiMedia>>?>(
+        initialValue = null, filteredLive, progressById, favoriteIds, catalogGeneration
+    ) {
+        val source = filteredLive
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { source to source.map(::toUi) }
     }
+    val liveUiItems = liveProjection?.takeIf { it.first === filteredLive }?.second ?: emptyList()
+    val liveProjectionLoading = liveProjection?.first !== filteredLive
     val contentUiItems = remember(filteredVod, progressById, favoriteIds, catalogGeneration, selectedTab) {
         if (selectedTab == StbPlayTab.CONTENT) filteredVod.map(::toUi) else emptyList()
     }
@@ -1296,7 +1302,7 @@ private fun StbPlayRoot(
             rows = homeRows, expiryText = homeExpiry)
     }
     val liveState = StbPlayLibraryState(
-        loading = loadingLiveCategoryId == uiLiveCategories.getOrNull(liveCategoryIndex)?.id,
+        loading = liveProjectionLoading || loadingLiveCategoryId == uiLiveCategories.getOrNull(liveCategoryIndex)?.id,
         categories = uiLiveCategories,
         selectedCategory = liveCategoryIndex.coerceIn(0, (uiLiveCategories.size - 1).coerceAtLeast(0)),
         items = liveUiItems,
@@ -1699,9 +1705,10 @@ private fun StbPlayRoot(
                             tvLivePreviewPlayback = false
                             livePreviewFullscreen = false
                             livePreviewStream = null
-                            if (selectedTab == StbPlayTab.LIVE && uiLiveCategories.getOrNull(liveCategoryIndex)?.isAdult == true) {
+                            if (selectedTab == StbPlayTab.LIVE && parentalMode != ParentalMode.ADULT_ONLY && uiLiveCategories.getOrNull(liveCategoryIndex)?.isAdult == true) {
                                 liveCategoryIndex = 0
                                 focusedLiveChannelId = null
+                                personalPinUnlockedCategory = null
                                 scope.launch { liveChannelListState.scrollToItem(0) }
                             }
                             if (selectedTab == StbPlayTab.CONTENT && contentCategories.getOrNull(contentCategoryIndex)?.isAdult == true) {
