@@ -37,9 +37,9 @@ fun Modifier.stbBackdrop(): Modifier {
     val resource = if (selection.adult) {
         if (landscape) com.example.stbplay.R.drawable.glass_adult_landscape else com.example.stbplay.R.drawable.glass_adult_portrait
     } else when (appearance.background) {
-        com.example.stbplay.data.GlassBackground.MIDNIGHT_LAKE -> com.example.stbplay.R.drawable.glass_midnight_lake
-        com.example.stbplay.data.GlassBackground.GRAPHITE_SILK -> com.example.stbplay.R.drawable.glass_graphite_silk
-        else -> com.example.stbplay.R.drawable.glass_backdrop
+        com.example.stbplay.data.GlassBackground.MIDNIGHT_LAKE -> if (landscape) com.example.stbplay.R.drawable.glass_midnight_lake else com.example.stbplay.R.drawable.glass_midnight_lake_portrait
+        com.example.stbplay.data.GlassBackground.GRAPHITE_SILK -> if (landscape) com.example.stbplay.R.drawable.glass_graphite_silk else com.example.stbplay.R.drawable.glass_graphite_silk_portrait
+        else -> if (landscape) com.example.stbplay.R.drawable.glass_backdrop else com.example.stbplay.R.drawable.glass_planet_portrait
     }
     val fallback = androidx.compose.ui.res.painterResource(resource)
     val image = if (customPath.isNotBlank() && remember(customPath) { java.io.File(customPath).isFile })
@@ -70,4 +70,15 @@ fun Modifier.glassSheen(radius: Dp = 12.dp): Modifier {
         )
         drawContent()
     }
+}
+
+/** Fixed shared entrance artwork, completely independent of profile appearance preferences. */
+@Composable
+fun Modifier.profileSelectionBackdrop(): Modifier {
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val resource = if (configuration.screenWidthDp >= configuration.screenHeightDp)
+        com.example.stbplay.R.drawable.profile_welcome_landscape else com.example.stbplay.R.drawable.profile_welcome_portrait
+    return paint(androidx.compose.ui.res.painterResource(resource), sizeToIntrinsics = false,
+        contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.12f))
 }

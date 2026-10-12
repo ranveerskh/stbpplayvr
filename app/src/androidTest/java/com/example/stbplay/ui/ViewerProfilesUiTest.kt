@@ -1,6 +1,7 @@
 package com.example.stbplay.ui
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.runtime.*
 import kotlinx.coroutines.flow.first
 import com.example.stbplay.data.ViewerPinMode
@@ -16,6 +17,28 @@ import org.junit.Test
 
 class ViewerProfilesUiTest {
     @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
+    @Test fun profileEntranceIgnoresLastProfileThemeAndAdultArtwork() {
+        var theme by mutableStateOf(ThemePreference.GLASS)
+        var adult by mutableStateOf(false)
+        rule.setContent {
+            STBPlayTheme(theme, adultOnly = adult, appearance = com.example.stbplay.data.GlassAppearance(
+                background = com.example.stbplay.data.GlassBackground.GRAPHITE_SILK,
+                adultTheme = com.example.stbplay.data.AdultThemePreference.GLASS)) {
+                ViewerProfilesScreen(listOf(ViewerProfile("owner", "Owner", 18)), "1234",
+                    onSelected = {}, onSave = { _, _ -> }, onSetOwnerPin = {})
+            }
+        }
+        val before = rule.onRoot().captureToImage().toPixelMap()
+        rule.runOnIdle { theme = ThemePreference.LIGHT; adult = true }
+        val after = rule.onRoot().captureToImage().toPixelMap()
+        for (x in listOf(0.02f, 0.98f)) for (y in listOf(0.2f, 0.5f, 0.8f)) {
+            val first = before[(before.width * x).toInt(), (before.height * y).toInt()]
+            val second = after[(after.width * x).toInt(), (after.height * y).toInt()]
+            assertEquals("Profile entrance must not inherit adult/custom appearance", first, second)
+        }
+        saveThemePreview(rule, "profile-entrance-fixed-" + if (rule.activity.isAndroidTvDevice()) "tv" else "phone")
+    }
+
     @Test fun adultAppearanceOffersSeparateThemesWithoutReplacingSavedNormalTheme() {
         prewarmBatch2PhoneCast(rule)
         val manager = com.example.stbplay.data.SettingsManager(rule.activity)

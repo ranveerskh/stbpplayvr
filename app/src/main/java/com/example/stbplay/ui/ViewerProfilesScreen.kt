@@ -25,7 +25,7 @@ import androidx.tv.material3.Text
 import com.example.stbplay.data.ViewerProfile
 import com.example.stbplay.data.verifyViewerPin
 import com.example.stbplay.ui.theme.glassEdge
-import com.example.stbplay.ui.theme.stbBackdrop
+import com.example.stbplay.ui.theme.profileSelectionBackdrop
 import com.example.stbplay.ui.theme.LocalStbPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,6 +41,26 @@ fun ViewerSwitchDialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
 
 @Composable
 fun ViewerProfilesScreen(
+    profiles: List<ViewerProfile>, ownerPin: String,
+    liveCategories: List<com.example.stbplay.data.model.PortalCategory> = emptyList(),
+    vodCategories: List<com.example.stbplay.data.model.PortalCategory> = emptyList(),
+    approvalPortalKey: String = "",
+    onSelected: (ViewerProfile) -> Unit,
+    onSave: (ViewerProfile, String) -> Unit,
+    onSetOwnerPin: (String) -> Unit,
+    onBack: (() -> Unit)? = null,
+    activeViewerId: String? = null,
+    onDelete: (String, String, Boolean) -> Unit = { _, _, _ -> }
+) {
+    // A shared family entry surface must never reveal the last profile's custom/adult theme.
+    com.example.stbplay.ui.theme.STBPlayTheme {
+        ViewerProfilesContent(profiles, ownerPin, liveCategories, vodCategories, approvalPortalKey,
+            onSelected, onSave, onSetOwnerPin, onBack, activeViewerId, onDelete)
+    }
+}
+
+@Composable
+private fun ViewerProfilesContent(
     profiles: List<ViewerProfile>, ownerPin: String,
     liveCategories: List<com.example.stbplay.data.model.PortalCategory> = emptyList(),
     vodCategories: List<com.example.stbplay.data.model.PortalCategory> = emptyList(),
@@ -121,7 +141,7 @@ fun ViewerProfilesScreen(
     BackHandler(enabled = managing || onBack != null) {
         if (managing) { managing = false; error = null } else onBack?.invoke()
     }
-    Box(Modifier.fillMaxSize().stbBackdrop(), contentAlignment = Alignment.TopCenter) {
+    Box(Modifier.fillMaxSize().profileSelectionBackdrop(), contentAlignment = Alignment.TopCenter) {
     Column(Modifier.widthIn(max = if (managing) 680.dp else 960.dp).fillMaxWidth()
         .verticalScroll(rememberScrollState()).padding(horizontal = if (television) 40.dp else 20.dp, vertical = if (television) 32.dp else 20.dp),
         verticalArrangement = Arrangement.spacedBy(if (television) 24.dp else 16.dp)) {
