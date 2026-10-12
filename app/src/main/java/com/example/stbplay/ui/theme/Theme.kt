@@ -1,5 +1,9 @@
 package com.example.stbplay.ui.theme
 
+import android.os.Build
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.remember
+import com.example.stbplay.isAndroidTvDevice
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -23,7 +27,9 @@ data class StbPalette(
     val onAccent: Color,
     val focusedAccent: Color = accentLight,
     val danger: Color = Color(0xFFFFA4A4),
-    val good: Color = Color(0xFF87E7B0)
+    val good: Color = Color(0xFF87E7B0),
+    val glass: Boolean = false,
+    val edge: Color = text.copy(alpha = 0.12f)
 )
 
 // Flat, cool surfaces keep artwork prominent; warm yellow remains the TV focus cue.
@@ -32,6 +38,22 @@ val BluePalette = StbPalette(
     panelSoft = Color(0xFF202D45), accent = Color(0xFFFFD166), accentLight = Color(0xFFFFE4A3),
     text = Color(0xFFF4F7FC), muted = Color(0xFFAEBBD0), onAccent = Color(0xFF101827)
 )
+// Static colours only: no blur, refraction, animated gradients or render effects.
+val GlassPalette = StbPalette(
+    background = Color(0xFF090F19), rail = Color(0xF0101927), panel = Color(0xED172232),
+    panelSoft = Color(0xF0243042), accent = Color(0xFFFFD166), accentLight = Color(0xFFFFE4A3),
+    text = Color(0xFFF4F7FC), muted = Color(0xFFB4C1D4), onAccent = Color(0xFF101827),
+    glass = true, edge = Color(0x30DAE6FF)
+)
+val StaticGlassPalette = GlassPalette.copy(
+    rail = GlassPalette.rail.copy(alpha = 1f), panel = GlassPalette.panel.copy(alpha = 1f),
+    panelSoft = GlassPalette.panelSoft.copy(alpha = 1f)
+)
+internal fun glassPaletteForDevice(tv: Boolean, manufacturer: String, brand: String, model: String): StbPalette {
+    val quest = manufacturer.contains("meta", true) || manufacturer.contains("oculus", true) ||
+        brand.contains("meta", true) || brand.contains("oculus", true) || model.contains("quest", true)
+    return if (tv || quest) StaticGlassPalette else GlassPalette
+}
 val LightPalette = StbPalette(
     background = Color(0xFFF4F7FC), rail = Color(0xFFEAF0F8), panel = Color(0xFFFFFFFF),
     panelSoft = Color(0xFFE5ECF6), accent = Color(0xFFFFD166), accentLight = Color(0xFF795000),
@@ -55,11 +77,16 @@ val LocalStbPalette = staticCompositionLocalOf { BluePalette }
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun STBPlayTheme(
-    preference: ThemePreference = ThemePreference.BLUE,
+    preference: ThemePreference = ThemePreference.GLASS,
     adultOnly: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
+    val glassPalette = remember(context) {
+        glassPaletteForDevice(context.isAndroidTvDevice(), Build.MANUFACTURER, Build.BRAND, Build.MODEL)
+    }
     val palette = if (adultOnly) AfterDarkPalette else when (preference) {
+        ThemePreference.GLASS -> glassPalette
         ThemePreference.BLUE -> BluePalette
         ThemePreference.LIGHT -> LightPalette
         ThemePreference.BLACK -> BlackPalette

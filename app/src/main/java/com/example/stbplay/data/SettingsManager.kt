@@ -14,13 +14,14 @@ import com.example.stbplay.isAndroidTvDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onStart
 import org.json.JSONArray
 import org.json.JSONObject
 
 private val Context.dataStore by preferencesDataStore(name = "stb_play_settings")
 
 enum class PlayerPreference { AUTO, INTERNAL, VLC }
-enum class ThemePreference { BLUE, LIGHT, BLACK }
+enum class ThemePreference { BLUE, LIGHT, BLACK, GLASS }
 enum class CategoryDropdownPosition { TOP, BOTTOM }
 enum class ParentalMode { ALL_CONTENT, HIDE_ADULT, ADULT_ONLY }
 enum class SubtitlePreference { AUTO, OFF, ENGLISH, HINDI, PUNJABI }
@@ -209,13 +210,15 @@ class SettingsManager(private val context: Context) {
         it[keyAndroidBoxVideoCompatibility] ?: false
     }
 
-    val themePreference: Flow<ThemePreference> = context.dataStore.data.map {
-        when (it[keyTheme]) {
-            "DARK", "SYSTEM", ThemePreference.BLACK.name -> ThemePreference.BLACK
-            ThemePreference.LIGHT.name -> ThemePreference.LIGHT
-            else -> ThemePreference.BLUE
+    val themePreference: Flow<ThemePreference> = context.dataStore.data.onStart {
+        // Persist the choice once, before setup writes can turn a fresh install into an
+        // existing one. Never replace a saved preference, including legacy theme names.
+        context.dataStore.edit { prefs ->
+            if (prefs[keyTheme] == null) {
+                prefs[keyTheme] = resolveThemePreference(null, prefs.asMap().isNotEmpty()).name
+            }
         }
-    }
+    }.map { resolveThemePreference(it[keyTheme], hasExistingSettings = true) }
 
     val phoneCategoryPosition: Flow<CategoryDropdownPosition> = context.dataStore.data.map {
         runCatching { CategoryDropdownPosition.valueOf(it[keyPhoneCategoryPosition] ?: "TOP") }
