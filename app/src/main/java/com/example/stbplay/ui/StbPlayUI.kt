@@ -1041,7 +1041,7 @@ private fun RotatingHero(
                 decodeWidthPx = 1280, decodeHeightPx = 720
             )
             Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
-                listOf(Color(0xE509101B), Color(0x8809101B), Color(0x2209101B))
+                listOf(Color(0xE509101B), Color(0xBB09101B), Color(0x2209101B))
             )))
         }
         Row(Modifier.fillMaxSize().padding(if (isCompactAndroidLayout() || denseTv) 10.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1065,6 +1065,7 @@ private fun RotatingHero(
                     if (!denseTv) FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
                 }
             }
+            if (glassHero) Spacer(Modifier.weight(if (isCompactAndroidLayout()) 0.45f else 0.8f))
             if (!glassHero) Box(
                 Modifier.width(if (isCompactAndroidLayout()) 112.dp else if (denseTv) 155.dp else 190.dp)
                     .fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(Panel)
