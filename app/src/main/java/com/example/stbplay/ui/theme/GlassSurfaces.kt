@@ -7,6 +7,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -36,17 +37,20 @@ fun Modifier.stbBackdrop(): Modifier {
 @Composable
 fun Modifier.glassSheen(radius: Dp = 12.dp): Modifier {
     if (!LocalStbPalette.current.glass) return this
+    val reflection = remember {
+        androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(
+                androidx.compose.ui.graphics.Color.White.copy(alpha = 0.085f),
+                androidx.compose.ui.graphics.Color.White.copy(alpha = 0.015f),
+                androidx.compose.ui.graphics.Color.Transparent
+            )
+        )
+    }
     return drawWithContent {
         drawContent()
         val r = radius.toPx()
         drawRoundRect(
-            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                listOf(
-                    androidx.compose.ui.graphics.Color.White.copy(alpha = 0.085f),
-                    androidx.compose.ui.graphics.Color.White.copy(alpha = 0.015f),
-                    androidx.compose.ui.graphics.Color.Transparent
-                )
-            ),
+            brush = reflection,
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r)
         )
     }
