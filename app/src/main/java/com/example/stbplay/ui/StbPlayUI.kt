@@ -2144,7 +2144,7 @@ private fun StbPlaySettingsScreen(
                     SettingsMenuGroup {
                         SettingsMenuRow(Icons.Filled.PlayArrow, "Player options", state.playerPreference.displayName()) { page = SettingsPage.PLAYBACK }
                         SettingsMenuDivider()
-                        SettingsMenuRow(Icons.Filled.Language, "Appearance & language", state.themePreference.displayName()) { page = SettingsPage.APPEARANCE }
+                        SettingsMenuRow(Icons.Filled.Language, "Appearance & language", if (state.parentalMode == ParentalMode.ADULT_ONLY) "Adult themes" else state.themePreference.displayName()) { page = SettingsPage.APPEARANCE }
                         SettingsMenuDivider()
                         if (!state.kidsProfile) SettingsMenuRow(Icons.Filled.Lock, "Parental controls", "Owner PIN") { page = SettingsPage.PARENTAL }
                     }
@@ -2197,7 +2197,7 @@ private fun StbPlaySettingsScreen(
                 }
             }
             SettingsPage.APPEARANCE -> item {
-                SettingsSection("Theme & launcher icon") {
+                SettingsSection(if (state.parentalMode == ParentalMode.ADULT_ONLY) "Appearance" else "Theme & launcher icon") {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (state.parentalMode != ParentalMode.ADULT_ONLY) ThemePreference.entries.forEach { theme ->
                             val selected = state.themePreference == theme

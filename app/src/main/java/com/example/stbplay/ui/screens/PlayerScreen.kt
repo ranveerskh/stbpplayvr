@@ -711,7 +711,7 @@ private fun NativePlayerScreen(
             Row(
                 modifier = Modifier.align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(start = 10.dp, end = 10.dp, bottom = 108.dp)
+                    .padding(start = 10.dp, end = 10.dp, bottom = 140.dp)
                     .fillMaxWidth(if (compactLayout) 1f else 0.55f),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically

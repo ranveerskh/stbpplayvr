@@ -20,6 +20,7 @@ class ViewerProfilesUiTest {
         rule.setContent { STBPlayTheme { PinPrompt("Owner", "1234", { ownerCalls++ }, {}) } }
         rule.onNodeWithText("1").performClick()
         rule.runOnIdle { assertEquals(0, ownerCalls) }
+        saveThemePreview(rule, "pin-glass-" + if (rule.activity.isAndroidTvDevice()) "tv" else "phone")
         listOf("2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
         rule.waitUntil(5_000) { ownerCalls == 1 }
         rule.waitForIdle()
@@ -31,9 +32,12 @@ class ViewerProfilesUiTest {
         rule.setContent { STBPlayTheme {
             ViewerPinPrompt(ViewerProfile("adult", "Adult", 30, pinHash = hash), { calls++ }, {})
         } }
+        if (rule.activity.isAndroidTvDevice()) rule.onNodeWithTag("profile-field:PIN").performClick()
         rule.onNode(hasSetTextAction()).performTextReplacement("9999")
         rule.waitForIdle()
         rule.runOnIdle { assertEquals(0, calls) }
+        if (rule.activity.isAndroidTvDevice() && rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty())
+            rule.onNodeWithTag("profile-field:PIN").performClick()
         rule.onNode(hasSetTextAction()).performTextReplacement("1234")
         rule.waitUntil(10_000) { calls == 1 }
         rule.runOnIdle { assertEquals(1, calls) }

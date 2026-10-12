@@ -11,6 +11,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 internal fun saveThemePreview(rule: ComposeContentTestRule, name: String) {
     rule.waitForIdle()
     val instrumentation = InstrumentationRegistry.getInstrumentation()
+    instrumentation.waitForIdleSync()
+    runCatching { instrumentation.uiAutomation.waitForIdle(100, 5_000) }
     // Capture the composed screen without redrawing Compose layers from a capture thread.
     val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
     val resolver = instrumentation.targetContext.contentResolver

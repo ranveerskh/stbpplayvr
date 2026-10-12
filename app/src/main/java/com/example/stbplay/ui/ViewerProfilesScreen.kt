@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -295,7 +296,7 @@ private fun ProfileAvatar(avatar: String, size: Int) {
 private fun ProfileField(label: String, value: String, number: Boolean = false, onChange: (String) -> Unit) {
     val p = LocalStbPalette.current
     Text(label, color = p.muted, fontSize = 13.sp)
-    RemoteTextField(value, onChange, Modifier.fillMaxWidth().height(48.dp).background(p.panelSoft, RoundedCornerShape(10.dp)).glassEdge(10.dp).padding(12.dp), singleLine = true,
+    RemoteTextField(value, onChange, Modifier.testTag("profile-field:$label").fillMaxWidth().height(48.dp).background(p.panelSoft, RoundedCornerShape(10.dp)).glassEdge(10.dp).padding(12.dp), singleLine = true,
         visualTransformation = if (label.contains("PIN")) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         textStyle = TextStyle(color = p.text, fontSize = 16.sp), keyboardOptions = KeyboardOptions(keyboardType = if (number) KeyboardType.Number else KeyboardType.Text))
 }

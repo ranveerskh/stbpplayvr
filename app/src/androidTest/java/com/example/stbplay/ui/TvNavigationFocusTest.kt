@@ -100,14 +100,18 @@ class TvNavigationFocusTest {
         }
         rule.onNodeWithTag(tag).assertIsFocused().assertIsDisplayed()
         if (tag != "tv-focus:settings:back") {
-            val pixels = rule.onNodeWithTag(tag).captureToImage().toPixelMap()
-            val gold = (0 until minOf(8, pixels.height)).any { y ->
-                val color = pixels[pixels.width / 2, y]
-                kotlin.math.abs(color.red - 255f / 255f) < 0.08f &&
-                    kotlin.math.abs(color.green - 209f / 255f) < 0.08f &&
-                    kotlin.math.abs(color.blue - 102f / 255f) < 0.08f
+            fun hasYellowHighlight(): Boolean {
+                val pixels = rule.onNodeWithTag(tag).captureToImage().toPixelMap()
+                return (0 until minOf(8, pixels.height)).any { y ->
+                    val color = pixels[pixels.width / 2, y]
+                    kotlin.math.abs(color.red - 1f) < 0.08f &&
+                        kotlin.math.abs(color.green - 209f / 255f) < 0.08f &&
+                        kotlin.math.abs(color.blue - 102f / 255f) < 0.08f
+                }
             }
-            assertTrue("Focused control must also show its yellow highlight: $tag", gold)
+            rule.waitForIdle()
+            rule.waitUntil(3_000) { hasYellowHighlight() }
+            assertTrue("Focused control must also show its yellow highlight: $tag", hasYellowHighlight())
         }
     }
     private fun rail(tab: StbPlayTab) {

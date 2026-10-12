@@ -64,13 +64,13 @@ class SeekablePlayerView @JvmOverloads constructor(
             originalControlBackground = bar.background
             if (margins != null) {
                 rememberLayout(bar, margins)
-                margins.height = (80 * density).toInt()
+                margins.height = (112 * density).toInt()
             }
             findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.let { progress ->
                 (progress.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { params ->
                     rememberLayout(progress, params)
                     val inset = (28 * density).toInt()
-                    params.setMargins(inset, params.topMargin, inset, (60 * density).toInt())
+                    params.setMargins(inset, params.topMargin, inset, (68 * density).toInt())
                     progress.layoutParams = params
                 }
             }
