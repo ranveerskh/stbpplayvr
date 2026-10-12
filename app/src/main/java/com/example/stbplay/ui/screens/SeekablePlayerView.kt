@@ -44,20 +44,55 @@ class SeekablePlayerView @JvmOverloads constructor(
     }
 
     private var originalControlBackground: android.graphics.drawable.Drawable? = null
+    private var originalControlMargins: IntArray? = null
+    private val originalButtonBackgrounds = mutableMapOf<View, android.graphics.drawable.Drawable?>()
     private var glassControlsApplied = false
 
     fun configureGlassControls(enabled: Boolean) {
         if (enabled == glassControlsApplied) return
         val bar = findViewById<View>(androidx.media3.ui.R.id.exo_bottom_bar) ?: return
+        val density = resources.displayMetrics.density
+        val margins = bar.layoutParams as? android.view.ViewGroup.MarginLayoutParams
         if (enabled) {
             originalControlBackground = bar.background
-            val density = resources.displayMetrics.density
-            bar.background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xCC111C2A.toInt())
-                cornerRadius = 8 * density
-                setStroke(density.toInt().coerceAtLeast(1), 0x30DAE6FF)
+            bar.background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xB34A5665.toInt(), 0xB3101927.toInt(), 0xD908101B.toInt())
+            ).apply {
+                cornerRadius = 18 * density
+                setStroke(density.toInt().coerceAtLeast(1), 0x66DAE6FF)
             }
-        } else bar.background = originalControlBackground
+            if (margins != null) {
+                originalControlMargins = intArrayOf(margins.leftMargin, margins.topMargin, margins.rightMargin, margins.bottomMargin)
+                val inset = (14 * density).toInt()
+                margins.setMargins(inset, margins.topMargin, inset, inset)
+                bar.layoutParams = margins
+            }
+            listOf(androidx.media3.ui.R.id.exo_play_pause, androidx.media3.ui.R.id.exo_ffwd,
+                androidx.media3.ui.R.id.exo_rew, androidx.media3.ui.R.id.exo_ffwd_with_amount,
+                androidx.media3.ui.R.id.exo_rew_with_amount).forEach { id ->
+                findViewById<View>(id)?.let { button ->
+                    originalButtonBackgrounds[button] = button.background
+                    fun surface(focused: Boolean) = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(if (focused) 0x66413910 else 0x22FFFFFF)
+                        cornerRadius = 12 * density
+                        setStroke((if (focused) 2 * density else density).toInt().coerceAtLeast(1),
+                            if (focused) 0xFFFFD166.toInt() else 0x55DAE6FF)
+                    }
+                    button.background = android.graphics.drawable.StateListDrawable().apply {
+                        addState(intArrayOf(android.R.attr.state_focused), surface(true))
+                        addState(intArrayOf(), surface(false))
+                    }
+                }
+            }
+        } else {
+            bar.background = originalControlBackground
+            originalControlMargins?.let { old ->
+                margins?.let { it.setMargins(old[0], old[1], old[2], old[3]); bar.layoutParams = it }
+            }
+            originalButtonBackgrounds.forEach { (button, background) -> button.background = background }
+            originalButtonBackgrounds.clear()
+        }
         glassControlsApplied = enabled
     }
 

@@ -151,6 +151,8 @@ import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.R
 import com.example.stbplay.isAndroidTvDevice
 import com.example.stbplay.ui.theme.glassSurfaceBorder
+import com.example.stbplay.ui.theme.glassSheen
+import com.example.stbplay.ui.theme.stbBackdrop
 import com.example.stbplay.ui.theme.glassEdge
 import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.data.model.PortalStream
@@ -407,7 +409,7 @@ fun StbPlayApp(
 
     if (searchOpen) {
         CompositionLocalProvider(LocalTvFocusNavigation provides if (tvLayout) searchFocusNavigation else null) {
-            Box(Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
+            Box(Modifier.fillMaxSize().stbBackdrop().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 StbPlaySearchScreen(
                     catalog = searchCatalog,
                     searchRemote = searchRemote,
@@ -538,7 +540,7 @@ fun StbPlayApp(
         else renderPage()
     }
     if (compactLayout) {
-        Column(modifier = Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
+        Column(modifier = Modifier.fillMaxSize().stbBackdrop().windowInsetsPadding(WindowInsets.safeDrawing)) {
             StbPlayHeader(
                 selectedTab = selectedTab,
                 themePreference = settingsState.themePreference,
@@ -553,7 +555,7 @@ fun StbPlayApp(
             PhoneBottomNavigation(selectedTab, onTabSelected)
         }
     } else {
-        Row(modifier = Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing)) {
+        Row(modifier = Modifier.fillMaxSize().stbBackdrop().windowInsetsPadding(WindowInsets.safeDrawing)) {
             StbPlayNavigationRail(
                 selectedTab = selectedTab,
                 collapsed = railCollapsed,
@@ -588,7 +590,7 @@ private fun PhoneBottomNavigation(selectedTab: StbPlayTab, onTabSelected: (StbPl
         Triple(StbPlayTab.SETTINGS, "Settings", Icons.Filled.Settings)
     )
     Row(
-        Modifier.fillMaxWidth().background(Rail).glassEdge(0.dp).padding(horizontal = 5.dp, vertical = 7.dp),
+        Modifier.fillMaxWidth().background(Rail).glassSheen(0.dp).glassEdge(0.dp).padding(horizontal = 5.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -633,7 +635,7 @@ private fun StbPlayNavigationRail(
         modifier = Modifier
             .width(if (collapsed) (if (compactTv) 62.dp else 78.dp) else (if (compactTv) 160.dp else 198.dp))
             .fillMaxHeight()
-            .background(Rail).glassEdge(0.dp)
+            .background(Rail).glassSheen(0.dp).glassEdge(0.dp)
             .then(if (compactTv || LocalStbPalette.current.glass) Modifier else Modifier.animateContentSize())
             .zIndex(2f)
             .padding(horizontal = if (compactTv) 6.dp else 12.dp, vertical = if (compactTv) 10.dp else 22.dp),
@@ -1030,7 +1032,18 @@ private fun RotatingHero(
                 } else false
             }
     val density = LocalDensity.current
+    val glassHero = LocalStbPalette.current.glass
     val heroContent: @Composable BoxScope.() -> Unit = {
+        if (glassHero && !item.imageUrl.isNullOrBlank()) {
+            ArtworkImage(
+                imageUrl = item.imageUrl, title = item.title, modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop, requestHeaders = item.imageHeaders, fallbackText = null,
+                decodeWidthPx = 1280, decodeHeightPx = 720
+            )
+            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
+                listOf(Color(0xE509101B), Color(0x8809101B), Color(0x2209101B))
+            )))
+        }
         Row(Modifier.fillMaxSize().padding(if (isCompactAndroidLayout() || denseTv) 10.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(
                 modifier = Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp, horizontal = if (isCompactAndroidLayout()) 5.dp else 12.dp),
@@ -1052,7 +1065,7 @@ private fun RotatingHero(
                     if (!denseTv) FavoriteButton(item.isFavorite, { onToggleFavorite(item) }, buttonSize = 38.dp)
                 }
             }
-            Box(
+            if (!glassHero) Box(
                 Modifier.width(if (isCompactAndroidLayout()) 112.dp else if (denseTv) 155.dp else 190.dp)
                     .fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(Panel)
             ) {
@@ -1406,7 +1419,7 @@ private fun CategorySidebar(
     Column(
         modifier = Modifier.width(if (denseTv) 170.dp else 210.dp).fillMaxHeight()
             .clip(RoundedCornerShape(15.dp))
-            .background(Panel)
+            .background(Panel).glassSheen(15.dp)
             .border(1.dp, if (LocalStbPalette.current.glass) LocalStbPalette.current.edge else Color(0xFF292929), RoundedCornerShape(15.dp))
             .padding(if (denseTv) 7.dp else 12.dp)
     ) {
@@ -2350,7 +2363,7 @@ private enum class SettingsPage(val title: String) {
 
 @Composable
 private fun SettingsMenuGroup(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().widthIn(max = 820.dp).clip(RoundedCornerShape(16.dp)).background(Panel)
+    Column(Modifier.fillMaxWidth().widthIn(max = 820.dp).clip(RoundedCornerShape(16.dp)).background(Panel).glassSheen(16.dp)
         .border(1.dp, if (LocalStbPalette.current.glass) LocalStbPalette.current.edge else White.copy(alpha = 0.06f), RoundedCornerShape(16.dp)).padding(5.dp), content = content)
 }
 
@@ -2649,7 +2662,7 @@ private fun StbPlaySearchScreen(
         else -> "titles"
     }
     Column(
-        modifier = Modifier.fillMaxSize().background(Navy)
+        modifier = Modifier.fillMaxSize().background(if (LocalStbPalette.current.glass) Color.Transparent else Navy)
             .padding(if (isCompactAndroidLayout()) 14.dp else 36.dp)
             .testTag("search-screen-root"),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -2828,7 +2841,7 @@ fun FirstStartDisclaimer(onAccept: () -> Unit) {
         policyFocusRequester.requestFocus()
     }
     Box(
-        Modifier.fillMaxSize().background(Navy).windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp),
+        Modifier.fillMaxSize().stbBackdrop().windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(

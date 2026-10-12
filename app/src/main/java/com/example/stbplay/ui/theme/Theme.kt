@@ -40,14 +40,14 @@ val BluePalette = StbPalette(
 )
 // Static colours only: no blur, refraction, animated gradients or render effects.
 val GlassPalette = StbPalette(
-    background = Color(0xFF090F19), rail = Color(0xF0101927), panel = Color(0xED172232),
-    panelSoft = Color(0xF0243042), accent = Color(0xFFFFD166), accentLight = Color(0xFFFFE4A3),
+    background = Color(0xFF090F19), rail = Color(0x99101927), panel = Color(0xB3101927),
+    panelSoft = Color(0x99202C3C), accent = Color(0xFFFFD166), accentLight = Color(0xFFFFE4A3),
     text = Color(0xFFF4F7FC), muted = Color(0xFFB4C1D4), onAccent = Color(0xFF101827),
-    glass = true, edge = Color(0x30DAE6FF)
+    glass = true, edge = Color(0x66DAE6FF)
 )
 val StaticGlassPalette = GlassPalette.copy(
-    rail = GlassPalette.rail.copy(alpha = 1f), panel = GlassPalette.panel.copy(alpha = 1f),
-    panelSoft = GlassPalette.panelSoft.copy(alpha = 1f)
+    rail = GlassPalette.rail.copy(alpha = 0.68f), panel = GlassPalette.panel.copy(alpha = 0.72f),
+    panelSoft = GlassPalette.panelSoft.copy(alpha = 0.64f)
 )
 internal fun glassPaletteForDevice(tv: Boolean, manufacturer: String, brand: String, model: String): StbPalette {
     val quest = manufacturer.contains("meta", true) || manufacturer.contains("oculus", true) ||

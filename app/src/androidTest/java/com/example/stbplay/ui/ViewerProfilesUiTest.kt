@@ -15,6 +15,40 @@ import org.junit.Test
 
 class ViewerProfilesUiTest {
     @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
+    @Test fun glassProfilesRemainReadableAndKidsDoNotRequirePin() {
+        val owner = ViewerProfile("owner", "Owner", 18, avatar = "family:indian_dad")
+        val user = ViewerProfile("user", "User", 25, avatar = "family:indian_mom")
+        val kid = ViewerProfile("kid", "Kids", 10, avatar = "family:indian_boy")
+        var selected: ViewerProfile? = null
+        rule.setContent { STBPlayTheme(ThemePreference.GLASS) {
+            ViewerProfilesScreen(listOf(owner, user, kid), "1234", onSelected = { selected = it },
+                onSave = { _, _ -> }, onSetOwnerPin = {})
+        } }
+        rule.onNodeWithText("Who's watching?").assertIsDisplayed()
+        saveThemePreview(rule, "profiles-glass-" + if (rule.activity.isAndroidTvDevice()) "tv" else "phone")
+        rule.onNodeWithText("Kids").performClick()
+        rule.runOnIdle { assertEquals(kid, selected) }
+        rule.onNodeWithText("Unlock").assertDoesNotExist()
+    }
+
+    @Test fun glassSettingsAndBackKeepExistingSection() {
+        prewarmBatch2PhoneCast(rule)
+        var visible by mutableStateOf(false)
+        rule.setContent { STBPlayTheme(ThemePreference.GLASS) {
+            Batch2AppFixture(selected = StbPlayTab.SETTINGS, session = SearchSession(), onSwitchViewer = { visible = true })
+            if (visible) ViewerSwitchDialog({ visible = false }) {
+                ViewerProfilesScreen(listOf(ViewerProfile("owner", "Owner", 18)), "1234",
+                    onSelected = { visible = false }, onSave = { _, _ -> }, onSetOwnerPin = {}, onBack = { visible = false })
+            }
+        } }
+        saveThemePreview(rule, "settings-glass-" + if (rule.activity.isAndroidTvDevice()) "tv" else "phone")
+        rule.onNodeWithText("Who's watching?").performClick()
+        androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        rule.waitForIdle()
+        rule.onNodeWithText("Content sources").assertIsDisplayed()
+        rule.runOnIdle { assertFalse(visible) }
+    }
+
     @Test fun ownerSelectionAndManagementRequireOwnerPin() {
         val owner = ViewerProfile("owner", "Owner", 18)
         val kid = ViewerProfile("kid", "Kid", 10)

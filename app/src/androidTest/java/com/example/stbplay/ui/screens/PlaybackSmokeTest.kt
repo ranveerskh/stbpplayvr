@@ -28,6 +28,7 @@ import com.example.stbplay.R
 import com.example.stbplay.data.StalkerContentKind
 import com.example.stbplay.data.StalkerPlayRequest
 import com.example.stbplay.isAndroidTvDevice
+import com.example.stbplay.ui.saveThemePreview
 import com.example.stbplay.ui.theme.STBPlayTheme
 import com.google.android.gms.cast.framework.CastContext
 import org.junit.Assert.*
@@ -114,7 +115,9 @@ class PlaybackSmokeTest {
                     onBack = { backCount++ })
             }
         }
-        val (_, player) = awaitVideo()
+        val (movieView, player) = awaitVideo()
+        rule.runOnIdle { movieView.showController() }
+        saveThemePreview(rule, "player-glass-" + if (isTv) "tv" else "phone")
         rule.runOnIdle {
             assertTrue(player.isPlaying)
             assertEquals(10_000L, player.seekForwardIncrement)

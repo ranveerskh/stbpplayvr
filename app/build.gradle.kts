@@ -25,9 +25,9 @@ android {
         applicationId = "com.example.stbplay"
         minSdk = 26
         targetSdk = 35
-        versionCode = 77
-        // Test-only optimization build; keep code 72 for in-place install and stable rollback.
-        versionName = "2.0.20.8"
+        versionCode = 78
+        // Signed test candidate; the verified 2.0.20.6 source remains preserved.
+        versionName = "2.0.20.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

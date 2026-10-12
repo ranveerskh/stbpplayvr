@@ -2,6 +2,7 @@
 
 package com.example.stbplay.ui
 
+import com.example.stbplay.ui.theme.glassSheen
 import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.ui.theme.glassSurfaceBorder
 import androidx.compose.foundation.BorderStroke
@@ -50,7 +51,7 @@ fun QuestButton(
     val staticScale = useStaticUiScale(isAndroidTv, Build.MANUFACTURER, Build.BRAND, Build.MODEL) || LocalStbPalette.current.glass
     TvButton(
         onClick = onClick,
-        modifier = modifier.questPointerTap(enabled, onClick),
+        modifier = modifier.glassSheen(18.dp).questPointerTap(enabled, onClick),
         enabled = enabled,
         colors = colors,
         border = if (LocalStbPalette.current.glass) ButtonDefaults.border(
@@ -88,7 +89,7 @@ fun QuestSurface(
     }
     TvSurface(
         onClick = onClick,
-        modifier = modifier.questPointerTap(enabled, onClick),
+        modifier = modifier.glassSheen(18.dp).questPointerTap(enabled, onClick),
         enabled = enabled,
         shape = shape,
         colors = colors,

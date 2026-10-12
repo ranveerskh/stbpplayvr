@@ -24,6 +24,7 @@ import androidx.tv.material3.Text
 import com.example.stbplay.data.ViewerProfile
 import com.example.stbplay.data.verifyViewerPin
 import com.example.stbplay.ui.theme.glassEdge
+import com.example.stbplay.ui.theme.stbBackdrop
 import com.example.stbplay.ui.theme.LocalStbPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -119,7 +120,7 @@ fun ViewerProfilesScreen(
     BackHandler(enabled = managing || onBack != null) {
         if (managing) { managing = false; error = null } else onBack?.invoke()
     }
-    Box(Modifier.fillMaxSize().background(palette.background), contentAlignment = Alignment.TopCenter) {
+    Box(Modifier.fillMaxSize().stbBackdrop(), contentAlignment = Alignment.TopCenter) {
     Column(Modifier.widthIn(max = if (managing) 680.dp else 960.dp).fillMaxWidth()
         .verticalScroll(rememberScrollState()).padding(horizontal = if (television) 40.dp else 20.dp, vertical = if (television) 32.dp else 20.dp),
         verticalArrangement = Arrangement.spacedBy(if (television) 24.dp else 16.dp)) {

@@ -40,6 +40,7 @@ import com.example.stbplay.ui.ArtworkImage
 import com.example.stbplay.data.model.PortalQualityOption
 import com.example.stbplay.ui.UiMedia
 import com.example.stbplay.ui.questInitialFocus
+import com.example.stbplay.ui.theme.stbBackdrop
 import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.isAndroidTvDevice
 
@@ -71,7 +72,7 @@ fun MovieDetailsScreen(
         !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
     if (compact) {
         Column(
-            Modifier.fillMaxSize().background(DetailNavy).verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.fillMaxSize().stbBackdrop().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             ArtworkImage(
@@ -106,7 +107,7 @@ fun MovieDetailsScreen(
         }
         return
     }
-    Box(Modifier.fillMaxSize().background(DetailNavy)) {
+    Box(Modifier.fillMaxSize().stbBackdrop()) {
         ArtworkImage(
             imageUrl = item.imageUrl,
             title = item.title,
@@ -170,7 +171,7 @@ fun QualitySelectionScreen(
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
-    Box(Modifier.fillMaxSize().background(DetailNavy), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().stbBackdrop(), contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier.widthIn(min = 420.dp, max = 720.dp),
             shape = RoundedCornerShape(18.dp),

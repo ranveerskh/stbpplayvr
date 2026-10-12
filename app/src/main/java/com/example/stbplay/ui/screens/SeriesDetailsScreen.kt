@@ -53,6 +53,7 @@ import com.example.stbplay.data.model.PortalSeason
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.ui.questInitialFocus
 import com.example.stbplay.ui.theme.glassSurfaceBorder
+import com.example.stbplay.ui.theme.stbBackdrop
 import com.example.stbplay.ui.theme.LocalStbPalette
 
 private val SeriesNavy: Color @Composable get() = LocalStbPalette.current.background
@@ -131,7 +132,7 @@ fun SeriesDetailsScreen(
     }
 
     if (compact) {
-        Column(Modifier.fillMaxSize().background(SeriesNavy).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxSize().stbBackdrop().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.width(92.dp).height(126.dp).background(SeriesPanel), contentAlignment = Alignment.Center) {
                     ArtworkImage(
@@ -192,7 +193,7 @@ fun SeriesDetailsScreen(
         return
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(SeriesNavy).padding(30.dp)) {
+    BoxWithConstraints(Modifier.fillMaxSize().stbBackdrop().padding(30.dp)) {
         val posterHeight = (maxHeight * 0.43f).coerceIn(170.dp, 300.dp)
         Row(Modifier.fillMaxSize()) {
         Column(Modifier.width(300.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {

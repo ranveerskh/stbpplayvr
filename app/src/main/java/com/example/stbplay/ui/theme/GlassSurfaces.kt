@@ -1,6 +1,9 @@
 @file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
 package com.example.stbplay.ui.theme
 
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.paint
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,3 +21,33 @@ fun glassSurfaceBorder(): Border = if (LocalStbPalette.current.glass)
 @Composable
 fun Modifier.glassEdge(radius: Dp = 12.dp): Modifier = if (LocalStbPalette.current.glass)
     border(1.dp, LocalStbPalette.current.edge, RoundedCornerShape(radius)) else this
+
+/** One cached static bitmap. No blur, RenderEffect, offscreen layer or animation. */
+@Composable
+fun Modifier.stbBackdrop(): Modifier {
+    val palette = LocalStbPalette.current
+    if (!palette.glass) return background(palette.background)
+    val image = androidx.compose.ui.res.painterResource(com.example.stbplay.R.drawable.glass_backdrop)
+    return paint(image, sizeToIntrinsics = false, contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.12f))
+}
+
+/** Fixed surface reflection; it does not sample or blur pixels behind the panel. */
+@Composable
+fun Modifier.glassSheen(radius: Dp = 12.dp): Modifier {
+    if (!LocalStbPalette.current.glass) return this
+    return drawWithContent {
+        drawContent()
+        val r = radius.toPx()
+        drawRoundRect(
+            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(
+                    androidx.compose.ui.graphics.Color.White.copy(alpha = 0.085f),
+                    androidx.compose.ui.graphics.Color.White.copy(alpha = 0.015f),
+                    androidx.compose.ui.graphics.Color.Transparent
+                )
+            ),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r)
+        )
+    }
+}

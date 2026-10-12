@@ -26,6 +26,7 @@ import com.example.stbplay.ui.ArtworkImage
 import com.example.stbplay.ui.TvHomeSurface
 import com.example.stbplay.ui.UiMedia
 import com.example.stbplay.ui.questInitialFocus
+import com.example.stbplay.ui.theme.stbBackdrop
 import com.example.stbplay.ui.theme.LocalStbPalette
 
 /** One focus target per TV tile; all secondary actions live on this page. */
@@ -41,7 +42,7 @@ fun TvMediaDetailsScreen(
     BackHandler(onBack = onBack)
     val palette = LocalStbPalette.current
     val canResume = item.streamType != "live" && item.progress > 0f && item.progress < 0.95f
-    BoxWithConstraints(Modifier.fillMaxSize().background(palette.background).padding(24.dp)) {
+    BoxWithConstraints(Modifier.fillMaxSize().stbBackdrop().padding(24.dp)) {
         val posterHeight = (maxHeight * 0.75f).coerceAtMost(300.dp)
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp),
             verticalAlignment = Alignment.CenterVertically) {

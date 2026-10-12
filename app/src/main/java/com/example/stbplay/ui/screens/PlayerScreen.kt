@@ -1111,4 +1111,4 @@ internal fun shouldPreferTextureSurface(
 
 @Composable
 private fun playerControlTint(fallback: Long): Color =
-    if (LocalStbPalette.current.glass) Color(0xCC111C2A) else Color(fallback)
+    if (LocalStbPalette.current.glass) Color(0xA6101927) else Color(fallback)
