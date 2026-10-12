@@ -43,8 +43,11 @@ class ViewerProfilesUiTest {
         } }
         saveThemePreview(rule, "settings-glass-" + if (rule.activity.isAndroidTvDevice()) "tv" else "phone")
         rule.onNodeWithText("Who's watching?").performClick()
-        androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        rule.onNodeWithText("Add profile").assertIsDisplayed()
         rule.waitForIdle()
+        androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        rule.waitUntil(5_000) { !visible }
+        rule.onNodeWithText("Add profile").assertDoesNotExist()
         rule.onNodeWithText("Content sources").assertIsDisplayed()
         rule.runOnIdle { assertFalse(visible) }
     }
