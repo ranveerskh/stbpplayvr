@@ -19,9 +19,9 @@ import com.example.stbplay.ui.theme.*
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
 @Composable
-fun MatchingCastButton(modifier: Modifier = Modifier) {
+fun MatchingCastButton(modifier: Modifier = Modifier, surfaceColor: androidx.compose.ui.graphics.Color? = null) {
     val p = LocalStbPalette.current
-    Row(modifier.clip(RoundedCornerShape(12.dp)).background(p.panel).glassEdge().glassSheen(),
+    Row(modifier.clip(RoundedCornerShape(12.dp)).background(surfaceColor ?: p.panel).glassEdge().glassSheen(),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
         CompositionLocalProvider(LocalContentColor provides p.text) {
             MediaRouteButton(Modifier.size(44.dp))

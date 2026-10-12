@@ -42,6 +42,7 @@ fun QuestButton(
     enabled: Boolean = true,
     colors: ButtonColors = ButtonDefaults.colors(),
     focusScale: Float? = null,
+    shape: androidx.tv.material3.ButtonShape? = null,
     content: @Composable RowScope.() -> Unit
 ) {
     val context = LocalContext.current
@@ -54,6 +55,7 @@ fun QuestButton(
         modifier = modifier.glassSheen(18.dp).questPointerTap(enabled, onClick),
         enabled = enabled,
         colors = colors,
+        shape = shape ?: ButtonDefaults.shape(),
         border = if (LocalStbPalette.current.glass) ButtonDefaults.border(
             border = glassSurfaceBorder(),
             focusedBorder = Border(BorderStroke(2.dp, LocalStbPalette.current.focusedAccent))

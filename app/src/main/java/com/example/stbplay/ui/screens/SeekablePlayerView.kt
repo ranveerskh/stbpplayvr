@@ -22,7 +22,11 @@ class SeekablePlayerView @JvmOverloads constructor(
         phoneGestures.configure(enabled, activity)
     }
 
+    var onControlsInteraction: (() -> Unit)? = null
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_UP)
+            onControlsInteraction?.invoke()
         val wasCaptured = phoneGestureCaptured
         val consumed = phoneGestures.intercept(event)
         if (consumed && !wasCaptured && event.actionMasked == MotionEvent.ACTION_MOVE) {
@@ -55,7 +59,9 @@ class SeekablePlayerView @JvmOverloads constructor(
             (params as? android.widget.FrameLayout.LayoutParams)?.gravity ?: -1)
     }
 
-    fun configureGlassControls(enabled: Boolean) {
+    fun configureGlassControls(enabled: Boolean, compactLandscape: Boolean = false) {
+        findViewById<View>(androidx.media3.ui.R.id.exo_center_controls)?.translationY =
+            if (enabled && compactLandscape) -48 * resources.displayMetrics.density else 0f
         if (enabled == glassControlsApplied) return
         val bar = findViewById<View>(androidx.media3.ui.R.id.exo_bottom_bar) ?: return
         val density = resources.displayMetrics.density
@@ -64,13 +70,13 @@ class SeekablePlayerView @JvmOverloads constructor(
             originalControlBackground = bar.background
             if (margins != null) {
                 rememberLayout(bar, margins)
-                margins.height = (112 * density).toInt()
+                margins.height = (92 * density).toInt()
             }
             findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.let { progress ->
                 (progress.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { params ->
                     rememberLayout(progress, params)
                     val inset = (28 * density).toInt()
-                    params.setMargins(inset, params.topMargin, inset, (68 * density).toInt())
+                    params.setMargins(inset, params.topMargin, inset, (48 * density).toInt())
                     progress.layoutParams = params
                 }
             }
@@ -88,7 +94,7 @@ class SeekablePlayerView @JvmOverloads constructor(
             }
             bar.background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xB34A5665.toInt(), 0xB3101927.toInt(), 0xD908101B.toInt())
+                intArrayOf(0xD91C2735.toInt(), 0xD9101927.toInt(), 0xE608101B.toInt())
             ).apply {
                 cornerRadius = 18 * density
                 setStroke(density.toInt().coerceAtLeast(1), 0x66DAE6FF)
@@ -105,7 +111,7 @@ class SeekablePlayerView @JvmOverloads constructor(
                 findViewById<View>(id)?.let { button ->
                     originalButtonBackgrounds[button] = button.background
                     fun surface(focused: Boolean) = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(if (focused) 0x66413910 else 0x22FFFFFF)
+                        setColor(if (focused) 0xCC413910.toInt() else 0xB308101B.toInt())
                         cornerRadius = 12 * density
                         setStroke((if (focused) 2 * density else density).toInt().coerceAtLeast(1),
                             if (focused) 0xFFFFD166.toInt() else 0x55DAE6FF)
@@ -136,6 +142,15 @@ class SeekablePlayerView @JvmOverloads constructor(
         glassControlsApplied = enabled
     }
 
+    private var liveTimeline = false
+    fun configureLiveTimeline(live: Boolean) {
+        if (liveTimeline == live) return
+        liveTimeline = live
+        val visibility = if (live) View.GONE else View.VISIBLE
+        findViewById<View>(androidx.media3.ui.R.id.exo_bottom_bar)?.visibility = visibility
+        findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.visibility = visibility
+    }
+
     var onSeekDirection: ((Int) -> Unit)? = null
     var onShowActions: (() -> Unit)? = null
 
@@ -147,6 +162,8 @@ class SeekablePlayerView @JvmOverloads constructor(
 
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.keyCode !in
+            setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B)) onControlsInteraction?.invoke()
         if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && onShowActions != null) {
             if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled) onShowActions?.invoke()
             return true

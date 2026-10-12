@@ -15,6 +15,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -131,12 +135,22 @@ class PlaybackSmokeTest {
             assertTrue(timeline.getGlobalVisibleRect(timelineBounds))
             assertTrue("Timeline must stay within Glass panel: $timelineBounds / $panelBounds", panelBounds.contains(timelineBounds))
         }
+        rule.onNodeWithText("← Back").assertIsDisplayed()
+        if (!isTv) {
+            val icon = rule.onNodeWithContentDescription("Fullscreen", useUnmergedTree = true).assertIsDisplayed().captureToImage().toPixelMap()
+            val whitePixels = (0 until icon.width).sumOf { x -> (0 until icon.height).count { y ->
+                val pixel = icon[x, y]; pixel.red > 0.9f && pixel.green > 0.9f && pixel.blue > 0.9f && pixel.alpha > 0.9f
+            } }
+            assertTrue("Fullscreen icon must remain white against dark glass", whitePixels > 20)
+        }
         saveThemePreview(rule, "player-glass-" + if (isTv) "tv" else "phone")
         rule.runOnIdle {
             assertTrue(player.isPlaying)
             assertEquals(10_000L, player.seekForwardIncrement)
             assertEquals(5_000L, player.seekBackIncrement)
         }
+        rule.waitUntil(7_000) { rule.runOnIdle { !movieView.isControllerFullyVisible } }
+        rule.onNodeWithText("← Back").assertDoesNotExist()
         val seekStart = pauseAtKnownPosition(player)
         rule.runOnIdle { player.seekForward() }
         rule.waitUntil(10_000) { rule.runOnIdle { player.currentPosition == seekStart + 10_000L } }
@@ -147,6 +161,26 @@ class PlaybackSmokeTest {
         assertEquals(1, backCount)
         assertEquals(1, started.get())
         assertTrue(failures.isEmpty())
+    }
+
+    @Test fun liveTimelineIsHiddenAndPhoneChannelActionsRemainCompact() {
+        rule.setContent {
+            STBPlayTheme {
+                PlaybackRoute(StalkerPlayRequest(videoUrl, StalkerContentKind.LIVE, title = "Live smoke"),
+                    portalUiUrl = "http://10.0.2.2:8765", macAddress = "02:00:00:00:00:01", token = null,
+                    onPlaybackStarted = { started.incrementAndGet() }, onPlaybackFailure = { failures.add(it) }, onBack = {})
+            }
+        }
+        val (view, _) = awaitVideo()
+        rule.onRoot().performTouchInput { click() }
+        rule.runOnIdle {
+            assertEquals(View.GONE, view.findViewById<View>(androidx.media3.ui.R.id.exo_bottom_bar).visibility)
+            assertEquals(View.GONE, view.findViewById<View>(androidx.media3.ui.R.id.exo_progress).visibility)
+        }
+        rule.onNodeWithContentDescription("Previous channel").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Next channel").assertIsDisplayed()
+        if (!isTv) rule.onNodeWithContentDescription("Fullscreen").assertIsDisplayed()
+        saveThemePreview(rule, "live-player-glass-" + if (isTv) "tv" else "phone")
     }
 
     @Test fun tvPreviewAndFullscreenKeepTheSamePlayerAndPosition() {
