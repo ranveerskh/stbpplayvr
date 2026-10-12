@@ -6,16 +6,18 @@ import java.util.concurrent.TimeUnit
 
 class AppAccessInfoTest {
     private val start = 1_000_000L
-    private val month = TimeUnit.DAYS.toMillis(30)
+    private val year = TimeUnit.DAYS.toMillis(365)
 
     @Test fun manualUserTrialUsesOriginalInstallDate() {
-        val result = appAccessInfo(PlatformLicenseDetails(), false, start, start + month - 1)
-        assertEquals(start + month, result.expiresAtMillis)
+        val result = appAccessInfo(PlatformLicenseDetails(), false, start, start + year - 1)
+        assertEquals(start + year, result.expiresAtMillis)
+        assertEquals("Free 1-year app trial", result.name)
+        assertEquals("ACTIVE", appAccessInfo(PlatformLicenseDetails(), false, start, start + TimeUnit.DAYS.toMillis(31)).status)
         assertEquals("ACTIVE", result.status)
-        assertEquals("EXPIRED", appAccessInfo(PlatformLicenseDetails(), false, start, start + month).status)
+        assertEquals("EXPIRED", appAccessInfo(PlatformLicenseDetails(), false, start, start + year).status)
     }
 
-    @Test fun expiredProviderTrialNeverFallsBackToThirtyDays() {
+    @Test fun expiredProviderTrialNeverFallsBackToLocalYear() {
         val license = PlatformLicenseDetails("Trial", hasKey = true, trial = true, trialExpiresAtMillis = start + 10)
         val result = appAccessInfo(license, true, start, start + 11)
         assertEquals("EXPIRED", result.status)
@@ -24,9 +26,9 @@ class AppAccessInfoTest {
     }
 
     @Test fun providerPaidPlanWinsOverLocalTrial() {
-        val result = appAccessInfo(PlatformLicenseDetails("Customer", start + month * 12, true), true, start, start)
+        val result = appAccessInfo(PlatformLicenseDetails("Customer", start + year, true), true, start, start)
         assertTrue(result.name.startsWith("Provider yearly plan"))
-        assertEquals(start + month * 12, result.expiresAtMillis)
+        assertEquals(start + year, result.expiresAtMillis)
     }
 
     @Test fun assignedDeviceWithMissingLicenseDoesNotReceiveExtraTrial() {
