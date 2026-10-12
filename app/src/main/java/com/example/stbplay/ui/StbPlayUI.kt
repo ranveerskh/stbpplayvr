@@ -2922,7 +2922,7 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
         Surface(
             modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 520.dp),
             shape = RoundedCornerShape(18.dp),
-            colors = SurfaceDefaults.colors(containerColor = Panel)
+            colors = SurfaceDefaults.colors(containerColor = if (LocalStbPalette.current.glass) Panel.copy(alpha = 0.94f) else Panel)
         ) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Protected content", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -2938,7 +2938,7 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
                         .padding(vertical = 13.dp)
                 )
                 listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("⌫", "0", "Clear")).forEachIndexed { rowIndex, keys ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.widthIn(max = 278.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         keys.forEachIndexed { columnIndex, key ->
                             QuestButton(
                                 onClick = {
@@ -2949,7 +2949,7 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
                                     }
                                     error = false
                                 },
-                                modifier = Modifier.width(86.dp).height(46.dp)
+                                modifier = Modifier.weight(1f).height(46.dp)
                                     .then(if (rowIndex == 0 && columnIndex == 0) Modifier.questInitialFocus() else Modifier),
                                 colors = ButtonDefaults.colors(containerColor = Navy, contentColor = White, focusedContainerColor = Gold, focusedContentColor = OnAccent)
                             ) { Text(key, fontSize = 16.sp) }
