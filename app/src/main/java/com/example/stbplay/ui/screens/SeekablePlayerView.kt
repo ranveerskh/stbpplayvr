@@ -43,6 +43,24 @@ class SeekablePlayerView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 
+    private var originalControlBackground: android.graphics.drawable.Drawable? = null
+    private var glassControlsApplied = false
+
+    fun configureGlassControls(enabled: Boolean) {
+        if (enabled == glassControlsApplied) return
+        val bar = findViewById<View>(androidx.media3.ui.R.id.exo_bottom_bar) ?: return
+        if (enabled) {
+            originalControlBackground = bar.background
+            val density = resources.displayMetrics.density
+            bar.background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xCC111C2A.toInt())
+                cornerRadius = 8 * density
+                setStroke(density.toInt().coerceAtLeast(1), 0x30DAE6FF)
+            }
+        } else bar.background = originalControlBackground
+        glassControlsApplied = enabled
+    }
+
     var onSeekDirection: ((Int) -> Unit)? = null
     var onShowActions: (() -> Unit)? = null
 

@@ -2,6 +2,11 @@
 
 package com.example.stbplay.ui
 
+import com.example.stbplay.ui.theme.LocalStbPalette
+import com.example.stbplay.ui.theme.glassSurfaceBorder
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
 import android.os.Build
 import com.example.stbplay.isAndroidTvDevice
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -42,12 +47,16 @@ fun QuestButton(
     val isAndroidTv = remember(context) {
         context.isAndroidTvDevice()
     }
-    val staticScale = useStaticUiScale(isAndroidTv, Build.MANUFACTURER, Build.BRAND, Build.MODEL)
+    val staticScale = useStaticUiScale(isAndroidTv, Build.MANUFACTURER, Build.BRAND, Build.MODEL) || LocalStbPalette.current.glass
     TvButton(
         onClick = onClick,
         modifier = modifier.questPointerTap(enabled, onClick),
         enabled = enabled,
         colors = colors,
+        border = if (LocalStbPalette.current.glass) ButtonDefaults.border(
+            border = glassSurfaceBorder(),
+            focusedBorder = Border(BorderStroke(2.dp, LocalStbPalette.current.focusedAccent))
+        ) else ButtonDefaults.border(),
         scale = if (staticScale) ButtonDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
             else ButtonDefaults.scale(focusedScale = focusScale ?: 1.1f),
         content = content
@@ -71,7 +80,7 @@ fun QuestSurface(
     val isAndroidTv = remember(context) {
         context.isAndroidTvDevice()
     }
-    val staticScale = useStaticUiScale(isAndroidTv, Build.MANUFACTURER, Build.BRAND, Build.MODEL)
+    val staticScale = useStaticUiScale(isAndroidTv, Build.MANUFACTURER, Build.BRAND, Build.MODEL) || LocalStbPalette.current.glass
     val resolvedFocusScale = if (staticScale) 1f else focusScale ?: 1.1f
     if (isAndroidTv && enabled && tvContainerColor != null) {
         TvHomeSurface(onClick, modifier, tvContainerColor, tvFocusedContainerColor ?: tvContainerColor, content)

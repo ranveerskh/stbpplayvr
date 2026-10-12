@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.example.stbplay.data.ViewerProfile
 import com.example.stbplay.data.verifyViewerPin
+import com.example.stbplay.ui.theme.glassEdge
 import com.example.stbplay.ui.theme.LocalStbPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -292,7 +293,7 @@ private fun ProfileAvatar(avatar: String, size: Int) {
 private fun ProfileField(label: String, value: String, number: Boolean = false, onChange: (String) -> Unit) {
     val p = LocalStbPalette.current
     Text(label, color = p.muted, fontSize = 13.sp)
-    RemoteTextField(value, onChange, Modifier.fillMaxWidth().height(48.dp).background(p.panelSoft).padding(12.dp), singleLine = true,
+    RemoteTextField(value, onChange, Modifier.fillMaxWidth().height(48.dp).background(p.panelSoft, RoundedCornerShape(10.dp)).glassEdge(10.dp).padding(12.dp), singleLine = true,
         visualTransformation = if (label.contains("PIN")) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         textStyle = TextStyle(color = p.text, fontSize = 16.sp), keyboardOptions = KeyboardOptions(keyboardType = if (number) KeyboardType.Number else KeyboardType.Text))
 }
@@ -305,7 +306,7 @@ fun ViewerPinPrompt(profile: ViewerProfile, onVerified: () -> Unit, onCancel: ()
     var busy by remember { mutableStateOf(false) }
     androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
         val p = LocalStbPalette.current
-        Column(Modifier.fillMaxWidth().background(p.panel).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().background(p.panel).glassEdge(18.dp).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("$title · Personal PIN", color = p.text)
             ProfileField("PIN", pin, true) { pin = it.filter(Char::isDigit).take(8); failed = false }
             if (failed) Text("Incorrect PIN", color = p.danger)
@@ -340,7 +341,7 @@ fun PhoneFirstSetup(
         } }
         Text("Theme", color = p.text)
         com.example.stbplay.data.ThemePreference.entries.forEach { option ->
-            QuestButton(onClick = { onTheme(option) }) { Text("${if (theme == option) "✓ " else ""}${when(option) { com.example.stbplay.data.ThemePreference.LIGHT -> "Ivory"; com.example.stbplay.data.ThemePreference.BLUE -> "Blue"; else -> "Black" }}") }
+            QuestButton(onClick = { onTheme(option) }) { Text("${if (theme == option) "✓ " else ""}${when(option) { com.example.stbplay.data.ThemePreference.GLASS -> "Glass"; com.example.stbplay.data.ThemePreference.LIGHT -> "Ivory"; com.example.stbplay.data.ThemePreference.BLUE -> "Blue"; else -> "Black" }}") }
         }
         QuestButton(onClick = onDone) { Text("Save & continue") }
     }

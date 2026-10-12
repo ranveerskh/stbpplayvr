@@ -52,6 +52,7 @@ import com.example.stbplay.data.model.PortalEpisode
 import com.example.stbplay.data.model.PortalSeason
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.ui.questInitialFocus
+import com.example.stbplay.ui.theme.glassSurfaceBorder
 import com.example.stbplay.ui.theme.LocalStbPalette
 
 private val SeriesNavy: Color @Composable get() = LocalStbPalette.current.background
@@ -168,7 +169,7 @@ fun SeriesDetailsScreen(
                             modifier = Modifier.height(42.dp),
                             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
                             colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) SeriesGold else SeriesPanel, focusedContainerColor = SeriesGold),
-                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGoldLight)))
+                            border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, SeriesGoldLight)))
                         ) {
                             Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
                                 Text(if (season.id == "direct") "Episodes" else "Season ${season.number}", color = if (selected) SeriesOnAccent else SeriesWhite, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
@@ -241,7 +242,7 @@ fun SeriesDetailsScreen(
                                 modifier = Modifier.then(if (selected) Modifier.questInitialFocus() else Modifier).width(132.dp).height(48.dp),
                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
                                 colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) SeriesGold else SeriesPanel, focusedContainerColor = SeriesGold),
-                                border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGoldLight)))
+                                border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, SeriesGoldLight)))
                             ) {
                                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(if (season.id == "direct") "Episodes" else "Season ${season.number}", color = if (selected) SeriesOnAccent else SeriesWhite, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
@@ -279,7 +280,7 @@ private fun EpisodeRow(episode: PortalEpisode, initialFocus: Boolean = false, ha
         modifier = Modifier.then(if (initialFocus) Modifier.questInitialFocus() else Modifier).fillMaxWidth().height(if (television) 28.dp else 48.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = SeriesPanel, focusedContainerColor = SeriesGold.copy(alpha = 0.2f)),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, SeriesGold)))
+        border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, SeriesGold)))
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = if (television) 8.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

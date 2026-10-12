@@ -39,7 +39,7 @@ internal fun TvHomeSurface(
             .clip(shape)
             .background(if (focused) focusedContainerColor else containerColor)
             .border(if (focused) 2.dp else 1.dp,
-                if (focused) palette.accent else palette.text.copy(alpha = 0.08f), shape)
+                if (focused) palette.accent else if (palette.glass) palette.edge else palette.text.copy(alpha = 0.08f), shape)
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
         content = content
     )

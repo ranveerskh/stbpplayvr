@@ -150,6 +150,8 @@ import com.example.stbplay.data.SubtitlePreference
 import com.example.stbplay.data.ThemePreference
 import com.example.stbplay.R
 import com.example.stbplay.isAndroidTvDevice
+import com.example.stbplay.ui.theme.glassSurfaceBorder
+import com.example.stbplay.ui.theme.glassEdge
 import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.data.model.PortalStream
 import com.example.stbplay.domain.model.PortalSettings
@@ -304,7 +306,7 @@ data class StbPlaySettingsState(
     val seriesCount: Int = 0,
     val playerPreference: PlayerPreference = PlayerPreference.AUTO,
     val androidBoxVideoCompatibility: Boolean = false,
-    val themePreference: ThemePreference = ThemePreference.BLUE,
+    val themePreference: ThemePreference = ThemePreference.GLASS,
     val phoneCategoryPosition: CategoryDropdownPosition = CategoryDropdownPosition.TOP,
     val phoneMovieColumns: Int = 2,
     val parentalMode: ParentalMode = ParentalMode.ALL_CONTENT,
@@ -586,7 +588,7 @@ private fun PhoneBottomNavigation(selectedTab: StbPlayTab, onTabSelected: (StbPl
         Triple(StbPlayTab.SETTINGS, "Settings", Icons.Filled.Settings)
     )
     Row(
-        Modifier.fillMaxWidth().background(Rail).padding(horizontal = 5.dp, vertical = 7.dp),
+        Modifier.fillMaxWidth().background(Rail).glassEdge(0.dp).padding(horizontal = 5.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -631,8 +633,8 @@ private fun StbPlayNavigationRail(
         modifier = Modifier
             .width(if (collapsed) (if (compactTv) 62.dp else 78.dp) else (if (compactTv) 160.dp else 198.dp))
             .fillMaxHeight()
-            .background(Rail)
-            .then(if (compactTv) Modifier else Modifier.animateContentSize())
+            .background(Rail).glassEdge(0.dp)
+            .then(if (compactTv || LocalStbPalette.current.glass) Modifier else Modifier.animateContentSize())
             .zIndex(2f)
             .padding(horizontal = if (compactTv) 6.dp else 12.dp, vertical = if (compactTv) 10.dp else 22.dp),
         verticalArrangement = Arrangement.spacedBy(if (compactTv) 3.dp else 8.dp)
@@ -718,6 +720,7 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compac
                 focusedContainerColor = Gold
             ),
             border = ClickableSurfaceDefaults.border(
+                border = glassSurfaceBorder(),
                 focusedBorder = Border(BorderStroke(2.dp, GoldLight))
             )
         ) {
@@ -817,7 +820,7 @@ private fun HeaderAction(label: String, onClick: () -> Unit, modifier: Modifier 
         modifier = modifier.height(40.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Gold),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
+        border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) {
         Box(Modifier.fillMaxSize().padding(horizontal = 15.dp), contentAlignment = Alignment.Center) {
             Text(label, color = if (focused) OnAccent else White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -1074,7 +1077,7 @@ private fun RotatingHero(
         onClick = { onMediaClick(item) }, modifier = heroModifier,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold))),
+        border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(3.dp, Gold))),
         content = heroContent
     )
 }
@@ -1404,7 +1407,7 @@ private fun CategorySidebar(
         modifier = Modifier.width(if (denseTv) 170.dp else 210.dp).fillMaxHeight()
             .clip(RoundedCornerShape(15.dp))
             .background(Panel)
-            .border(1.dp, Color(0xFF292929), RoundedCornerShape(15.dp))
+            .border(1.dp, if (LocalStbPalette.current.glass) LocalStbPalette.current.edge else Color(0xFF292929), RoundedCornerShape(15.dp))
             .padding(if (denseTv) 7.dp else 12.dp)
     ) {
         Text("Categories", color = GoldLight, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
@@ -1438,7 +1441,7 @@ private fun CompactCategorySelector(categories: List<UiCategory>, selected: Int,
             BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = if (bottom) Alignment.BottomCenter else Alignment.Center) {
                 Column(
                     Modifier.fillMaxWidth().height((maxHeight * 0.75f).coerceAtMost(520.dp))
-                        .clip(RoundedCornerShape(14.dp)).background(Panel).padding(12.dp)
+                        .clip(RoundedCornerShape(14.dp)).background(Panel).glassEdge(14.dp).padding(12.dp)
                 ) {
                     Text("Categories", color = GoldLight, fontSize = 17.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(10.dp))
@@ -1508,7 +1511,7 @@ private fun CategorySidebarItem(category: UiCategory, selected: Boolean, focusRe
             containerColor = if (selected) Gold.copy(alpha = 0.2f) else Color.Transparent,
             focusedContainerColor = Gold
         ),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
+        border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1581,7 +1584,7 @@ private fun LiveChannelRow(
                 }.weight(1f).fillMaxHeight(),
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(if (denseTv) 6.dp else 13.dp)),
             colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = if (LocalStbPalette.current == LightPalette) Gold.copy(alpha = 0.20f) else PanelSoft),
-            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold))),
+            border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, Gold))),
             focusScale = if (denseTv) 1.03f else null
         ) {
             Row(Modifier.fillMaxSize().padding(horizontal = if (compactPhone) 8.dp else 14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1828,7 +1831,7 @@ private fun ContentBrowserCompact(
                         colors = ClickableSurfaceDefaults.colors(
                             containerColor = if (count == options.movieColumns) Gold.copy(alpha = 0.20f) else Panel,
                             focusedContainerColor = Gold.copy(alpha = 0.28f)),
-                        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
+                        border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, Gold)))
                     ) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text("$count", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -1976,7 +1979,7 @@ private fun MediaCard(
         },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = PanelSoft),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Gold)))
+        border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(3.dp, Gold)))
       ) {
         Box(Modifier.fillMaxSize()) {
             ArtworkImage(
@@ -2197,7 +2200,7 @@ private fun StbPlaySettingsScreen(
                                     .border(if (selected) 2.dp else 0.dp, Gold, RoundedCornerShape(10.dp)),
                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
                                 colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) Gold.copy(alpha = 0.18f) else Navy, focusedContainerColor = Gold.copy(alpha = 0.28f)),
-                                border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
+                                border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, Gold)))
                             ) {
                                 Column(Modifier.fillMaxWidth().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Image(painterResource(theme.iconResource()), contentDescription = "${theme.displayName()} icon", modifier = Modifier.size(49.dp))
@@ -2348,7 +2351,7 @@ private enum class SettingsPage(val title: String) {
 @Composable
 private fun SettingsMenuGroup(content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth().widthIn(max = 820.dp).clip(RoundedCornerShape(16.dp)).background(Panel)
-        .border(1.dp, White.copy(alpha = 0.06f), RoundedCornerShape(16.dp)).padding(5.dp), content = content)
+        .border(1.dp, if (LocalStbPalette.current.glass) LocalStbPalette.current.edge else White.copy(alpha = 0.06f), RoundedCornerShape(16.dp)).padding(5.dp), content = content)
 }
 
 @Composable
@@ -2376,7 +2379,7 @@ private fun SettingsMenuRow(icon: ImageVector, title: String, subtitle: String? 
             },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Gold),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))) {
+        border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, GoldLight)))) {
         Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Icon(icon, contentDescription = null, tint = if (focused) OnAccent else Muted, modifier = Modifier.size(24.dp))
@@ -2503,7 +2506,7 @@ private fun PreferenceRow(title: String, value: String, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Navy, focusedContainerColor = Gold.copy(alpha = 0.18f)),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Gold)))
+        border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, Gold)))
     ) {
         if (isCompactAndroidLayout()) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -2525,7 +2528,7 @@ private fun WideAction(title: String, onClick: () -> Unit, modifier: Modifier = 
         modifier = modifier.height(38.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = Gold),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
+        border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(2.dp, GoldLight)))
     ) { Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.Center) { Text(title, color = if (focused) OnAccent else White, fontSize = 12.sp) } }
 }
 
@@ -2689,7 +2692,7 @@ private fun StbPlaySearchScreen(
                     modifier = Modifier.padding(end = 8.dp).size(40.dp).onFocusChanged { clearFocused = it.isFocused },
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
                     colors = ClickableSurfaceDefaults.colors(containerColor = PanelSoft, focusedContainerColor = Gold),
-                    border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(1.dp, GoldLight)))
+                    border = ClickableSurfaceDefaults.border(border = glassSurfaceBorder(), focusedBorder = Border(BorderStroke(1.dp, GoldLight)))
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = if (clearFocused) OnAccent else White, modifier = Modifier.size(19.dp))
@@ -3118,16 +3121,19 @@ private fun PlayerPreference.displayName(): String = when (this) {
 private fun ThemePreference.next(): ThemePreference = when (this) {
     ThemePreference.BLUE -> ThemePreference.LIGHT
     ThemePreference.LIGHT -> ThemePreference.BLACK
-    ThemePreference.BLACK -> ThemePreference.BLUE
+    ThemePreference.BLACK -> ThemePreference.GLASS
+    ThemePreference.GLASS -> ThemePreference.BLUE
 }
 
 private fun ThemePreference.displayName(): String = when (this) {
+    ThemePreference.GLASS -> "Lightweight Glass"
     ThemePreference.BLUE -> "Blue & gold"
     ThemePreference.LIGHT -> "Ivory & gold"
     ThemePreference.BLACK -> "Black & silver"
 }
 
 private fun ThemePreference.shortName(): String = when (this) {
+    ThemePreference.GLASS -> "Glass"
     ThemePreference.BLUE -> "Blue"
     ThemePreference.LIGHT -> "Ivory"
     ThemePreference.BLACK -> "Black"
@@ -3136,7 +3142,7 @@ private fun ThemePreference.shortName(): String = when (this) {
 private fun ThemePreference.iconResource(): Int = when (this) {
     ThemePreference.BLUE -> R.drawable.icon_blue
     ThemePreference.LIGHT -> R.drawable.icon_light
-    ThemePreference.BLACK -> R.drawable.icon_black
+    ThemePreference.BLACK, ThemePreference.GLASS -> R.drawable.icon_black
 }
 
 private fun ParentalMode.displayName(): String = when (this) {

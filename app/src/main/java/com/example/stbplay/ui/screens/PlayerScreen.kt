@@ -2,6 +2,7 @@
 
 package com.example.stbplay.ui.screens
 
+import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.isAndroidTvDevice
 
 import android.os.Build
@@ -248,6 +249,7 @@ private fun NativePlayerScreen(
     val endedCallback by rememberUpdatedState(onPlaybackEnded)
     var episodePickerVisible by remember(playbackUrl) { mutableStateOf(false) }
 
+    val glassControls = LocalStbPalette.current.glass
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val isAndroidTv = context.isAndroidTvDevice()
     val isMetaQuest = remember(context) {
@@ -618,6 +620,7 @@ private fun NativePlayerScreen(
                 }
             },
             update = {
+                it.configureGlassControls(glassControls)
                 it.configurePhoneGestures(
                     phoneFullscreen && compactLayout && hasTouchscreen && !isAndroidTv && !isMetaQuest && !embeddedMode,
                     phoneActivity
@@ -641,7 +644,7 @@ private fun NativePlayerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val actionColors = ButtonDefaults.colors(
-                        containerColor = Color(0xCC070707), contentColor = Color.White,
+                        containerColor = playerControlTint(0xCC070707), contentColor = Color.White,
                         focusedContainerColor = Color(0xEE070707), focusedContentColor = Color.White
                     )
                     QuestButton(
@@ -671,7 +674,7 @@ private fun NativePlayerScreen(
                     ) { Text("Episodes", fontSize = 11.sp, maxLines = 1) }
                     Box(
                         modifier = Modifier.weight(1f).height(48.dp)
-                            .background(Color(0xCC070707), RoundedCornerShape(12.dp)),
+                            .background(playerControlTint(0xCC070707), RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         CompositionLocalProvider(LocalContentColor provides Color.White) {
@@ -693,12 +696,12 @@ private fun NativePlayerScreen(
                         modifier = Modifier.widthIn(min = if (compactLayout) 108.dp else 116.dp).heightIn(min = 48.dp)
                             .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
                             .questInitialFocus(),
-                        colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
+                        colors = ButtonDefaults.colors(containerColor = playerControlTint(0xCC070707), contentColor = Color.White)
                     ) { Text("←  Back", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
                 }
                 if (compactLayout && !isMetaQuest) Box(
                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).size(52.dp)
-                        .background(Color(0xCC070707), RoundedCornerShape(10.dp)),
+                        .background(playerControlTint(0xCC070707), RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     CompositionLocalProvider(LocalContentColor provides Color.White) {
@@ -748,14 +751,14 @@ private fun NativePlayerScreen(
             if (isMetaQuest) {
                 Row(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 112.dp)
-                        .background(Color(0x99070707), RoundedCornerShape(12.dp)).padding(6.dp),
+                        .background(playerControlTint(0x99070707), RoundedCornerShape(12.dp)).padding(6.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     QuestButton(
                         onClick = { revealPlayerControls(); onBack() },
                         modifier = Modifier.widthIn(min = 92.dp).height(52.dp),
-                        colors = ButtonDefaults.colors(containerColor = Color(0xAA070707), contentColor = Color.White)
+                        colors = ButtonDefaults.colors(containerColor = playerControlTint(0xAA070707), contentColor = Color.White)
                     ) { Text("← Back", fontSize = 15.sp) }
                     if (showChannelStepButtons) {
                         ChannelStepControl(Icons.Filled.SkipPrevious, "Previous channel", {
@@ -771,7 +774,7 @@ private fun NativePlayerScreen(
                 if (compactLayout && !isMetaQuest) {
                     Row(
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)
-                            .background(Color(0x99070707), RoundedCornerShape(9.dp)).padding(4.dp),
+                            .background(playerControlTint(0x99070707), RoundedCornerShape(9.dp)).padding(4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ChannelStepControl(Icons.Filled.SkipPrevious, "Previous channel", {
@@ -790,8 +793,8 @@ private fun NativePlayerScreen(
                         onClick = { onChannelStep(-1); revealPlayerControls() },
                         modifier = Modifier.width(68.dp).height(58.dp),
                         colors = ButtonDefaults.colors(
-                            containerColor = Color(0xAA070707), contentColor = Color.White,
-                            focusedContainerColor = Color(0xCC070707), focusedContentColor = Color.White
+                            containerColor = playerControlTint(0xAA070707), contentColor = Color.White,
+                            focusedContainerColor = playerControlTint(0xCC070707), focusedContentColor = Color.White
                         )
                     ) {
                         Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel", tint = Color.White, modifier = Modifier.size(30.dp))
@@ -800,8 +803,8 @@ private fun NativePlayerScreen(
                         onClick = { onChannelStep(1); revealPlayerControls() },
                         modifier = Modifier.width(68.dp).height(58.dp),
                         colors = ButtonDefaults.colors(
-                            containerColor = Color(0xAA070707), contentColor = Color.White,
-                            focusedContainerColor = Color(0xCC070707), focusedContentColor = Color.White
+                            containerColor = playerControlTint(0xAA070707), contentColor = Color.White,
+                            focusedContainerColor = playerControlTint(0xCC070707), focusedContentColor = Color.White
                         )
                     ) {
                         Icon(Icons.Filled.SkipNext, contentDescription = "Next channel", tint = Color.White, modifier = Modifier.size(30.dp))
@@ -838,7 +841,7 @@ private fun NativePlayerScreen(
                 Row(
                     modifier = Modifier.align(Alignment.TopEnd).padding(18.dp)
                         .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
-                        .background(Color(0xCC070707)).padding(horizontal = 8.dp, vertical = 6.dp),
+                        .background(playerControlTint(0xCC070707)).padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -854,7 +857,7 @@ private fun NativePlayerScreen(
                 color = Color.White,
                 maxLines = 1,
                 modifier = Modifier.align(Alignment.TopStart).padding(18.dp)
-                    .background(Color(0xCC070707), RoundedCornerShape(10.dp))
+                    .background(playerControlTint(0xCC070707), RoundedCornerShape(10.dp))
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             )
         }
@@ -867,7 +870,7 @@ private fun NativePlayerScreen(
             Column(
                 modifier = Modifier.width(if (isAndroidTv) 520.dp else 320.dp).heightIn(max = 470.dp)
                     .then(if (isAndroidTv) Modifier else Modifier.align(Alignment.Center))
-                    .background(Color(0xF5111111), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .background(playerControlTint(0xF5111111), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -931,7 +934,7 @@ private fun ChannelStepControl(
         modifier = Modifier.size(56.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(cornerRadius)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color(0x99070707),
+            containerColor = playerControlTint(0x99070707),
             focusedContainerColor = Color(0xBB070707)
         )
     ) {
@@ -953,14 +956,14 @@ private fun MetaVolumeControl(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.background(Color(0x99070707), RoundedCornerShape(12.dp)).padding(7.dp),
+        modifier = modifier.background(playerControlTint(0x99070707), RoundedCornerShape(12.dp)).padding(7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
         QuestButton(
             onClick = onMaxVolume,
             modifier = Modifier.width(54.dp).height(40.dp),
-            colors = ButtonDefaults.colors(containerColor = Color(0xAA070707), contentColor = Color.White)
+            colors = ButtonDefaults.colors(containerColor = playerControlTint(0xAA070707), contentColor = Color.White)
         ) { Icon(Icons.Filled.VolumeUp, contentDescription = "Maximum volume", tint = Color.White) }
         Box(
             modifier = Modifier.width(54.dp).height(150.dp)
@@ -997,7 +1000,7 @@ private fun MetaVolumeControl(
         QuestButton(
             onClick = onMuteToggle,
             modifier = Modifier.width(54.dp).height(42.dp),
-            colors = ButtonDefaults.colors(containerColor = Color(0xAA070707), contentColor = Color.White)
+            colors = ButtonDefaults.colors(containerColor = playerControlTint(0xAA070707), contentColor = Color.White)
         ) {
             Icon(
                 if (volumePercent == 0) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
@@ -1105,3 +1108,7 @@ internal fun shouldPreferTextureSurface(
     val useCompatibilitySurface = androidBoxVideoCompatibility && isAndroidTvOrTouchlessBox
     return (compactLayout || isAndroidTv) && !useCompatibilitySurface
 }
+
+@Composable
+private fun playerControlTint(fallback: Long): Color =
+    if (LocalStbPalette.current.glass) Color(0xCC111C2A) else Color(fallback)
