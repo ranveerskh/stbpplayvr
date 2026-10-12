@@ -293,6 +293,7 @@ data class StbPlayLibraryState(
     val totalItemsText: String = "",
     val hasMore: Boolean = false,
     val loadingMore: Boolean = false,
+    val focusResetGeneration: Int = 0,
     val emptyMessage: String = "Try another category or refresh the portal."
 )
 
@@ -454,7 +455,7 @@ fun StbPlayApp(
                             ?.let(onEditPortal)
                     }
                 )
-                StbPlayTab.LIVE -> LiveTvScreen(
+                StbPlayTab.LIVE -> androidx.compose.runtime.key(liveState.focusResetGeneration) { LiveTvScreen(
                     state = liveState,
                     channelListState = liveChannelListState,
                     focusedChannelId = focusedLiveChannelId,
@@ -465,7 +466,7 @@ fun StbPlayApp(
                     playingChannelId = playingLiveChannelId,
                     previewActionsRequester = livePreviewActionsRequester,
                     preview = livePreview
-                )
+                ) }
                 StbPlayTab.CONTENT -> ContentBrowserScreen(
                     state = contentState,
                     gridState = contentGridState,
@@ -2956,9 +2957,9 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
                     }
                 }
                 if (error) Text("Incorrect PIN", color = Danger, fontSize = 13.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryAction("Unlock", Modifier.width(210.dp).height(48.dp)) { if (!verified && expectedPin.isNotBlank() && pin == expectedPin) { verified = true; onVerified() } else error = true }
-                    WideAction("Cancel", onCancel, Modifier.width(88.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PrimaryAction("Unlock", Modifier.weight(3f).height(48.dp)) { if (!verified && expectedPin.isNotBlank() && pin == expectedPin) { verified = true; onVerified() } else error = true }
+                    WideAction("Cancel", onCancel, Modifier.weight(1f).height(48.dp))
                 }
             }
         }

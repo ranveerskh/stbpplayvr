@@ -308,6 +308,7 @@ fun ViewerPinPrompt(profile: ViewerProfile, onVerified: () -> Unit, onCancel: ()
     var busy by remember { mutableStateOf(false) }
     var verified by remember { mutableStateOf(false) }
     LaunchedEffect(pin) {
+        busy = false
         if (pin.length >= 4 && !verified) {
             busy = true
             val valid = withContext(Dispatchers.Default) { verifyViewerPin(pin, profile.pinHash) }

@@ -117,6 +117,14 @@ class PlaybackSmokeTest {
         }
         val (movieView, player) = awaitVideo()
         rule.runOnIdle { movieView.showController() }
+        rule.runOnIdle {
+            val panel = movieView.findViewById<View>(androidx.media3.ui.R.id.exo_bottom_bar)
+            val timeline = movieView.findViewById<View>(androidx.media3.ui.R.id.exo_progress)
+            val panelBounds = android.graphics.Rect(); val timelineBounds = android.graphics.Rect()
+            assertTrue(panel.getGlobalVisibleRect(panelBounds))
+            assertTrue(timeline.getGlobalVisibleRect(timelineBounds))
+            assertTrue("Timeline must stay within Glass panel: $timelineBounds / $panelBounds", panelBounds.contains(timelineBounds))
+        }
         saveThemePreview(rule, "player-glass-" + if (isTv) "tv" else "phone")
         rule.runOnIdle {
             assertTrue(player.isPlaying)

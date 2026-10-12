@@ -25,9 +25,9 @@ android {
         applicationId = "com.example.stbplay"
         minSdk = 26
         targetSdk = 35
-        versionCode = 78
+        versionCode = 79
         // Signed test candidate; the verified 2.0.20.6 source remains preserved.
-        versionName = "2.0.20.9"
+        versionName = "2.0.20.10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

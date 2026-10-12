@@ -463,6 +463,7 @@ private fun StbPlayRoot(
     // Event-only state: recording remote input must not recompose the home.
     val lastHomeInteractionMs = remember { longArrayOf(0L) }
     var liveCategoryIndex by remember { mutableStateOf(0) }
+    var liveFocusResetGeneration by remember { mutableStateOf(0) }
     var contentCategoryIndex by remember { mutableStateOf(0) }
     var focusedLiveChannelId by remember { mutableStateOf<String?>(null) }
     var focusedContentId by remember { mutableStateOf<String?>(null) }
@@ -1305,6 +1306,7 @@ private fun StbPlayRoot(
     val liveState = StbPlayLibraryState(
         loading = liveProjectionLoading || loadingLiveCategoryId == uiLiveCategories.getOrNull(liveCategoryIndex)?.id,
         categories = uiLiveCategories,
+        focusResetGeneration = liveFocusResetGeneration,
         selectedCategory = liveCategoryIndex.coerceIn(0, (uiLiveCategories.size - 1).coerceAtLeast(0)),
         items = liveUiItems,
         totalItemsText = "${filteredLive.size} channels",
@@ -1708,6 +1710,7 @@ private fun StbPlayRoot(
                             livePreviewStream = null
                             if (selectedTab == StbPlayTab.LIVE && parentalMode != ParentalMode.ADULT_ONLY && uiLiveCategories.getOrNull(liveCategoryIndex)?.isAdult == true) {
                                 liveCategoryIndex = 0
+                                liveFocusResetGeneration++
                                 focusedLiveChannelId = null
                                 personalPinUnlockedCategory = null
                                 scope.launch { liveChannelListState.scrollToItem(0) }

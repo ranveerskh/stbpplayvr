@@ -31,6 +31,8 @@ class TvNavigationFocusTest {
     private var theme by mutableStateOf(ThemePreference.BLUE)
     private var selected by mutableStateOf(StbPlayTab.HOME)
     private var loading by mutableStateOf(false)
+    private var liveCategories by mutableStateOf(listOf(UiCategory("all", "All")))
+    private var liveFocusReset by mutableStateOf(0)
     private var focusedMovie by mutableStateOf<String?>(null)
     private var favorites by mutableStateOf(channels.take(4) + movies.take(4))
     private var played = 0
@@ -45,7 +47,7 @@ class TvNavigationFocusTest {
                 Box(Modifier.fillMaxSize()) {
                     StbPlayApp(
                         homeState = StbPlayHomeState(heroes = movies.take(1), rows = listOf(UiMediaRow("recommended", "Recommended", items = movies))),
-                        liveState = StbPlayLibraryState(loading = loading, categories = listOf(UiCategory("all", "All")), items = if (loading) emptyList() else channels),
+                        liveState = StbPlayLibraryState(loading = loading, categories = liveCategories, focusResetGeneration = liveFocusReset, items = if (loading) emptyList() else channels),
                         contentState = StbPlayLibraryState(categories = listOf(UiCategory("all", "All")), items = movies),
                         favouritesState = StbPlayLibraryState(items = favorites), settingsState = StbPlaySettingsState(themePreference = theme),
                         onActivateLicense = {}, selectedTab = selected,
@@ -73,6 +75,21 @@ class TvNavigationFocusTest {
             }
         }
         rule.waitForIdle()
+    }
+
+    @Test fun adultCategoryLoadingMovesFocusToFirstChannelAndResetReturnsToTop() {
+        theme = ThemePreference.GLASS
+        liveCategories = listOf(UiCategory("adult", "Adult", isAdult = true))
+        loading = true
+        start(StbPlayTab.LIVE)
+        rule.onNodeWithText("Loading channels…").assertIsDisplayed()
+        rule.runOnIdle { loading = false }
+        focused("tv-focus:live:ch1")
+        rail(StbPlayTab.HOME); ok()
+        rule.runOnIdle { liveCategories = listOf(UiCategory("all", "All")); liveFocusReset++ }
+        rail(StbPlayTab.LIVE); ok()
+        focused("tv-focus:category:all")
+        rule.onNodeWithText("Adult").assertDoesNotExist()
     }
 
     private fun focused(tag: String) {

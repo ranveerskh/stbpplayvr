@@ -29,6 +29,8 @@ internal fun GlassAppearanceSettings(adultOnly: Boolean, normalGlass: Boolean) {
                 val copy = importCustomBackground(context, uri)
                 manager.setCustomGlassBackground(copy.absolutePath, adultOnly)
                 message = "Background saved on this device."
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 message = error.message ?: "Could not import this image. Your background is unchanged."
             } finally { busy = false }

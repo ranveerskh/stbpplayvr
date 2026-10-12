@@ -15,6 +15,29 @@ import org.junit.Test
 
 class ViewerProfilesUiTest {
     @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
+    @Test fun validOwnerAndPersonalPinsUnlockWithoutSubmitting() {
+        var ownerCalls = 0
+        rule.setContent { STBPlayTheme { PinPrompt("Owner", "1234", { ownerCalls++ }, {}) } }
+        rule.onNodeWithText("1").performClick()
+        rule.runOnIdle { assertEquals(0, ownerCalls) }
+        listOf("2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
+        rule.waitUntil(5_000) { ownerCalls == 1 }
+        rule.waitForIdle()
+        rule.runOnIdle { assertEquals(1, ownerCalls) }
+    }
+    @Test fun personalPinAutoUnlocksAndRejectsWrongDigits() {
+        var calls = 0
+        val hash = com.example.stbplay.data.encodeViewerPin("1234")
+        rule.setContent { STBPlayTheme {
+            ViewerPinPrompt(ViewerProfile("adult", "Adult", 30, pinHash = hash), { calls++ }, {})
+        } }
+        rule.onNode(hasSetTextAction()).performTextReplacement("9999")
+        rule.waitForIdle()
+        rule.runOnIdle { assertEquals(0, calls) }
+        rule.onNode(hasSetTextAction()).performTextReplacement("1234")
+        rule.waitUntil(10_000) { calls == 1 }
+        rule.runOnIdle { assertEquals(1, calls) }
+    }
     @Test fun glassProfilesRemainReadableAndKidsDoNotRequirePin() {
         val owner = ViewerProfile("owner", "Owner", 18, avatar = "family:indian_dad")
         val user = ViewerProfile("user", "User", 25, avatar = "family:indian_mom")
@@ -67,7 +90,7 @@ class ViewerProfilesUiTest {
         rule.onNodeWithText("Incorrect PIN").assertIsDisplayed()
         rule.runOnIdle { assertEquals(kid, selected) }
         listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
-        rule.onNodeWithText("Unlock").performClick()
+        rule.waitForIdle()
         rule.runOnIdle { assertEquals(owner, selected) }
         rule.onNodeWithText("Manage profiles").performClick()
         rule.onNodeWithText("Protected content").assertIsDisplayed()
@@ -149,7 +172,7 @@ class ViewerProfilesUiTest {
         rule.onNodeWithText("Incorrect PIN").assertIsDisplayed()
         rule.runOnIdle { assertNull(selected); assertNull(approved) }
         listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
-        rule.onNodeWithText("Unlock").performClick()
+        rule.waitForIdle()
         rule.runOnIdle { assertEquals(true, approved?.adultApproved); assertEquals(approved, selected) }
     }
 
@@ -187,7 +210,7 @@ class ViewerProfilesUiTest {
         } }
         rule.onNodeWithText("Manage profiles").performScrollTo().performClick()
         listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
-        rule.onNodeWithText("Unlock").performClick()
+        rule.waitForIdle()
         rule.onNodeWithText("Edit Owner").assertExists()
         val television = InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice()
         if (television) rule.onNode(hasText("Owner") and hasClickAction()).performScrollTo().performClick()
