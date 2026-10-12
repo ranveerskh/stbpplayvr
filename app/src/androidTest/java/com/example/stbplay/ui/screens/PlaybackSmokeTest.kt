@@ -117,7 +117,12 @@ class PlaybackSmokeTest {
             }
         }
         val (movieView, player) = awaitVideo()
-        rule.runOnIdle { movieView.showController() }
+        rule.runOnIdle {
+            // Reveal both native and Compose controls through the existing input path.
+            movieView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN))
+            movieView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN))
+            movieView.showController()
+        }
         rule.runOnIdle {
             val panel = movieView.findViewById<View>(androidx.media3.ui.R.id.exo_bottom_bar)
             val timeline = movieView.findViewById<View>(androidx.media3.ui.R.id.exo_progress)

@@ -49,7 +49,7 @@ fun Modifier.stbBackdrop(): Modifier {
         .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.12f))
 }
 
-/** Fixed surface reflection; it does not sample or blur pixels behind the panel. */
+/** Draw static reflection beneath content so nested panels cannot wash out text or yellow focus. */
 @Composable
 fun Modifier.glassSheen(radius: Dp = 12.dp): Modifier {
     if (!LocalStbPalette.current.glass) return this
@@ -63,11 +63,11 @@ fun Modifier.glassSheen(radius: Dp = 12.dp): Modifier {
         )
     }
     return drawWithContent {
-        drawContent()
         val r = radius.toPx()
         drawRoundRect(
             brush = reflection,
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r)
         )
+        drawContent()
     }
 }
