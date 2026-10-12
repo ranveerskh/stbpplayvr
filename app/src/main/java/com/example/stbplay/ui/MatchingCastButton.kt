@@ -11,7 +11,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.cast.MediaRouteButton
-import androidx.tv.material3.LocalContentColor
+import androidx.compose.material3.LocalContentColor
 import androidx.tv.material3.Text
 import com.example.stbplay.ui.theme.*
 
