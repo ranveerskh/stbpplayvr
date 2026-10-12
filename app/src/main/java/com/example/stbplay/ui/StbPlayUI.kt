@@ -294,6 +294,7 @@ data class StbPlayLibraryState(
     val hasMore: Boolean = false,
     val loadingMore: Boolean = false,
     val focusResetGeneration: Int = 0,
+    val focusFirstChannelAfterLoad: Boolean = false,
     val emptyMessage: String = "Try another category or refresh the portal."
 )
 
@@ -1228,8 +1229,8 @@ private fun LiveTvScreen(
     TvPageEntry(localFocusedChannelId?.takeIf { id -> state.items.any { it.id == id } }?.let { "live:$it" }
         ?: state.categories.getOrNull(state.selectedCategory)?.let { "category:${it.id}" })
     val focusNavigation = LocalTvFocusNavigation.current
-    LaunchedEffect(categoryKey, state.loading, state.items.firstOrNull()?.id) {
-        if (denseTv && state.categories.getOrNull(state.selectedCategory)?.isAdult == true && !state.loading && state.items.isNotEmpty() && localFocusedChannelId == null) {
+    LaunchedEffect(categoryKey, state.loading, state.items.firstOrNull()?.id, state.focusFirstChannelAfterLoad) {
+        if (denseTv && state.focusFirstChannelAfterLoad && !state.loading && state.items.isNotEmpty() && localFocusedChannelId == null) {
             val first = state.items.first().id
             localFocusedChannelId = first
             focusNavigation?.enterPage()

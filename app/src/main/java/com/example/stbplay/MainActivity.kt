@@ -464,6 +464,7 @@ private fun StbPlayRoot(
     val lastHomeInteractionMs = remember { longArrayOf(0L) }
     var liveCategoryIndex by remember { mutableStateOf(0) }
     var liveFocusResetGeneration by remember { mutableStateOf(0) }
+    var liveFocusFirstAfterLoad by remember { mutableStateOf(false) }
     var contentCategoryIndex by remember { mutableStateOf(0) }
     var focusedLiveChannelId by remember { mutableStateOf<String?>(null) }
     var focusedContentId by remember { mutableStateOf<String?>(null) }
@@ -1307,6 +1308,7 @@ private fun StbPlayRoot(
         loading = liveProjectionLoading || loadingLiveCategoryId == uiLiveCategories.getOrNull(liveCategoryIndex)?.id,
         categories = uiLiveCategories,
         focusResetGeneration = liveFocusResetGeneration,
+        focusFirstChannelAfterLoad = liveFocusFirstAfterLoad,
         selectedCategory = liveCategoryIndex.coerceIn(0, (uiLiveCategories.size - 1).coerceAtLeast(0)),
         items = liveUiItems,
         totalItemsText = "${filteredLive.size} channels",
@@ -1444,6 +1446,7 @@ private fun StbPlayRoot(
                     scope.launch { liveChannelListState.scrollToItem(0) }
                 }
                 liveCategoryIndex = index
+                liveFocusFirstAfterLoad = uiLiveCategories.getOrNull(index)?.isLocked == true
                 uiLiveCategories.getOrNull(index)?.let(::loadLiveCategory)
             }
             StbPlayTab.CONTENT -> {
@@ -1708,7 +1711,7 @@ private fun StbPlayRoot(
                             tvLivePreviewPlayback = false
                             livePreviewFullscreen = false
                             livePreviewStream = null
-                            if (selectedTab == StbPlayTab.LIVE && parentalMode != ParentalMode.ADULT_ONLY && uiLiveCategories.getOrNull(liveCategoryIndex)?.isAdult == true) {
+                            if (selectedTab == StbPlayTab.LIVE && uiLiveCategories.getOrNull(liveCategoryIndex)?.isAdult == true) {
                                 liveCategoryIndex = 0
                                 liveFocusResetGeneration++
                                 focusedLiveChannelId = null
@@ -1720,6 +1723,7 @@ private fun StbPlayRoot(
                                 scope.launch { contentGridState.scrollToItem(0) }
                             }
                             unlockedAdultCategoryKey = null
+                            liveFocusFirstAfterLoad = false
                         }
                         selectedTab = tab
                     },

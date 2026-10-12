@@ -5,8 +5,10 @@ previous signed test 2.0.20.9 fe016c026d10cf9baa7b4989c35e8e64fb18ace3.
 All work remains on feature/android-glass-player-2.0.20.6. No stable merge/release.
 
 1. After protected live category loading, first-channel focus waits for actual rows.
-2. Leaving a protected live category in normal mode resets selection, stored channel
-   focus, scroll and category authorization. Adult-only mode keeps its existing intent.
+2. Leaving an adult live category resets selection, stored channel focus, scroll and
+   category authorization. Adult-only mode keeps its filter and returns to its top
+   Adult only category. First-channel auto-focus is requested by a protected category
+   selection, not ordinary re-entry into an adult-only screen.
 3. Provider channel-row projection runs on Dispatchers.Default, with an explicit
    loading state and category identity check to avoid showing stale category rows.
 4. Owner and personal PIN prompts auto-verify correct input. Unlock is the primary
