@@ -120,6 +120,11 @@ class PlaybackSmokeTest {
             assertEquals(10_000L, player.seekForwardIncrement)
             assertEquals(5_000L, player.seekBackIncrement)
         }
+        val seekStart = pauseAtKnownPosition(player)
+        rule.runOnIdle { player.seekForward() }
+        rule.waitUntil(10_000) { rule.runOnIdle { player.currentPosition == seekStart + 10_000L } }
+        rule.runOnIdle { player.seekBack() }
+        rule.waitUntil(10_000) { rule.runOnIdle { player.currentPosition == seekStart + 5_000L } }
         rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.waitForIdle()
         assertEquals(1, backCount)
@@ -176,7 +181,31 @@ class PlaybackSmokeTest {
         rule.onNodeWithText("Full").performClick()
         rule.waitForIdle()
         rule.runOnIdle { assertSame(player, view.player); assertEquals(position, player.currentPosition) }
+        var originalBrightness = -1f
+        rule.runOnIdle {
+            originalBrightness = rule.activity.window.attributes.screenBrightness
+            view.hideController()
+            val now = android.os.SystemClock.uptimeMillis()
+            fun finger(action: Int, x: Float, y: Float): Boolean {
+                val properties = android.view.MotionEvent.PointerProperties().apply {
+                    id = 0; toolType = android.view.MotionEvent.TOOL_TYPE_FINGER
+                }
+                val coords = android.view.MotionEvent.PointerCoords().apply {
+                    this.x = x; this.y = y; pressure = 1f; size = 1f
+                }
+                val event = android.view.MotionEvent.obtain(now, now, action, 1, arrayOf(properties),
+                    arrayOf(coords), 0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_TOUCHSCREEN, 0)
+                return try { view.dispatchTouchEvent(event) } finally { event.recycle() }
+            }
+            val x = view.width * 0.22f
+            finger(android.view.MotionEvent.ACTION_DOWN, x, view.height * 0.6f)
+            assertTrue(finger(android.view.MotionEvent.ACTION_MOVE, x, view.height * 0.3f))
+            finger(android.view.MotionEvent.ACTION_UP, x, view.height * 0.3f)
+            assertTrue("Fullscreen swipe must set a player-window brightness", rule.activity.window.attributes.screenBrightness >= 0f)
+            assertEquals("Brightness gesture must not seek the video", position, player.currentPosition)
+        }
         rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.runOnIdle { assertEquals(originalBrightness, rule.activity.window.attributes.screenBrightness, 0.001f) }
         rule.waitForIdle()
         val returnedView = playerView()
         rule.runOnIdle { assertSame(player, returnedView.player) }

@@ -1,4 +1,4 @@
-name: Verify phone gestures and VOD seek test APK
+name: Verify Lightweight Glass and phone player test APK
 
 on:
   push:
@@ -47,8 +47,8 @@ jobs:
           STB_RELEASE_KEY_ALIAS: ${{ secrets.STB_RELEASE_KEY_ALIAS }}
           STB_RELEASE_KEY_PASSWORD: ${{ secrets.STB_RELEASE_KEY_PASSWORD }}
         run: |
-          grep -Fq 'versionCode = 76' app/build.gradle.kts
-          grep -Fq 'versionName = "2.0.20.7"' app/build.gradle.kts
+          grep -Fq 'versionCode = 77' app/build.gradle.kts
+          grep -Fq 'versionName = "2.0.20.8"' app/build.gradle.kts
           chmod +x ./gradlew
           ./gradlew --no-daemon testDebugUnitTest assembleRelease assembleDebugAndroidTest
       - name: Check lint against exact tested baseline
@@ -76,10 +76,10 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.TvNavigationFocusTest,com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.screens.PlaybackSmokeTest,com.example.stbplay.ui.screens.PhonePlaybackGesturesTest,com.example.stbplay.ui.SearchReturnRegressionTest,com.example.stbplay.data.SettingsSearchHistoryTest,com.example.stbplay.ui.ViewerStorageTest,com.example.stbplay.ui.ViewerProfilesUiTest
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.TvNavigationFocusTest,com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.screens.PlaybackSmokeTest,com.example.stbplay.ui.screens.PhonePlaybackGesturesTest,com.example.stbplay.ui.SearchReturnRegressionTest,com.example.stbplay.data.SettingsSearchHistoryTest,com.example.stbplay.data.ThemePreferenceStorageTest,com.example.stbplay.ui.ViewerStorageTest,com.example.stbplay.ui.ViewerProfilesUiTest
             mkdir -p "$RUNNER_TEMP/theme-previews"
             for image in $(adb shell ls /sdcard/Pictures/STBPlayThemePreviews | tr -d '\r'); do adb pull "/sdcard/Pictures/STBPlayThemePreviews/$image" "$RUNNER_TEMP/theme-previews/$image"; done
-            test "$(find "$RUNNER_TEMP/theme-previews" -name 'tv-*.png' | wc -l)" -eq 9
+            test "$(find "$RUNNER_TEMP/theme-previews" -name 'tv-*.png' | wc -l)" -eq 12
       - name: Preserve TV reports before the phone run
         if: always()
         run: |
@@ -97,10 +97,10 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.PhoneNavigationSmokeTest,com.example.stbplay.ui.PhoneUiBatch2Test,com.example.stbplay.ui.screens.PlaybackSmokeTest,com.example.stbplay.ui.screens.PhonePlaybackGesturesTest,com.example.stbplay.ui.SearchReturnRegressionTest,com.example.stbplay.data.SettingsSearchHistoryTest,com.example.stbplay.ui.ViewerStorageTest,com.example.stbplay.ui.ViewerProfilesUiTest
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.stbplay.ui.CatalogueProjectionsTest,com.example.stbplay.ui.PhoneNavigationSmokeTest,com.example.stbplay.ui.PhoneUiBatch2Test,com.example.stbplay.ui.screens.PlaybackSmokeTest,com.example.stbplay.ui.screens.PhonePlaybackGesturesTest,com.example.stbplay.ui.SearchReturnRegressionTest,com.example.stbplay.data.SettingsSearchHistoryTest,com.example.stbplay.data.ThemePreferenceStorageTest,com.example.stbplay.ui.ViewerStorageTest,com.example.stbplay.ui.ViewerProfilesUiTest
             mkdir -p "$RUNNER_TEMP/theme-previews"
             for image in $(adb shell ls /sdcard/Pictures/STBPlayThemePreviews | tr -d '\r'); do adb pull "/sdcard/Pictures/STBPlayThemePreviews/$image" "$RUNNER_TEMP/theme-previews/$image"; done
-            test "$(find "$RUNNER_TEMP/theme-previews" -name 'phone-*.png' | wc -l)" -eq 11
+            test "$(find "$RUNNER_TEMP/theme-previews" -name 'phone-*.png' | wc -l)" -eq 13
       - name: Preserve phone reports
         if: always()
         run: |
@@ -113,9 +113,9 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/stb-apk-verification.txt"
           grep -Fq 'Signer #1 certificate SHA-256 digest: 91943d0efc4125eb6aeda132ba6b8d79855496e030477c2d5cd00e9bedd4fdb0' "$RUNNER_TEMP/stb-apk-verification.txt"
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" > "$RUNNER_TEMP/stb-apk-badging.txt"
-          grep -F "package: name='com.example.stbplay' versionCode='76' versionName='2.0.20.7'" "$RUNNER_TEMP/stb-apk-badging.txt"
-          cp "$apk" STB-PLAY-Android-2.0.20.7-phone-test.apk
-          sha256sum STB-PLAY-Android-2.0.20.7-phone-test.apk > "$RUNNER_TEMP/stb-apk-sha256.txt"
+          grep -F "package: name='com.example.stbplay' versionCode='77' versionName='2.0.20.8'" "$RUNNER_TEMP/stb-apk-badging.txt"
+          cp "$apk" STB-PLAY-Android-2.0.20.8-phone-test.apk
+          sha256sum STB-PLAY-Android-2.0.20.8-phone-test.apk > "$RUNNER_TEMP/stb-apk-sha256.txt"
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -137,7 +137,7 @@ jobs:
       - name: Upload verified test APK only
         uses: actions/upload-artifact@v4
         with:
-          name: STB-PLAY-Android-2.0.20.7-phone-test-signed
-          path: STB-PLAY-Android-2.0.20.7-phone-test.apk
+          name: STB-PLAY-Android-2.0.20.8-phone-test-signed
+          path: STB-PLAY-Android-2.0.20.8-phone-test.apk
           if-no-files-found: error
           retention-days: 14
