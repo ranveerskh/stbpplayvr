@@ -18,6 +18,7 @@ import androidx.test.uiautomator.UiDevice
 import com.example.stbplay.data.VodCatalogBatch
 import com.example.stbplay.isAndroidTvDevice
 import com.example.stbplay.ui.theme.STBPlayTheme
+import com.example.stbplay.data.ThemePreference
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -27,8 +28,12 @@ class TvNavigationFocusTest {
     private val device get() = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     private val channels = (1..45).map { UiMedia("ch$it", "Channel $it", streamType = "live") }
     private val movies = (1..35).map { UiMedia("film$it", "Movie $it", portrait = true) }
+    private var theme by mutableStateOf(ThemePreference.BLUE)
     private var selected by mutableStateOf(StbPlayTab.HOME)
     private var loading by mutableStateOf(false)
+    private var liveCategories by mutableStateOf(listOf(UiCategory("all", "All")))
+    private var liveFocusReset by mutableStateOf(0)
+    private var focusFirstChannelAfterLoad by mutableStateOf(false)
     private var focusedMovie by mutableStateOf<String?>(null)
     private var favorites by mutableStateOf(channels.take(4) + movies.take(4))
     private var played = 0
@@ -38,14 +43,14 @@ class TvNavigationFocusTest {
         assertTrue("Must run on a real Android TV system image", InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice())
         selected = tab
         rule.setContent {
-            STBPlayTheme {
+            STBPlayTheme(preference = theme) {
                 val previewRequester = remember { FocusRequester() }
                 Box(Modifier.fillMaxSize()) {
                     StbPlayApp(
                         homeState = StbPlayHomeState(heroes = movies.take(1), rows = listOf(UiMediaRow("recommended", "Recommended", items = movies))),
-                        liveState = StbPlayLibraryState(loading = loading, categories = listOf(UiCategory("all", "All")), items = if (loading) emptyList() else channels),
+                        liveState = StbPlayLibraryState(loading = loading, categories = liveCategories, focusResetGeneration = liveFocusReset, focusFirstChannelAfterLoad = focusFirstChannelAfterLoad, items = if (loading) emptyList() else channels),
                         contentState = StbPlayLibraryState(categories = listOf(UiCategory("all", "All")), items = movies),
-                        favouritesState = StbPlayLibraryState(items = favorites), settingsState = StbPlaySettingsState(),
+                        favouritesState = StbPlayLibraryState(items = favorites), settingsState = StbPlaySettingsState(themePreference = theme),
                         onActivateLicense = {}, selectedTab = selected,
                         liveChannelListState = rememberLazyListState(), focusedLiveChannelId = null,
                         focusedContentId = focusedMovie, contentGridState = rememberLazyGridState(),
@@ -73,6 +78,22 @@ class TvNavigationFocusTest {
         rule.waitForIdle()
     }
 
+    @Test fun adultCategoryLoadingMovesFocusToFirstChannelAndResetReturnsToTop() {
+        theme = ThemePreference.GLASS
+        liveCategories = listOf(UiCategory("adult", "Adult", isAdult = true))
+        loading = true
+        focusFirstChannelAfterLoad = true
+        start(StbPlayTab.LIVE)
+        rule.onNodeWithText("Loading channels…").assertIsDisplayed()
+        rule.runOnIdle { loading = false }
+        focused("tv-focus:live:ch1")
+        rail(StbPlayTab.HOME); ok()
+        rule.runOnIdle { liveCategories = listOf(UiCategory("all", "All")); liveFocusReset++; focusFirstChannelAfterLoad = false }
+        rail(StbPlayTab.LIVE); ok()
+        focused("tv-focus:category:all")
+        rule.onNodeWithText("Adult").assertDoesNotExist()
+    }
+
     private fun focused(tag: String) {
         try {
             rule.waitUntil(8_000) { rule.onAllNodes(hasTestTag(tag) and isFocused()).fetchSemanticsNodes().isNotEmpty() }
@@ -81,14 +102,18 @@ class TvNavigationFocusTest {
         }
         rule.onNodeWithTag(tag).assertIsFocused().assertIsDisplayed()
         if (tag != "tv-focus:settings:back") {
-            val pixels = rule.onNodeWithTag(tag).captureToImage().toPixelMap()
-            val gold = (0 until minOf(8, pixels.height)).any { y ->
-                val color = pixels[pixels.width / 2, y]
-                kotlin.math.abs(color.red - 214f / 255f) < 0.08f &&
-                    kotlin.math.abs(color.green - 172f / 255f) < 0.08f &&
-                    kotlin.math.abs(color.blue - 88f / 255f) < 0.08f
+            fun hasYellowHighlight(): Boolean {
+                val pixels = rule.onNodeWithTag(tag).captureToImage().toPixelMap()
+                return (0 until minOf(8, pixels.height)).any { y ->
+                    val color = pixels[pixels.width / 2, y]
+                    kotlin.math.abs(color.red - 1f) < 0.08f &&
+                        kotlin.math.abs(color.green - 209f / 255f) < 0.08f &&
+                        kotlin.math.abs(color.blue - 102f / 255f) < 0.08f
+                }
             }
-            assertTrue("Focused control must also show its yellow highlight: $tag", gold)
+            rule.waitForIdle()
+            rule.waitUntil(3_000) { hasYellowHighlight() }
+            assertTrue("Focused control must also show its yellow highlight: $tag", hasYellowHighlight())
         }
     }
     private fun rail(tab: StbPlayTab) {
@@ -99,6 +124,26 @@ class TvNavigationFocusTest {
     private fun left() { device.pressDPadLeft(); rule.waitForIdle() }
     private fun down() { device.pressDPadDown(); rule.waitForIdle() }
     private fun ok() { device.pressDPadCenter(); rule.waitForIdle() }
+
+    @Test fun modernThemesKeepFocusVisibleAcrossHomeLiveAndMovies() {
+        start()
+        ThemePreference.entries.forEachIndexed { index, preference ->
+            rule.runOnIdle { theme = preference }
+            rule.waitForIdle()
+            rail(StbPlayTab.HOME); right(); focused("tv-focus:home:hero")
+            saveThemePreview(rule, "tv-home-${preference.name.lowercase()}")
+            rail(StbPlayTab.LIVE); right()
+            // First entry starts at categories; subsequent entries restore the channel.
+            if (index == 0) { focused("tv-focus:category:all"); right() }
+            focused("tv-focus:live:ch1")
+            saveThemePreview(rule, "tv-live-${preference.name.lowercase()}")
+            rail(StbPlayTab.CONTENT); ok()
+            // The remembered movie is the entry target after the first theme.
+            if (index == 0) { focused("tv-focus:category:all"); right() }
+            focused("tv-focus:media:movie:film1")
+            saveThemePreview(rule, "tv-movies-${preference.name.lowercase()}")
+        }
+    }
 
     @Test fun liveRightWorksWithoutOkAndLeftReturnsToLiveRail() {
         start()
@@ -130,6 +175,7 @@ class TvNavigationFocusTest {
     @Test fun settingsSubpageAndBackRestoreActualMenuFocus() {
         start(StbPlayTab.SETTINGS)
         focused("tv-focus:settings:Subscription")
+        down(); focused("tv-focus:settings:Who's watching?")
         down(); focused("tv-focus:settings:Content sources")
         ok(); focused("tv-focus:settings:back")
         device.pressBack(); rule.waitForIdle()

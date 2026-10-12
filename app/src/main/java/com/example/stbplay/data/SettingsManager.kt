@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -13,13 +14,15 @@ import com.example.stbplay.isAndroidTvDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onStart
 import org.json.JSONArray
 import org.json.JSONObject
 
 private val Context.dataStore by preferencesDataStore(name = "stb_play_settings")
 
 enum class PlayerPreference { AUTO, INTERNAL, VLC }
-enum class ThemePreference { BLUE, LIGHT, BLACK }
+enum class ThemePreference { BLUE, LIGHT, BLACK, GLASS }
+enum class CategoryDropdownPosition { TOP, BOTTOM }
 enum class ParentalMode { ALL_CONTENT, HIDE_ADULT, ADULT_ONLY }
 enum class SubtitlePreference { AUTO, OFF, ENGLISH, HINDI, PUNJABI }
 
@@ -41,6 +44,65 @@ data class SettingsBootstrap(
  */
 class SettingsManager(private val context: Context) {
 
+    private val keyViewers = stringPreferencesKey("local_viewers_v1")
+    private val keyActiveViewer = stringPreferencesKey("active_viewer_v1")
+    private val keyPhoneSetup = booleanPreferencesKey("phone_setup_v1")
+    val viewerProfiles: Flow<List<ViewerProfile>> = context.dataStore.data.map { parseViewers(it[keyViewers]) }
+    val activeViewer: Flow<ViewerProfile> = context.dataStore.data.map { prefs ->
+        val viewers = parseViewers(prefs[keyViewers])
+        viewers.firstOrNull { it.id == prefs[keyActiveViewer] } ?: viewers.first()
+    }
+    val phoneSetupComplete: Flow<Boolean> = context.dataStore.data.map { it[keyPhoneSetup] ?: false }
+    suspend fun completePhoneSetup() { context.dataStore.edit { it[keyPhoneSetup] = true } }
+    suspend fun activateViewer(id: String) { context.dataStore.edit { prefs ->
+        if (parseViewers(prefs[keyViewers]).any { it.id == id }) prefs[keyActiveViewer] = id
+    } }
+    suspend fun saveViewer(viewer: ViewerProfile, pin: String) {
+        val hash = if (viewer.isKids) "" else if (pin.isBlank()) viewer.pinHash else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { encodeViewerPin(pin) }
+        context.dataStore.edit { prefs ->
+            val current = parseViewers(prefs[keyViewers])
+            val saved = viewer.copy(pinHash = hash)
+            val viewers = if (current.any { it.id == viewer.id }) current.map { if (it.id == viewer.id) saved else it } else current + saved
+            prefs[keyViewers] = serializeViewers(viewers)
+        }
+    }
+    /** UI supplies an authenticated owner session or the currently unlocked profile. */
+    suspend fun deleteViewer(id: String, actorId: String, ownerAuthorized: Boolean = false) {
+        require(id != "owner") { "The owner profile cannot be deleted." }
+        context.dataStore.edit { prefs ->
+            val viewers = parseViewers(prefs[keyViewers])
+            require(viewers.any { it.id == actorId }) { "Unknown profile." }
+            require((actorId == "owner" && ownerAuthorized) || (actorId == id && prefs[keyActiveViewer] == actorId)) { "You can only delete your own profile." }
+            prefs[keyViewers] = serializeViewers(viewers.filterNot { it.id == id })
+            if (prefs[keyActiveViewer] == id) prefs[keyActiveViewer] = "owner"
+            prefs.asMap().keys.filter { key ->
+                key.name.endsWith(":view:$id") && listOf(keyFavoritesPrefix, keySearchHistoryPrefix, keyProgressPrefix).any { key.name.startsWith(it) }
+            }.forEach { key -> prefs.remove(key) }
+            prefs.remove(intPreferencesKey("phone_movie_columns_viewer_$id"))
+        }
+    }
+    private fun serializeViewers(viewers: List<ViewerProfile>): String {
+        return JSONArray().apply { viewers.forEach { v -> put(JSONObject().apply {
+                put("id", v.id); put("name", v.name); put("age", v.age); put("avatar", v.avatar); put("pinHash", v.pinHash)
+                put("pinMode", v.pinMode.name); put("adultApproved", v.adultApproved)
+                put("approvalPortalKey", v.approvalPortalKey)
+                put("allowedLive", JSONArray(v.allowedLiveCategories.toList())); put("allowedVod", JSONArray(v.allowedVodCategories.toList()))
+            }) } }.toString()
+    }
+    private fun parseViewers(raw: String?): List<ViewerProfile> = runCatching {
+        val array = JSONArray(raw ?: "[]")
+        (0 until array.length()).map { index -> array.getJSONObject(index).let { v ->
+            ViewerProfile(v.getString("id"), v.getString("name"), v.getInt("age"), v.optString("avatar", "🙂"), v.optString("pinHash"),
+                v.optJSONArray("allowedLive").let { a -> if (a == null) emptySet() else (0 until a.length()).mapTo(HashSet()) { a.getString(it) } },
+                v.optJSONArray("allowedVod").let { a -> if (a == null) emptySet() else (0 until a.length()).mapTo(HashSet()) { a.getString(it) } }, v.optString("approvalPortalKey"), runCatching { ViewerPinMode.valueOf(v.optString("pinMode", "PROFILE_ENTRY")) }.getOrDefault(ViewerPinMode.PROFILE_ENTRY), v.optBoolean("adultApproved", true))
+        } }.ifEmpty { listOf(ViewerProfile("owner", "Owner", 18)) }
+    }.getOrElse { listOf(ViewerProfile("owner", "Owner", 18)) }
+    private fun personalProfileId(prefs: androidx.datastore.preferences.core.Preferences): String {
+        val portal = activeProfileId(prefs)
+        val viewer = prefs[keyActiveViewer] ?: "owner"
+        return if (portal.isBlank() || viewer == "owner") portal else "$portal:view:$viewer"
+    }
+
     private val keyPortals = stringPreferencesKey("portal_profiles_v2")
     private val keyActivePortal = stringPreferencesKey("active_portal_id")
     private val keySharedDeviceMac = stringPreferencesKey("shared_device_mac")
@@ -48,9 +110,12 @@ class SettingsManager(private val context: Context) {
     private val keyParentalPin = stringPreferencesKey("parental_pin")
     private val keyParentalMode = stringPreferencesKey("parental_mode")
     private val keyFavoritesPrefix = "favorite_ids_"
+    private val keySearchHistoryPrefix = "search_history_"
     private val keyProgressPrefix = "vod_progress_"
     private val keyPlayer = stringPreferencesKey("player_preference")
     private val keyAndroidBoxVideoCompatibility = booleanPreferencesKey("android_box_video_compatibility")
+    private val keyPhoneCategoryPosition = stringPreferencesKey("phone_category_position")
+    private val keyPhoneMovieColumns = intPreferencesKey("phone_movie_columns")
     private val keyTheme = stringPreferencesKey("theme_preference")
     private val keySubtitles = stringPreferencesKey("subtitle_preference")
     private val keyLanguage = stringPreferencesKey("catalogue_language")
@@ -89,20 +154,46 @@ class SettingsManager(private val context: Context) {
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
-        val profileId = activeProfileId(prefs)
+        val profileId = personalProfileId(prefs)
         if (profileId.isBlank()) emptySet()
         else prefs[stringSetPreferencesKey(keyFavoritesPrefix + profileId)].orEmpty()
     }
 
     val vodProgress: Flow<Map<String, Float>> = context.dataStore.data.map { prefs ->
-        val profileId = activeProfileId(prefs)
+        val profileId = personalProfileId(prefs)
         if (profileId.isBlank()) emptyMap()
         else parseProgress(prefs[stringPreferencesKey(keyProgressPrefix + profileId)].orEmpty())
             .mapValues { it.value.first }
     }
 
+    val searchHistory: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        val id = personalProfileId(prefs)
+        if (id.isBlank()) emptyList() else parseSearchHistory(prefs[stringPreferencesKey(keySearchHistoryPrefix + id)])
+    }
+
+    suspend fun addSearchHistory(query: String) {
+        context.dataStore.edit { prefs ->
+            val id = personalProfileId(prefs)
+            if (id.isBlank()) return@edit
+            val key = stringPreferencesKey(keySearchHistoryPrefix + id)
+            prefs[key] = JSONArray(updatedSearchHistory(parseSearchHistory(prefs[key]), query)).toString()
+        }
+    }
+
+    suspend fun clearSearchHistory() {
+        context.dataStore.edit { prefs ->
+            val id = personalProfileId(prefs)
+            if (id.isNotBlank()) prefs.remove(stringPreferencesKey(keySearchHistoryPrefix + id))
+        }
+    }
+
+    private fun parseSearchHistory(raw: String?): List<String> = runCatching {
+        val array = JSONArray(raw ?: "[]")
+        (0 until array.length()).map { array.getString(it) }.filter { it.isNotBlank() }
+    }.getOrDefault(emptyList())
+
     val watchHistory: Flow<List<WatchProgress>> = context.dataStore.data.map { prefs ->
-        val profileId = activeProfileId(prefs)
+        val profileId = personalProfileId(prefs)
         if (profileId.isBlank()) emptyList()
         else parseProgress(prefs[stringPreferencesKey(keyProgressPrefix + profileId)].orEmpty())
             .map { (id, value) -> WatchProgress(id, value.first, value.second) }
@@ -119,12 +210,49 @@ class SettingsManager(private val context: Context) {
         it[keyAndroidBoxVideoCompatibility] ?: false
     }
 
-    val themePreference: Flow<ThemePreference> = context.dataStore.data.map {
-        when (it[keyTheme]) {
-            "DARK", "SYSTEM", ThemePreference.BLACK.name -> ThemePreference.BLACK
-            ThemePreference.LIGHT.name -> ThemePreference.LIGHT
-            else -> ThemePreference.BLUE
+    val themePreference: Flow<ThemePreference> = context.dataStore.data.onStart {
+        // Persist the choice once, before setup writes can turn a fresh install into an
+        // existing one. Never replace a saved preference, including legacy theme names.
+        context.dataStore.edit { prefs ->
+            if (prefs[keyTheme] == null) {
+                prefs[keyTheme] = resolveThemePreference(null, prefs.asMap().isNotEmpty()).name
+            }
         }
+    }.map { resolveThemePreference(it[keyTheme], hasExistingSettings = true) }
+
+    private val keyGlassBackground = stringPreferencesKey("glass_background_v1")
+    private val keyGlassCustomPath = stringPreferencesKey("glass_custom_background_v1")
+    private val keyAdultTheme = stringPreferencesKey("adult_theme_v1")
+    private val keyAdultCustomPath = stringPreferencesKey("adult_custom_background_v1")
+    val glassAppearance: Flow<GlassAppearance> = context.dataStore.data.map { prefs ->
+        GlassAppearance(parseGlassBackground(prefs[keyGlassBackground]), prefs[keyGlassCustomPath].orEmpty(),
+            parseAdultTheme(prefs[keyAdultTheme]), prefs[keyAdultCustomPath].orEmpty())
+    }
+    suspend fun setGlassBackground(value: GlassBackground) { context.dataStore.edit { it[keyGlassBackground] = value.name } }
+    suspend fun setAdultTheme(value: AdultThemePreference) { context.dataStore.edit { it[keyAdultTheme] = value.name } }
+    suspend fun setCustomGlassBackground(path: String, adult: Boolean) {
+        require(java.io.File(path).isFile && java.io.File(path).canonicalFile.parentFile == java.io.File(context.filesDir, "backgrounds").canonicalFile)
+        context.dataStore.edit {
+            if (adult) { it[keyAdultCustomPath] = path; it[keyAdultTheme] = AdultThemePreference.GLASS.name }
+            else { it[keyGlassCustomPath] = path; it[keyGlassBackground] = GlassBackground.CUSTOM.name }
+        }
+    }
+    suspend fun useBuiltInAdultBackground() { context.dataStore.edit { it.remove(keyAdultCustomPath) } }
+
+    val phoneCategoryPosition: Flow<CategoryDropdownPosition> = context.dataStore.data.map {
+        runCatching { CategoryDropdownPosition.valueOf(it[keyPhoneCategoryPosition] ?: "TOP") }
+            .getOrDefault(CategoryDropdownPosition.TOP)
+    }
+    private fun viewerColumnsKey(prefs: androidx.datastore.preferences.core.Preferences) =
+        if ((prefs[keyActiveViewer] ?: "owner") == "owner") keyPhoneMovieColumns
+        else intPreferencesKey("phone_movie_columns_viewer_" + prefs[keyActiveViewer])
+    val phoneMovieColumns: Flow<Int> = context.dataStore.data.map { (it[viewerColumnsKey(it)] ?: 2).coerceIn(2, 4) }
+
+    suspend fun setPhoneCategoryPosition(value: CategoryDropdownPosition) {
+        context.dataStore.edit { it[keyPhoneCategoryPosition] = value.name }
+    }
+    suspend fun setPhoneMovieColumns(value: Int) {
+        context.dataStore.edit { it[viewerColumnsKey(it)] = value.coerceIn(2, 4) }
     }
 
     val parentalMode: Flow<ParentalMode> = context.dataStore.data.map {
@@ -205,7 +333,7 @@ class SettingsManager(private val context: Context) {
     suspend fun setFavorite(contentId: String, favorite: Boolean) {
         if (contentId.isBlank()) return
         context.dataStore.edit { prefs ->
-            val profileId = activeProfileId(prefs)
+            val profileId = personalProfileId(prefs)
             if (profileId.isBlank()) return@edit
             val key = stringSetPreferencesKey(keyFavoritesPrefix + profileId)
             val ids = prefs[key].orEmpty().toMutableSet()
@@ -218,7 +346,7 @@ class SettingsManager(private val context: Context) {
         if (contentId.isBlank() || durationMs <= 0L || positionMs <= 0L) return
         val fraction = (positionMs.toDouble() / durationMs.toDouble()).toFloat().coerceIn(0f, 1f)
         context.dataStore.edit { prefs ->
-            val profileId = activeProfileId(prefs)
+            val profileId = personalProfileId(prefs)
             if (profileId.isBlank()) return@edit
             val key = stringPreferencesKey(keyProgressPrefix + profileId)
             val progress = parseProgress(prefs[key].orEmpty()).toMutableMap()
@@ -232,7 +360,7 @@ class SettingsManager(private val context: Context) {
     suspend fun markRecentlyPlayed(contentId: String) {
         if (contentId.isBlank()) return
         context.dataStore.edit { prefs ->
-            val profileId = activeProfileId(prefs)
+            val profileId = personalProfileId(prefs)
             if (profileId.isBlank()) return@edit
             val key = stringPreferencesKey(keyProgressPrefix + profileId)
             val progress = parseProgress(prefs[key].orEmpty()).toMutableMap()
@@ -243,7 +371,7 @@ class SettingsManager(private val context: Context) {
 
     suspend fun removeFromHistory(contentId: String) {
         context.dataStore.edit { prefs ->
-            val profileId = activeProfileId(prefs)
+            val profileId = personalProfileId(prefs)
             if (profileId.isBlank()) return@edit
             val key = stringPreferencesKey(keyProgressPrefix + profileId)
             val progress = parseProgress(prefs[key].orEmpty()).toMutableMap()
@@ -254,7 +382,7 @@ class SettingsManager(private val context: Context) {
 
     suspend fun clearWatchHistory() {
         context.dataStore.edit { prefs ->
-            val profileId = activeProfileId(prefs)
+            val profileId = personalProfileId(prefs)
             if (profileId.isNotBlank()) prefs.remove(stringPreferencesKey(keyProgressPrefix + profileId))
         }
     }

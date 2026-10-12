@@ -1,0 +1,106 @@
+package com.example.stbplay.ui
+
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.media3.cast.Cast
+import androidx.media3.common.util.UnstableApi
+import com.google.android.gms.cast.framework.CastContext
+import com.example.stbplay.data.VodCatalogBatch
+import com.example.stbplay.data.model.PortalStream
+import com.example.stbplay.isAndroidTvDevice
+import com.example.stbplay.ui.theme.STBPlayTheme
+import com.example.stbplay.data.ThemePreference
+import org.junit.Assert.assertEquals
+import org.junit.Assume.assumeTrue
+import org.junit.Rule
+import org.junit.Test
+
+@androidx.annotation.OptIn(UnstableApi::class)
+class PhoneNavigationSmokeTest {
+    @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
+
+    @Suppress("DEPRECATION")
+    @Test fun touchNavigationAndSearchKeyboardKeepTheSelectedMediaType() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assumeTrue(!context.isAndroidTvDevice())
+        rule.runOnIdle {
+            // API 30's old Dynamite module requires synchronous main-thread creation.
+            // This is emulator setup only; the app's Cast initialization is unchanged.
+            CastContext.getSharedInstance(context)
+            Cast.getSingletonInstance(context).initialize()
+        }
+        val movie = UiMedia("same", "Fixture movie", portrait = true)
+        val channel = UiMedia("same", "Fixture channel", streamType = "live")
+        val movieStream = PortalStream(movie.id, movie.title, null, null, "movie")
+        val channelStream = PortalStream(channel.id, channel.title, null, null, "live")
+        var theme by mutableStateOf(ThemePreference.BLUE)
+        var selected by mutableStateOf(StbPlayTab.HOME)
+        var clicked: UiMedia? = null
+        rule.setContent {
+            STBPlayTheme(preference = theme) {
+                StbPlayApp(
+                    homeState = StbPlayHomeState(heroes = listOf(movie)),
+                    liveState = StbPlayLibraryState(categories = listOf(UiCategory("all", "All")), items = listOf(channel)),
+                    contentState = StbPlayLibraryState(categories = listOf(UiCategory("all", "All")), items = listOf(movie)),
+                    favouritesState = StbPlayLibraryState(items = listOf(channel, movie)), settingsState = StbPlaySettingsState(themePreference = theme),
+                    onActivateLicense = {}, selectedTab = selected, liveChannelListState = rememberLazyListState(),
+                    focusedLiveChannelId = null, focusedContentId = null, contentGridState = rememberLazyGridState(),
+                    onTabSelected = { selected = it }, onLoadMoreContent = {}, onCategorySelected = { _, _ -> },
+                    onMediaClick = { clicked = it }, onToggleFavorite = {}, onRemoveHistory = {}, onRefresh = {},
+                    onClearCache = {}, onClearHistory = {}, onAddPortal = {}, onEditPortal = {}, onUsePortal = {},
+                    onDeletePortal = {}, onProviderPair = {}, onPlayerPreferenceChanged = {}, onAndroidBoxVideoCompatibilityChanged = {},
+                    onThemePreferenceChanged = {}, onSubtitlePreferenceChanged = {}, onCatalogueLanguageChanged = {},
+                    onAnalyticsChanged = {}, onChangePin = {}, onParentalModeChanged = {}, onCheckUpdates = {}, onDownloadUpdate = {},
+                    onShare = {}, onSearchVisibilityChanged = {},
+                    searchCatalog = rememberSearchCatalog(selected, listOf(channelStream), listOf(movieStream), emptyList(), "All"),
+                    searchRemote = { _, _ -> VodCatalogBatch(emptyList(), 1, 0, false) }, onSearchResults = {},
+                    searchMedia = { UiMedia(it.id, it.name, streamType = it.streamType) }
+                )
+            }
+        }
+        rule.onNodeWithContentDescription("Movies").performClick()
+        rule.waitForIdle()
+        assertEquals(StbPlayTab.CONTENT, selected)
+        rule.onNodeWithText(movie.title).performTouchInput { click() }
+        rule.waitUntil(5_000) { clicked?.title == movie.title }
+        assertEquals("movie", clicked?.streamType)
+        rule.onNodeWithContentDescription("Home").performClick()
+        rule.onNodeWithText("⌕").performClick()
+        // Keep the query different from the result title so the matcher cannot hit the text field.
+        rule.onNode(hasSetTextAction()).performTextInput("Fixture chan")
+        rule.onNode(hasSetTextAction()).performImeAction()
+        rule.waitUntil(10_000) { rule.onAllNodesWithText(channel.title).fetchSemanticsNodes().isNotEmpty() }
+        rule.runOnIdle { clicked = null }
+        rule.waitForIdle()
+        rule.onNodeWithTag("search-results").performScrollToIndex(0)
+        val searchParts = listOf("search-header", "search-input", "search-count").joinToString(" ") { part ->
+            "$part=${rule.onNodeWithTag(part).fetchSemanticsNode().boundsInRoot}"
+        }
+        println("SEARCH_BOUNDS root=${rule.onRoot().fetchSemanticsNode().boundsInRoot} screen=${rule.onNodeWithTag("search-screen-root").fetchSemanticsNode().boundsInRoot} parts=[$searchParts] container=${rule.onNodeWithTag("search-results-container").fetchSemanticsNode().boundsInRoot} grid=${rule.onNodeWithTag("search-results").fetchSemanticsNode().boundsInRoot} result=${rule.onNodeWithTag("search-result:live:${channel.id}").fetchSemanticsNode().boundsInRoot}")
+        rule.onNodeWithTag("search-result:live:${channel.id}").assertIsDisplayed().performTouchInput { click() }
+        rule.waitUntil(5_000) { clicked?.title == channel.title }
+        assertEquals("same", clicked?.id)
+        assertEquals("live", clicked?.streamType)
+        assertEquals(StbPlayTab.HOME, selected)
+        rule.onNodeWithText("Search All content").assertIsDisplayed()
+        rule.onNodeWithText("Back").performClick()
+        ThemePreference.entries.forEach { preference ->
+            rule.runOnIdle { theme = preference }
+            rule.waitForIdle()
+            saveThemePreview(rule, "phone-home-${preference.name.lowercase()}")
+            rule.runOnIdle { clicked = null }
+            rule.onNodeWithContentDescription("Movies").performClick()
+            rule.onNodeWithText(movie.title).assertIsDisplayed().performTouchInput { click() }
+            rule.waitUntil(5_000) { clicked?.title == movie.title }
+            saveThemePreview(rule, "phone-movies-${preference.name.lowercase()}")
+            rule.onNodeWithContentDescription("Home").performClick()
+        }
+
+    }
+}

@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.stbplay.ui.theme.glassSheen
 import com.example.stbplay.ui.theme.LocalStbPalette
 
 /** Static focus outline: no scaling, ripple, glow, or animated surface colors. */
@@ -31,14 +32,15 @@ internal fun TvHomeSurface(
     content: @Composable BoxScope.() -> Unit
 ) {
     val palette = LocalStbPalette.current
-    val shape = remember { RoundedCornerShape(6.dp) }
+    val shape = remember { RoundedCornerShape(10.dp) }
     val interactions = remember { MutableInteractionSource() }
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier.onFocusChanged { focused = it.isFocused }
-            .clip(shape)
+            .clip(shape).glassSheen(10.dp)
             .background(if (focused) focusedContainerColor else containerColor)
-            .border(2.dp, if (focused) palette.accent else Color.Transparent, shape)
+            .border(if (focused) 2.dp else 1.dp,
+                if (focused) palette.accent else if (palette.glass) palette.edge else palette.text.copy(alpha = 0.08f), shape)
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
         content = content
     )

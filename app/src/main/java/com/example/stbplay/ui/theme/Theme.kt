@@ -1,5 +1,9 @@
 package com.example.stbplay.ui.theme
 
+import android.os.Build
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.remember
+import com.example.stbplay.isAndroidTvDevice
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -21,42 +25,78 @@ data class StbPalette(
     val text: Color,
     val muted: Color,
     val onAccent: Color,
+    val focusedAccent: Color = accentLight,
     val danger: Color = Color(0xFFFFA4A4),
-    val good: Color = Color(0xFF87E7B0)
+    val good: Color = Color(0xFF87E7B0),
+    val glass: Boolean = false,
+    val edge: Color = text.copy(alpha = 0.12f)
 )
 
+// Flat, cool surfaces keep artwork prominent; warm yellow remains the TV focus cue.
 val BluePalette = StbPalette(
-    background = Color(0xFF0A1019), rail = Color(0xFF101A27), panel = Color(0xFF1B2635),
-    panelSoft = Color(0xFF263447), accent = Color(0xFFD6AC58), accentLight = Color(0xFFF6D896),
-    text = Color(0xFFF6F8FC), muted = Color(0xFFB1BECE), onAccent = Color(0xFF0A1019)
+    background = Color(0xFF0B1020), rail = Color(0xFF10182A), panel = Color(0xFF172238),
+    panelSoft = Color(0xFF202D45), accent = Color(0xFFFFD166), accentLight = Color(0xFFFFE4A3),
+    text = Color(0xFFF4F7FC), muted = Color(0xFFAEBBD0), onAccent = Color(0xFF101827)
 )
+// Static colours only: no blur, refraction, animated gradients or render effects.
+val GlassPalette = StbPalette(
+    background = Color(0xFF090F19), rail = Color(0x99101927), panel = Color(0xB3101927),
+    panelSoft = Color(0x99202C3C), accent = Color(0xFFFFD166), accentLight = Color(0xFFFFE4A3),
+    text = Color(0xFFF4F7FC), muted = Color(0xFFB4C1D4), onAccent = Color(0xFF101827),
+    glass = true, edge = Color(0x66DAE6FF)
+)
+val StaticGlassPalette = GlassPalette.copy(
+    rail = GlassPalette.rail.copy(alpha = 0.68f), panel = GlassPalette.panel.copy(alpha = 0.72f),
+    panelSoft = GlassPalette.panelSoft.copy(alpha = 0.64f)
+)
+internal fun glassPaletteForDevice(tv: Boolean, manufacturer: String, brand: String, model: String): StbPalette {
+    val quest = manufacturer.contains("meta", true) || manufacturer.contains("oculus", true) ||
+        brand.contains("meta", true) || brand.contains("oculus", true) || model.contains("quest", true)
+    return if (tv || quest) StaticGlassPalette else GlassPalette
+}
 val LightPalette = StbPalette(
-    background = Color(0xFFF5F2EB), rail = Color(0xFFEDE8DF), panel = Color(0xFFFFFFFF),
-    panelSoft = Color(0xFFF1ECE3), accent = Color(0xFFA1702F), accentLight = Color(0xFF81591E),
-    text = Color(0xFF182638), muted = Color(0xFF5D6976), onAccent = Color(0xFF101B2B),
-    danger = Color(0xFFB23D45), good = Color(0xFF277B58)
+    background = Color(0xFFF4F7FC), rail = Color(0xFFEAF0F8), panel = Color(0xFFFFFFFF),
+    panelSoft = Color(0xFFE5ECF6), accent = Color(0xFFFFD166), accentLight = Color(0xFF795000),
+    text = Color(0xFF162237), muted = Color(0xFF52627A), onAccent = Color(0xFF101827),
+    focusedAccent = Color(0xFFFFE4A3),
+    danger = Color(0xFFB4233F), good = Color(0xFF176B45)
 )
 val BlackPalette = StbPalette(
-    background = Color(0xFF070707), rail = Color(0xFF111111), panel = Color(0xFF181818),
-    panelSoft = Color(0xFF252525), accent = Color(0xFFC9CDD2), accentLight = Color(0xFFF3F4F5),
-    text = Color(0xFFF4F6FA), muted = Color(0xFF9AA8B8), onAccent = Color(0xFF070707)
+    background = Color(0xFF080B10), rail = Color(0xFF10151D), panel = Color(0xFF191F29),
+    panelSoft = Color(0xFF252E3B), accent = Color(0xFFFFD166), accentLight = Color(0xFFFFE4A3),
+    text = Color(0xFFF5F7FA), muted = Color(0xFFADB9CA), onAccent = Color(0xFF101827)
 )
 val AfterDarkPalette = StbPalette(
-    background = Color(0xFF09070B), rail = Color(0xFF140E15), panel = Color(0xFF211720),
-    panelSoft = Color(0xFF30202B), accent = Color(0xFFB44C72), accentLight = Color(0xFFE08AA5),
-    text = Color(0xFFF8F2F5), muted = Color(0xFFC0AEB8), onAccent = Color(0xFF120910)
+    background = Color(0xFF100D16), rail = Color(0xFF191320), panel = Color(0xFF241C2E),
+    panelSoft = Color(0xFF32263F), accent = Color(0xFFE879A8), accentLight = Color(0xFFF7B7D1),
+    text = Color(0xFFFAF5FC), muted = Color(0xFFC5B5CF), onAccent = Color(0xFF1A1021)
 )
+
+val AdultGlassPalette = StaticGlassPalette.copy(
+    background = Color(0xFF10090D), rail = Color(0xB31E1018), panel = Color(0xB3271420),
+    panelSoft = Color(0xA6341C29), muted = Color(0xFFCFBFC7), edge = Color(0x66EAD4DC)
+)
+internal data class GlassBackdropSelection(val appearance: com.example.stbplay.data.GlassAppearance, val adult: Boolean)
+internal val LocalGlassBackdrop = staticCompositionLocalOf { GlassBackdropSelection(com.example.stbplay.data.GlassAppearance(), false) }
 
 val LocalStbPalette = staticCompositionLocalOf { BluePalette }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun STBPlayTheme(
-    preference: ThemePreference = ThemePreference.BLUE,
+    preference: ThemePreference = ThemePreference.GLASS,
     adultOnly: Boolean = false,
+    appearance: com.example.stbplay.data.GlassAppearance = com.example.stbplay.data.GlassAppearance(),
     content: @Composable () -> Unit
 ) {
-    val palette = if (adultOnly) AfterDarkPalette else when (preference) {
+    val context = LocalContext.current
+    val glassPalette = remember(context) {
+        glassPaletteForDevice(context.isAndroidTvDevice(), Build.MANUFACTURER, Build.BRAND, Build.MODEL)
+    }
+    val palette = if (adultOnly) {
+        if (appearance.adultTheme == com.example.stbplay.data.AdultThemePreference.GLASS) AdultGlassPalette else AfterDarkPalette
+    } else when (preference) {
+        ThemePreference.GLASS -> glassPalette
         ThemePreference.BLUE -> BluePalette
         ThemePreference.LIGHT -> LightPalette
         ThemePreference.BLACK -> BlackPalette
@@ -70,7 +110,7 @@ fun STBPlayTheme(
         onBackground = palette.text, surface = palette.panel, onSurface = palette.text,
         secondary = palette.accentLight, onSecondary = palette.onAccent
     )
-    CompositionLocalProvider(LocalStbPalette provides palette) {
+    CompositionLocalProvider(LocalStbPalette provides palette, LocalGlassBackdrop provides GlassBackdropSelection(appearance, adultOnly)) {
         MaterialTheme(colorScheme = scheme, typography = Typography, content = content)
     }
 }

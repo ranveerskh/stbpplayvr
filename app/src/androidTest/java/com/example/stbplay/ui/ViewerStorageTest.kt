@@ -1,0 +1,87 @@
+package com.example.stbplay.ui
+
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.example.stbplay.data.*
+import com.example.stbplay.domain.model.PortalSettings
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class ViewerStorageTest {
+    @Test fun viewerDataIsIsolatedAndOwnerRecordsArePreserved() = runBlocking {
+        val manager = SettingsManager(InstrumentationRegistry.getInstrumentation().targetContext)
+        val previousPortal = manager.portalSettings.first()
+        val previousViewer = manager.activeViewer.first()
+        val portal = PortalSettings(id = "viewer-storage-test", name = "Fixture", url = "https://fixture.invalid", mac = "00:1A:79:00:00:01")
+        try {
+            manager.upsertPortal(portal)
+            manager.activateViewer("owner")
+            manager.setFavorite("owner-record", true)
+            manager.addSearchHistory("Owner query")
+            manager.setPhoneMovieColumns(4)
+            val kid = ViewerProfile("viewer-test-kid", "Kid", 10, allowedLiveCategories = setOf("kids-live"), allowedVodCategories = setOf("kids-vod"), approvalPortalKey = "fixture-key")
+            manager.saveViewer(kid.copy(pinHash = "legacy-kids-pin"), "1234")
+            manager.activateViewer(kid.id)
+            assertEquals("", manager.activeViewer.first().pinHash)
+            assertEquals(kid.allowedLiveCategories, manager.activeViewer.first().allowedLiveCategories)
+            assertEquals("fixture-key", manager.activeViewer.first().approvalPortalKey)
+            assertTrue(manager.favoriteIds.first().isEmpty())
+            assertTrue(manager.searchHistory.first().isEmpty())
+            assertEquals(2, manager.phoneMovieColumns.first())
+            manager.setFavorite("kid-record", true)
+            manager.setPhoneMovieColumns(3)
+            val adult = ViewerProfile("viewer-test-adult", "Adult", 30, pinMode = ViewerPinMode.RESTRICTED_ONLY, adultApproved = false)
+            manager.saveViewer(adult, "4567")
+            manager.activateViewer(adult.id)
+            assertEquals(ViewerPinMode.RESTRICTED_ONLY, manager.activeViewer.first().pinMode)
+            assertTrue(manager.activeViewer.first().pinHash.isNotBlank())
+            assertFalse(manager.activeViewer.first().adultApproved)
+            manager.activateViewer("owner")
+            assertEquals(setOf("owner-record"), manager.favoriteIds.first())
+            assertEquals(listOf("Owner query"), manager.searchHistory.first())
+            assertEquals(4, manager.phoneMovieColumns.first())
+            manager.activateViewer(kid.id)
+            assertEquals(setOf("kid-record"), manager.favoriteIds.first())
+            assertEquals(3, manager.phoneMovieColumns.first())
+        } finally {
+            manager.activateViewer(previousViewer.id)
+            manager.deletePortal(portal.id)
+            if (previousPortal.id.isNotBlank()) manager.activatePortal(previousPortal.id)
+        }
+    }
+    @Test fun profileDeletionEnforcesPermissionsAndClearsOnlyItsRecords() = runBlocking {
+        val manager = SettingsManager(InstrumentationRegistry.getInstrumentation().targetContext)
+        val previousPortal = manager.portalSettings.first()
+        val previousViewer = manager.activeViewer.first()
+        val portal = PortalSettings(id = "delete-viewer-fixture", name = "Fixture", url = "https://fixture.invalid", mac = "00:1A:79:00:00:02")
+        val first = ViewerProfile("delete-test-one", "One", 10)
+        val second = ViewerProfile("delete-test-two", "Two", 10)
+        try {
+            manager.upsertPortal(portal)
+            manager.saveViewer(first, ""); manager.saveViewer(second, "")
+            manager.activateViewer(second.id); manager.setFavorite("keep", true)
+            assertTrue(runCatching { manager.deleteViewer(first.id, second.id) }.isFailure)
+            assertTrue(runCatching { manager.deleteViewer(first.id, "owner") }.isFailure)
+            assertTrue(runCatching { manager.deleteViewer("owner", "owner", true) }.isFailure)
+            manager.activateViewer(first.id)
+            manager.setFavorite("remove", true); manager.addSearchHistory("Remove this query"); manager.setPhoneMovieColumns(4)
+            manager.deleteViewer(first.id, first.id)
+            assertEquals("owner", manager.activeViewer.first().id)
+            assertFalse(manager.viewerProfiles.first().any { it.id == first.id })
+            manager.saveViewer(first, ""); manager.activateViewer(first.id)
+            assertTrue(manager.favoriteIds.first().isEmpty()); assertTrue(manager.searchHistory.first().isEmpty())
+            assertEquals(2, manager.phoneMovieColumns.first())
+            manager.activateViewer(second.id); assertEquals(setOf("keep"), manager.favoriteIds.first())
+            manager.deleteViewer(first.id, "owner", true)
+        } finally {
+            for (id in listOf(first.id, second.id)) manager.deleteViewer(id, "owner", true)
+            manager.activateViewer(previousViewer.id); manager.deletePortal(portal.id)
+            if (previousPortal.id.isNotBlank()) manager.activatePortal(previousPortal.id)
+        }
+    }
+
+}

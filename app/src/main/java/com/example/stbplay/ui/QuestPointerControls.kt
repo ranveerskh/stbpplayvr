@@ -2,7 +2,13 @@
 
 package com.example.stbplay.ui
 
-import android.content.pm.PackageManager
+import com.example.stbplay.ui.theme.glassSheen
+import com.example.stbplay.ui.theme.LocalStbPalette
+import com.example.stbplay.ui.theme.glassSurfaceBorder
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
+import android.os.Build
 import com.example.stbplay.isAndroidTvDevice
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxScope
@@ -35,19 +41,27 @@ fun QuestButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     colors: ButtonColors = ButtonDefaults.colors(),
+    focusScale: Float? = null,
+    shape: androidx.tv.material3.ButtonShape? = null,
     content: @Composable RowScope.() -> Unit
 ) {
     val context = LocalContext.current
     val isAndroidTv = remember(context) {
         context.isAndroidTvDevice()
     }
+    val staticScale = useStaticUiScale(isAndroidTv, Build.MANUFACTURER, Build.BRAND, Build.MODEL) || LocalStbPalette.current.glass
     TvButton(
         onClick = onClick,
-        modifier = modifier.questPointerTap(enabled, onClick),
+        modifier = modifier.glassSheen(18.dp).questPointerTap(enabled, onClick),
         enabled = enabled,
         colors = colors,
-        scale = if (isAndroidTv) ButtonDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
-            else ButtonDefaults.scale(focusedScale = 1.1f),
+        shape = shape ?: ButtonDefaults.shape(),
+        border = if (LocalStbPalette.current.glass) ButtonDefaults.border(
+            border = glassSurfaceBorder(),
+            focusedBorder = Border(BorderStroke(2.dp, LocalStbPalette.current.focusedAccent))
+        ) else ButtonDefaults.border(),
+        scale = if (staticScale) ButtonDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
+            else ButtonDefaults.scale(focusedScale = focusScale ?: 1.1f),
         content = content
     )
 }
@@ -69,19 +83,20 @@ fun QuestSurface(
     val isAndroidTv = remember(context) {
         context.isAndroidTvDevice()
     }
-    val resolvedFocusScale = if (isAndroidTv) 1f else focusScale ?: 1.1f
+    val staticScale = useStaticUiScale(isAndroidTv, Build.MANUFACTURER, Build.BRAND, Build.MODEL) || LocalStbPalette.current.glass
+    val resolvedFocusScale = if (staticScale) 1f else focusScale ?: 1.1f
     if (isAndroidTv && enabled && tvContainerColor != null) {
         TvHomeSurface(onClick, modifier, tvContainerColor, tvFocusedContainerColor ?: tvContainerColor, content)
         return
     }
     TvSurface(
         onClick = onClick,
-        modifier = modifier.questPointerTap(enabled, onClick),
+        modifier = modifier.glassSheen(18.dp).questPointerTap(enabled, onClick),
         enabled = enabled,
         shape = shape,
         colors = colors,
         border = border,
-        scale = if (isAndroidTv) ClickableSurfaceDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
+        scale = if (staticScale) ClickableSurfaceDefaults.scale(scale = 1f, focusedScale = 1f, pressedScale = 1f)
             else ClickableSurfaceDefaults.scale(focusedScale = resolvedFocusScale),
         content = content
     )

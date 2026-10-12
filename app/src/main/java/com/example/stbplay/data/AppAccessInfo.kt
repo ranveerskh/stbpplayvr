@@ -8,8 +8,8 @@ data class AppAccessInfo(val name: String, val status: String, val expiresAtMill
 fun appAccessInfo(license: PlatformLicenseDetails, providerAssigned: Boolean, trialStartedAt: Long, now: Long): AppAccessInfo {
     if (!license.hasKey && providerAssigned) return AppAccessInfo("Provider app access", "DETAILS UNAVAILABLE", null)
     if (!license.hasKey) {
-        val expiry = trialStartedAt + TimeUnit.DAYS.toMillis(30)
-        return AppAccessInfo("Free 30-day app trial", if (now < expiry) "ACTIVE" else "EXPIRED", expiry)
+        val expiry = trialStartedAt + TimeUnit.DAYS.toMillis(365)
+        return AppAccessInfo("Free 1-year app trial", if (now < expiry) "ACTIVE" else "EXPIRED", expiry)
     }
     val expiry = if (license.trial) license.trialExpiresAtMillis ?: license.expiresAtMillis else license.expiresAtMillis
     val grace = license.inGrace && (license.graceUntilMillis ?: 0L) > now

@@ -10,7 +10,7 @@ object LauncherIconManager {
         val selected = when (preference) {
             ThemePreference.BLUE -> "LauncherBlue"
             ThemePreference.LIGHT -> "LauncherLight"
-            ThemePreference.BLACK -> "LauncherBlack"
+            ThemePreference.BLACK, ThemePreference.GLASS -> "LauncherBlack"
         }
         val packageManager = context.packageManager
         val names = listOf("LauncherBlue", "LauncherLight", "LauncherBlack")

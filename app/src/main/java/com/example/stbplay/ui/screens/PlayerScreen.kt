@@ -2,6 +2,7 @@
 
 package com.example.stbplay.ui.screens
 
+import com.example.stbplay.ui.theme.LocalStbPalette
 import com.example.stbplay.isAndroidTvDevice
 
 import android.os.Build
@@ -248,6 +249,7 @@ private fun NativePlayerScreen(
     val endedCallback by rememberUpdatedState(onPlaybackEnded)
     var episodePickerVisible by remember(playbackUrl) { mutableStateOf(false) }
 
+    val glassControls = LocalStbPalette.current.glass
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val isAndroidTv = context.isAndroidTvDevice()
     val isMetaQuest = remember(context) {
@@ -290,6 +292,7 @@ private fun NativePlayerScreen(
         }
         val renderersFactory = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         ExoPlayer.Builder(context, renderersFactory)
+            .setSeekForwardIncrementMs(if (allowSeeking) 10_000L else 15_000L)
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build()
@@ -348,7 +351,7 @@ private fun NativePlayerScreen(
         lastRemoteSeekDirection = direction
         lastRemoteSeekAt = now
         val stepMs = when (remoteSeekCount) {
-            in 1..3 -> 15_000L
+            in 1..3 -> if (allowSeeking && direction > 0) 10_000L else 15_000L
             in 4..6 -> 30_000L
             in 7..11 -> 60_000L
             else -> 120_000L
@@ -381,6 +384,7 @@ private fun NativePlayerScreen(
     fun revealPlayerControls() {
         playerControlsVisible = true
         controlsInteraction++
+        if (!hideTvLiveController) nativePlayerView?.showController()
     }
     fun focusTvTimeline() {
         tvActionsHaveFocus = false
@@ -405,8 +409,8 @@ private fun NativePlayerScreen(
         if (playerControlsVisible && (isAndroidTv || !pointerInsidePlayer) && !keepTvEpisodeControlsVisible) {
             delay(3_000)
             playerControlsVisible = false
+            nativePlayerView?.hideController()
             if (isAndroidTv) {
-                nativePlayerView?.hideController()
                 if (tvActionsHaveFocus) nativePlayerView?.requestFocus()
                 tvActionsHaveFocus = false
             }
@@ -521,7 +525,16 @@ private fun NativePlayerScreen(
                     }) else null
                     useController = !embeddedMode && !hideTvLiveController
                     if (hideTvLiveController) hideController()
-                    controllerShowTimeoutMs = 3_000
+                    // Compose owns one idle timeout for the native and surrounding controls.
+                    controllerShowTimeoutMs = 0
+                    controllerHideOnTouch = false
+                    onControlsInteraction = { revealPlayerControls() }
+                    setControllerVisibilityListener(androidx.media3.ui.PlayerView.ControllerVisibilityListener { visibility ->
+                        if (visibility == android.view.View.VISIBLE) {
+                            playerControlsVisible = true
+                            controlsInteraction++
+                        } else playerControlsVisible = false
+                    })
                     if (isAndroidTv) controllerAutoShow = false
                     keepScreenOn = true
                     isFocusable = !embeddedMode
@@ -617,6 +630,15 @@ private fun NativePlayerScreen(
                 }
             },
             update = {
+                it.setShowPreviousButton(false)
+                it.setShowNextButton(false)
+                it.configureGlassControls(glassControls,
+                    compactLayout && !isAndroidTv && !isMetaQuest && configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+                it.configureLiveTimeline(showChannelStepButtons)
+                it.configurePhoneGestures(
+                    phoneFullscreen && compactLayout && hasTouchscreen && !isAndroidTv && !isMetaQuest && !embeddedMode,
+                    phoneActivity
+                )
                 if (it.player !== activePlayer) it.player = activePlayer
                 it.isFocusable = !embeddedMode
                 it.isFocusableInTouchMode = !embeddedMode
@@ -627,56 +649,19 @@ private fun NativePlayerScreen(
         if (!embedded && playerControlsVisible && playerError == null) {
             val phoneActionBar = compactLayout && !isMetaQuest && !isAndroidTv && phoneActivity != null
             if (phoneActionBar) {
-                Row(
-                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp)
-                        .onFocusChanged { if (it.hasFocus) revealPlayerControls() },
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val actionColors = ButtonDefaults.colors(
-                        containerColor = Color(0xCC070707), contentColor = Color.White,
-                        focusedContainerColor = Color(0xEE070707), focusedContentColor = Color.White
-                    )
-                    QuestButton(
-                        onClick = { revealPlayerControls(); onBack() },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = actionColors
-                    ) { Text("← Back", fontSize = 12.sp, maxLines = 1) }
-                    QuestButton(
-                        onClick = { setPhoneFullscreen(!phoneFullscreen) },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = actionColors
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Icon(
-                                imageVector = if (phoneFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text("Full", fontSize = 11.sp, maxLines = 1)
-                        }
-                    }
-                    if (episodeTitles.isNotEmpty()) QuestButton(
-                        onClick = { episodePickerVisible = true; revealPlayerControls() },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = actionColors
-                    ) { Text("Episodes", fontSize = 11.sp, maxLines = 1) }
-                    Box(
-                        modifier = Modifier.weight(1f).height(48.dp)
-                            .background(Color(0xCC070707), RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CompositionLocalProvider(LocalContentColor provides Color.White) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                MediaRouteButton(modifier = Modifier.size(36.dp))
-                                Text("Cast", color = Color.White, fontSize = 11.sp, maxLines = 1)
-                            }
-                        }
-                    }
-                }
+                com.example.stbplay.ui.MatchingCastButton(
+                    Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(top = 8.dp, end = 10.dp).width(92.dp).height(48.dp),
+                    surfaceColor = playerControlTint(0xCC070707)
+                )
+                if (episodeTitles.isNotEmpty()) QuestButton(
+                    onClick = { episodePickerVisible = true; revealPlayerControls() },
+                    modifier = Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(top = 8.dp, start = 10.dp).width(92.dp).height(48.dp),
+                    colors = ButtonDefaults.colors(containerColor = playerControlTint(0xCC070707), contentColor = Color.White,
+                        focusedContainerColor = Color(0xEE070707), focusedContentColor = Color.White),
+                    shape = ButtonDefaults.shape(shape = RoundedCornerShape(12.dp), focusedShape = RoundedCornerShape(12.dp))
+                ) { Text("Episodes", color = Color.White, fontSize = 11.sp) }
             } else {
                 if (!isAndroidTv && !isMetaQuest) Row(
                     modifier = Modifier.align(Alignment.TopStart).padding(if (compactLayout) 12.dp else 18.dp),
@@ -688,12 +673,12 @@ private fun NativePlayerScreen(
                         modifier = Modifier.widthIn(min = if (compactLayout) 108.dp else 116.dp).heightIn(min = 48.dp)
                             .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
                             .questInitialFocus(),
-                        colors = ButtonDefaults.colors(containerColor = Color(0xCC070707), contentColor = Color.White)
+                        colors = ButtonDefaults.colors(containerColor = playerControlTint(0xCC070707), contentColor = Color.White)
                     ) { Text("←  Back", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
                 }
                 if (compactLayout && !isMetaQuest) Box(
                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).size(52.dp)
-                        .background(Color(0xCC070707), RoundedCornerShape(10.dp)),
+                        .background(playerControlTint(0xCC070707), RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     CompositionLocalProvider(LocalContentColor provides Color.White) {
@@ -740,67 +725,31 @@ private fun NativePlayerScreen(
                     modifier = Modifier.align(Alignment.TopCenter).padding(18.dp)
                 ) { Text("Episodes") }
             }
-            if (isMetaQuest) {
-                Row(
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 112.dp)
-                        .background(Color(0x99070707), RoundedCornerShape(12.dp)).padding(6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    QuestButton(
-                        onClick = { revealPlayerControls(); onBack() },
-                        modifier = Modifier.widthIn(min = 92.dp).height(52.dp),
-                        colors = ButtonDefaults.colors(containerColor = Color(0xAA070707), contentColor = Color.White)
-                    ) { Text("← Back", fontSize = 15.sp) }
-                    if (showChannelStepButtons) {
-                        ChannelStepControl(Icons.Filled.SkipPrevious, "Previous channel", {
-                            onChannelStep(-1); revealPlayerControls()
-                        }, cornerRadius = 7.dp)
-                        ChannelStepControl(Icons.Filled.SkipNext, "Next channel", {
-                            onChannelStep(1); revealPlayerControls()
-                        }, cornerRadius = 7.dp)
+            Row(
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(start = 10.dp, end = 10.dp, bottom = if (showChannelStepButtons) 18.dp else 120.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val colors = ButtonDefaults.colors(containerColor = playerControlTint(0xCC070707),
+                    contentColor = Color.White, focusedContainerColor = Color(0xEE070707), focusedContentColor = Color.White)
+                QuestButton(onClick = { revealPlayerControls(); onBack() },
+                    modifier = Modifier.width(if (compactLayout) 76.dp else 112.dp).height(48.dp), colors = colors) { Text("← Back", color = Color.White, fontSize = 11.sp) }
+                if (showChannelStepButtons) {
+                    QuestButton(onClick = { onChannelStep(-1); revealPlayerControls() },
+                        modifier = Modifier.width(if (compactLayout) 76.dp else 112.dp).height(48.dp), colors = colors) {
+                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel", tint = Color.White, modifier = Modifier.size(22.dp))
+                    }
+                    QuestButton(onClick = { onChannelStep(1); revealPlayerControls() },
+                        modifier = Modifier.width(if (compactLayout) 76.dp else 112.dp).height(48.dp), colors = colors) {
+                        Icon(Icons.Filled.SkipNext, contentDescription = "Next channel", tint = Color.White, modifier = Modifier.size(22.dp))
                     }
                 }
-            }
-            if (showChannelStepButtons && compactLayout && !isMetaQuest) {
-                if (compactLayout && !isMetaQuest) {
-                    Row(
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)
-                            .background(Color(0x99070707), RoundedCornerShape(9.dp)).padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ChannelStepControl(Icons.Filled.SkipPrevious, "Previous channel", {
-                            onChannelStep(-1); revealPlayerControls()
-                        }, cornerRadius = 5.dp)
-                        ChannelStepControl(Icons.Filled.SkipNext, "Next channel", {
-                            onChannelStep(1); revealPlayerControls()
-                        }, cornerRadius = 5.dp)
-                    }
-                } else Column(
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 42.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    QuestButton(
-                        onClick = { onChannelStep(-1); revealPlayerControls() },
-                        modifier = Modifier.width(68.dp).height(58.dp),
-                        colors = ButtonDefaults.colors(
-                            containerColor = Color(0xAA070707), contentColor = Color.White,
-                            focusedContainerColor = Color(0xCC070707), focusedContentColor = Color.White
-                        )
-                    ) {
-                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel", tint = Color.White, modifier = Modifier.size(30.dp))
-                    }
-                    QuestButton(
-                        onClick = { onChannelStep(1); revealPlayerControls() },
-                        modifier = Modifier.width(68.dp).height(58.dp),
-                        colors = ButtonDefaults.colors(
-                            containerColor = Color(0xAA070707), contentColor = Color.White,
-                            focusedContainerColor = Color(0xCC070707), focusedContentColor = Color.White
-                        )
-                    ) {
-                        Icon(Icons.Filled.SkipNext, contentDescription = "Next channel", tint = Color.White, modifier = Modifier.size(30.dp))
-                    }
+                if (phoneActionBar) QuestButton(onClick = { setPhoneFullscreen(!phoneFullscreen) },
+                    modifier = Modifier.width(if (compactLayout) 76.dp else 112.dp).height(48.dp), colors = colors) {
+                    Icon(if (phoneFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                        contentDescription = "Fullscreen", tint = Color.White, modifier = Modifier.size(22.dp))
                 }
             }
             if (isMetaQuest) {
@@ -833,7 +782,7 @@ private fun NativePlayerScreen(
                 Row(
                     modifier = Modifier.align(Alignment.TopEnd).padding(18.dp)
                         .onFocusChanged { if (it.hasFocus) revealPlayerControls() }
-                        .background(Color(0xCC070707)).padding(horizontal = 8.dp, vertical = 6.dp),
+                        .background(playerControlTint(0xCC070707)).padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -849,7 +798,7 @@ private fun NativePlayerScreen(
                 color = Color.White,
                 maxLines = 1,
                 modifier = Modifier.align(Alignment.TopStart).padding(18.dp)
-                    .background(Color(0xCC070707), RoundedCornerShape(10.dp))
+                    .background(playerControlTint(0xCC070707), RoundedCornerShape(10.dp))
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             )
         }
@@ -862,7 +811,7 @@ private fun NativePlayerScreen(
             Column(
                 modifier = Modifier.width(if (isAndroidTv) 520.dp else 320.dp).heightIn(max = 470.dp)
                     .then(if (isAndroidTv) Modifier else Modifier.align(Alignment.Center))
-                    .background(Color(0xF5111111), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .background(playerControlTint(0xF5111111), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -926,7 +875,7 @@ private fun ChannelStepControl(
         modifier = Modifier.size(56.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(cornerRadius)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color(0x99070707),
+            containerColor = playerControlTint(0x99070707),
             focusedContainerColor = Color(0xBB070707)
         )
     ) {
@@ -948,14 +897,14 @@ private fun MetaVolumeControl(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.background(Color(0x99070707), RoundedCornerShape(12.dp)).padding(7.dp),
+        modifier = modifier.background(playerControlTint(0x99070707), RoundedCornerShape(12.dp)).padding(7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
         QuestButton(
             onClick = onMaxVolume,
             modifier = Modifier.width(54.dp).height(40.dp),
-            colors = ButtonDefaults.colors(containerColor = Color(0xAA070707), contentColor = Color.White)
+            colors = ButtonDefaults.colors(containerColor = playerControlTint(0xAA070707), contentColor = Color.White)
         ) { Icon(Icons.Filled.VolumeUp, contentDescription = "Maximum volume", tint = Color.White) }
         Box(
             modifier = Modifier.width(54.dp).height(150.dp)
@@ -992,7 +941,7 @@ private fun MetaVolumeControl(
         QuestButton(
             onClick = onMuteToggle,
             modifier = Modifier.width(54.dp).height(42.dp),
-            colors = ButtonDefaults.colors(containerColor = Color(0xAA070707), contentColor = Color.White)
+            colors = ButtonDefaults.colors(containerColor = playerControlTint(0xAA070707), contentColor = Color.White)
         ) {
             Icon(
                 if (volumePercent == 0) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
@@ -1100,3 +1049,7 @@ internal fun shouldPreferTextureSurface(
     val useCompatibilitySurface = androidBoxVideoCompatibility && isAndroidTvOrTouchlessBox
     return (compactLayout || isAndroidTv) && !useCompatibilitySurface
 }
+
+@Composable
+private fun playerControlTint(fallback: Long): Color =
+    if (LocalStbPalette.current.glass) Color(0xD908101B) else Color(fallback)

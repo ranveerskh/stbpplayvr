@@ -54,6 +54,13 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk "STB-PLAY-Android-${RELEASE_TAG}.apk"
+      - name: Verify existing signing identity
+        run: |
+          apk="STB-PLAY-Android-${RELEASE_TAG}.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/release-cert.txt"
+          grep -Fq 'Signer #1 certificate SHA-256 digest: 91943d0efc4125eb6aeda132ba6b8d79855496e030477c2d5cd00e9bedd4fdb0' "$RUNNER_TEMP/release-cert.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" | head -n 1
+          sha256sum "$apk"
       - name: Publish APK to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
@@ -61,5 +68,10 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --clobber
           else
-            gh release create "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --target "$GITHUB_SHA" --title "STB Play ${RELEASE_TAG#v}" --notes "This update improves browsing, remote focus, settings layout, and player controls across supported devices."
+            notes="docs/release-${RELEASE_TAG#v}.md"
+            if [ -f "$notes" ]; then
+              gh release create "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --target "$GITHUB_SHA" --title "STB Play ${RELEASE_TAG#v}" --notes-file "$notes"
+            else
+              gh release create "$RELEASE_TAG" "STB-PLAY-Android-${RELEASE_TAG}.apk" --target "$GITHUB_SHA" --title "STB Play ${RELEASE_TAG#v}" --notes "Signed Android release."
+            fi
           fi

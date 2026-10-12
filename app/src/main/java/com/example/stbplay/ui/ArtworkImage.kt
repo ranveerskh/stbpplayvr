@@ -1,5 +1,7 @@
 package com.example.stbplay.ui
 
+import com.example.stbplay.ui.theme.LocalStbPalette
+import com.example.stbplay.ui.theme.LightPalette
 import com.example.stbplay.isAndroidTvDevice
 
 import androidx.compose.foundation.background
@@ -94,13 +96,13 @@ private fun ArtworkFallback(
     accent: Color
 ) {
     Box(
-        modifier = modifier.background(Color(0xFF222222)),
+        modifier = modifier.background(if (LocalStbPalette.current == LightPalette) Color(0xFFE5ECF6) else Color(0xFF222222)),
         contentAlignment = Alignment.Center
     ) {
         text?.takeIf { it.isNotBlank() }?.let {
             Text(
                 text = it,
-                color = accent.copy(alpha = 0.68f),
+                color = if (LocalStbPalette.current == LightPalette) LocalStbPalette.current.accentLight else accent.copy(alpha = 0.85f),
                 fontSize = textSize,
                 fontWeight = FontWeight.ExtraBold
             )
