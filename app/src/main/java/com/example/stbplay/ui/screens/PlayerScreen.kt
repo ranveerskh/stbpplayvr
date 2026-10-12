@@ -658,7 +658,8 @@ private fun NativePlayerScreen(
                     onClick = { episodePickerVisible = true; revealPlayerControls() },
                     modifier = Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
                         .padding(top = 8.dp, start = 10.dp).width(92.dp).height(48.dp),
-                    colors = ButtonDefaults.colors(containerColor = playerControlTint(0xCC070707), contentColor = Color.White),
+                    colors = ButtonDefaults.colors(containerColor = playerControlTint(0xCC070707), contentColor = Color.White,
+                        focusedContainerColor = Color(0xEE070707), focusedContentColor = Color.White),
                     shape = ButtonDefaults.shape(shape = RoundedCornerShape(12.dp), focusedShape = RoundedCornerShape(12.dp))
                 ) { Text("Episodes", color = Color.White, fontSize = 11.sp) }
             } else {
