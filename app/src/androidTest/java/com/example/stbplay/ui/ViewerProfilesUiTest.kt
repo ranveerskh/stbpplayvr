@@ -2,6 +2,7 @@ package com.example.stbplay.ui
 
 import androidx.compose.ui.test.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.flow.first
 import com.example.stbplay.data.ViewerPinMode
 import com.example.stbplay.isAndroidTvDevice
 import androidx.test.platform.app.InstrumentationRegistry
@@ -15,6 +16,35 @@ import org.junit.Test
 
 class ViewerProfilesUiTest {
     @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
+    @Test fun adultAppearanceOffersSeparateThemesWithoutReplacingSavedNormalTheme() {
+        prewarmBatch2PhoneCast(rule)
+        val manager = com.example.stbplay.data.SettingsManager(rule.activity)
+        val old = kotlinx.coroutines.runBlocking { manager.glassAppearance.first() }
+        val normal = kotlinx.coroutines.runBlocking { manager.themePreference.first() }
+        try {
+            rule.setContent {
+                val appearance by manager.glassAppearance.collectAsState(initial = old)
+                STBPlayTheme(ThemePreference.GLASS, adultOnly = true, appearance = appearance) {
+                    Batch2AppFixture(selected = StbPlayTab.SETTINGS,
+                        settings = StbPlaySettingsState(parentalMode = com.example.stbplay.data.ParentalMode.ADULT_ONLY),
+                        session = SearchSession())
+                }
+            }
+            rule.onNodeWithText("Appearance & language").performScrollTo().performClick()
+            rule.onNodeWithText("After Dark", substring = true).assertIsDisplayed()
+            rule.onNodeWithText("Ivory").assertDoesNotExist()
+            rule.onNodeWithText("Adult Glass", substring = true).performClick()
+            rule.waitUntil(10_000) {
+                rule.onAllNodesWithText("Midnight Velvet", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            saveThemePreview(rule, "adult-glass-settings-" + if (rule.activity.isAndroidTvDevice()) "tv" else "phone")
+            kotlinx.coroutines.runBlocking {
+                assertEquals(com.example.stbplay.data.AdultThemePreference.GLASS, manager.glassAppearance.first().adultTheme)
+                assertEquals(normal, manager.themePreference.first())
+            }
+        } finally { kotlinx.coroutines.runBlocking { manager.setAdultTheme(old.adultTheme) } }
+    }
+
     @Test fun validOwnerAndPersonalPinsUnlockWithoutSubmitting() {
         var ownerCalls = 0
         rule.setContent { STBPlayTheme { PinPrompt("Owner", "1234", { ownerCalls++ }, {}) } }
