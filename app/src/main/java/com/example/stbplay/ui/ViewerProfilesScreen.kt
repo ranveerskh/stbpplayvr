@@ -272,7 +272,8 @@ private fun ProfileButton(onClick: () -> Unit, modifier: Modifier = Modifier, co
     val p = LocalStbPalette.current
     QuestButton(onClick, modifier.heightIn(min = 48.dp), colors = ButtonDefaults.colors(
         containerColor = p.panelSoft, contentColor = p.text,
-        focusedContainerColor = p.focusedAccent, focusedContentColor = p.onAccent,
+        focusedContainerColor = if (p.glass) p.panelSoft.copy(alpha = 0.72f) else p.focusedAccent,
+        focusedContentColor = if (p.glass) p.text else p.onAccent,
         pressedContainerColor = p.accent, pressedContentColor = p.onAccent
     ), focusScale = 1f, content = content)
 }
