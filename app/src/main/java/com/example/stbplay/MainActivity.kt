@@ -1179,8 +1179,8 @@ private fun StbPlayRoot(
         val source = filteredLive
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { source to source.map(::toUi) }
     }
-    val liveUiItems = liveProjection?.takeIf { it.first === filteredLive }?.second ?: emptyList()
-    val liveProjectionLoading = liveProjection?.first !== filteredLive
+    val liveUiItems = liveProjection?.takeIf { it.first == filteredLive }?.second ?: emptyList()
+    val liveProjectionLoading = liveProjection?.first != filteredLive
     val contentUiItems = remember(filteredVod, progressById, favoriteIds, catalogGeneration, selectedTab) {
         if (selectedTab == StbPlayTab.CONTENT) filteredVod.map(::toUi) else emptyList()
     }

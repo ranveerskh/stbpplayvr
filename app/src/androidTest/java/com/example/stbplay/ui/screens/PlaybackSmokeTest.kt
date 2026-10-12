@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -189,7 +190,7 @@ class PlaybackSmokeTest {
         // Phone controls open on user input, just as they do in the installed app.
         rule.onRoot().performTouchInput { click() }
         val position = pauseAtKnownPosition(player)
-        rule.onNodeWithText("Full").performClick()
+        rule.onNodeWithContentDescription("Fullscreen").performClick()
         rule.waitForIdle()
         rule.runOnIdle { assertSame(player, view.player); assertEquals(position, player.currentPosition) }
         var originalBrightness = -1f
