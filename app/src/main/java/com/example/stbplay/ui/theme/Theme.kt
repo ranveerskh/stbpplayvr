@@ -72,6 +72,13 @@ val AfterDarkPalette = StbPalette(
     text = Color(0xFFFAF5FC), muted = Color(0xFFC5B5CF), onAccent = Color(0xFF1A1021)
 )
 
+val AdultGlassPalette = StaticGlassPalette.copy(
+    background = Color(0xFF10090D), rail = Color(0xB31E1018), panel = Color(0xB3271420),
+    panelSoft = Color(0xA6341C29), muted = Color(0xFFCFBFC7), edge = Color(0x66EAD4DC)
+)
+internal data class GlassBackdropSelection(val appearance: com.example.stbplay.data.GlassAppearance, val adult: Boolean)
+internal val LocalGlassBackdrop = staticCompositionLocalOf { GlassBackdropSelection(com.example.stbplay.data.GlassAppearance(), false) }
+
 val LocalStbPalette = staticCompositionLocalOf { BluePalette }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -79,13 +86,16 @@ val LocalStbPalette = staticCompositionLocalOf { BluePalette }
 fun STBPlayTheme(
     preference: ThemePreference = ThemePreference.GLASS,
     adultOnly: Boolean = false,
+    appearance: com.example.stbplay.data.GlassAppearance = com.example.stbplay.data.GlassAppearance(),
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
     val glassPalette = remember(context) {
         glassPaletteForDevice(context.isAndroidTvDevice(), Build.MANUFACTURER, Build.BRAND, Build.MODEL)
     }
-    val palette = if (adultOnly) AfterDarkPalette else when (preference) {
+    val palette = if (adultOnly) {
+        if (appearance.adultTheme == com.example.stbplay.data.AdultThemePreference.GLASS) AdultGlassPalette else AfterDarkPalette
+    } else when (preference) {
         ThemePreference.GLASS -> glassPalette
         ThemePreference.BLUE -> BluePalette
         ThemePreference.LIGHT -> LightPalette
@@ -100,7 +110,7 @@ fun STBPlayTheme(
         onBackground = palette.text, surface = palette.panel, onSurface = palette.text,
         secondary = palette.accentLight, onSecondary = palette.onAccent
     )
-    CompositionLocalProvider(LocalStbPalette provides palette) {
+    CompositionLocalProvider(LocalStbPalette provides palette, LocalGlassBackdrop provides GlassBackdropSelection(appearance, adultOnly)) {
         MaterialTheme(colorScheme = scheme, typography = Typography, content = content)
     }
 }

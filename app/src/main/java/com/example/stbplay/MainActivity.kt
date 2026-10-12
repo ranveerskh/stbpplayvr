@@ -274,11 +274,12 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themePreference by settingsManager.themePreference.collectAsState(initial = ThemePreference.BLUE)
+            val glassAppearance by settingsManager.glassAppearance.collectAsState(initial = com.example.stbplay.data.GlassAppearance())
             val savedParentalMode by settingsManager.parentalMode.collectAsState(initial = ParentalMode.ALL_CONTENT)
             val activeViewer by settingsManager.activeViewer.collectAsState(initial = com.example.stbplay.data.ViewerProfile("owner", "Owner", 18))
             val parentalMode = if (activeViewer.isKids) ParentalMode.HIDE_ADULT else if (activeViewer.pinMode == com.example.stbplay.data.ViewerPinMode.RESTRICTED_ONLY && savedParentalMode == ParentalMode.ADULT_ONLY) ParentalMode.ALL_CONTENT else savedParentalMode
             LaunchedEffect(themePreference) { LauncherIconManager.apply(applicationContext, themePreference) }
-            STBPlayTheme(preference = themePreference, adultOnly = parentalMode == ParentalMode.ADULT_ONLY) {
+            STBPlayTheme(preference = themePreference, adultOnly = parentalMode == ParentalMode.ADULT_ONLY, appearance = glassAppearance) {
                 StbPlayRoot(settingsManager, updateManager, ::queueUpdateDownload, ::shareApp, openUpdates)
             }
         }

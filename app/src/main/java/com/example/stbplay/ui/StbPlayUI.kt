@@ -2198,7 +2198,7 @@ private fun StbPlaySettingsScreen(
             SettingsPage.APPEARANCE -> item {
                 SettingsSection("Theme & launcher icon") {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ThemePreference.entries.forEach { theme ->
+                        if (state.parentalMode != ParentalMode.ADULT_ONLY) ThemePreference.entries.forEach { theme ->
                             val selected = state.themePreference == theme
                             QuestSurface(
                                 onClick = { onThemePreferenceChanged(theme) },
@@ -2215,6 +2215,7 @@ private fun StbPlaySettingsScreen(
                             }
                         }
                     }
+                    GlassAppearanceSettings(state.parentalMode == ParentalMode.ADULT_ONLY, state.themePreference == ThemePreference.GLASS)
                     if (isCompactAndroidLayout()) {
                         PreferenceRow("Category dropdown position", if (state.phoneCategoryPosition == CategoryDropdownPosition.TOP) "Top" else "Bottom") {
                             onPhoneCategoryPositionChanged(if (state.phoneCategoryPosition == CategoryDropdownPosition.TOP) CategoryDropdownPosition.BOTTOM else CategoryDropdownPosition.TOP)

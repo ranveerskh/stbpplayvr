@@ -28,7 +28,23 @@ fun Modifier.glassEdge(radius: Dp = 12.dp): Modifier = if (LocalStbPalette.curre
 fun Modifier.stbBackdrop(): Modifier {
     val palette = LocalStbPalette.current
     if (!palette.glass) return background(palette.background)
-    val image = androidx.compose.ui.res.painterResource(com.example.stbplay.R.drawable.glass_backdrop)
+    val selection = LocalGlassBackdrop.current
+    val landscape = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >=
+        androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
+    val appearance = selection.appearance
+    val customPath = if (selection.adult) appearance.adultCustomPath else
+        appearance.customPath.takeIf { appearance.background == com.example.stbplay.data.GlassBackground.CUSTOM }.orEmpty()
+    val resource = if (selection.adult) {
+        if (landscape) com.example.stbplay.R.drawable.glass_adult_landscape else com.example.stbplay.R.drawable.glass_adult_portrait
+    } else when (appearance.background) {
+        com.example.stbplay.data.GlassBackground.MIDNIGHT_LAKE -> com.example.stbplay.R.drawable.glass_midnight_lake
+        com.example.stbplay.data.GlassBackground.GRAPHITE_SILK -> com.example.stbplay.R.drawable.glass_graphite_silk
+        else -> com.example.stbplay.R.drawable.glass_backdrop
+    }
+    val fallback = androidx.compose.ui.res.painterResource(resource)
+    val image = if (customPath.isNotBlank() && remember(customPath) { java.io.File(customPath).isFile })
+        coil.compose.rememberAsyncImagePainter(model = java.io.File(customPath), placeholder = fallback, error = fallback)
+        else fallback
     return paint(image, sizeToIntrinsics = false, contentScale = androidx.compose.ui.layout.ContentScale.Crop)
         .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.12f))
 }

@@ -220,6 +220,25 @@ class SettingsManager(private val context: Context) {
         }
     }.map { resolveThemePreference(it[keyTheme], hasExistingSettings = true) }
 
+    private val keyGlassBackground = stringPreferencesKey("glass_background_v1")
+    private val keyGlassCustomPath = stringPreferencesKey("glass_custom_background_v1")
+    private val keyAdultTheme = stringPreferencesKey("adult_theme_v1")
+    private val keyAdultCustomPath = stringPreferencesKey("adult_custom_background_v1")
+    val glassAppearance: Flow<GlassAppearance> = context.dataStore.data.map { prefs ->
+        GlassAppearance(parseGlassBackground(prefs[keyGlassBackground]), prefs[keyGlassCustomPath].orEmpty(),
+            parseAdultTheme(prefs[keyAdultTheme]), prefs[keyAdultCustomPath].orEmpty())
+    }
+    suspend fun setGlassBackground(value: GlassBackground) { context.dataStore.edit { it[keyGlassBackground] = value.name } }
+    suspend fun setAdultTheme(value: AdultThemePreference) { context.dataStore.edit { it[keyAdultTheme] = value.name } }
+    suspend fun setCustomGlassBackground(path: String, adult: Boolean) {
+        require(java.io.File(path).isFile && java.io.File(path).canonicalFile.parentFile == java.io.File(context.filesDir, "backgrounds").canonicalFile)
+        context.dataStore.edit {
+            if (adult) { it[keyAdultCustomPath] = path; it[keyAdultTheme] = AdultThemePreference.GLASS.name }
+            else { it[keyGlassCustomPath] = path; it[keyGlassBackground] = GlassBackground.CUSTOM.name }
+        }
+    }
+    suspend fun useBuiltInAdultBackground() { context.dataStore.edit { it.remove(keyAdultCustomPath) } }
+
     val phoneCategoryPosition: Flow<CategoryDropdownPosition> = context.dataStore.data.map {
         runCatching { CategoryDropdownPosition.valueOf(it[keyPhoneCategoryPosition] ?: "TOP") }
             .getOrDefault(CategoryDropdownPosition.TOP)
