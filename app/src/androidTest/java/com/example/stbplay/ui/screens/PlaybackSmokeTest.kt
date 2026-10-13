@@ -123,6 +123,7 @@ class PlaybackSmokeTest {
         rule.setContent { STBPlayTheme {
             PlaybackRoute(StalkerPlayRequest(videoUrl, StalkerContentKind.SERIES_EPISODE, title = "Episode regression"),
                 portalUiUrl = "http://10.0.2.2:8765", macAddress = "02:00:00:00:00:01", token = null,
+                onPlaybackStarted = { started.incrementAndGet() }, onPlaybackFailure = { failures.add(it) },
                 episodeTitles = titles, currentEpisodeIndex = 0, onEpisodeSelected = { selectedEpisode = it }, onBack = {})
         } }
         val (view, _) = awaitVideo()
