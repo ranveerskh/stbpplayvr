@@ -1106,7 +1106,7 @@ private fun MediaRow(
                 key = { _, media -> media.id },
                 contentType = { _, media -> if (media.portrait) "poster" else "landscape" }
             ) { index, media ->
-                if (media.streamType == "live") HomeLiveChannelCard(
+                if (row.id == "continue-live" && media.streamType == "live") HomeLiveChannelCard(
                     item = media, onClick = { onMediaClick(media) },
                     focusRequester = if (index == 0) firstCardFocusRequester else null,
                     restoreFocusRequester = if (media.id == restoreItemId) restoreFocusRequester else null,
