@@ -175,7 +175,13 @@ class PlaybackSmokeTest {
             rule.runOnIdle { assertTrue(movieView.isControllerFullyVisible) }
             rule.mainClock.advanceTimeBy(600)
             rule.waitForIdle()
-            rule.waitUntil(7_000) { rule.runOnIdle { !movieView.isControllerFullyVisible } }
+            // Media3's Android hide animation finishes outside the Compose clock.
+            // Wait for GONE, then commit its visibility callback on one Compose frame.
+            rule.waitUntil(7_000) { rule.runOnIdle {
+                movieView.findViewById<View>(androidx.media3.ui.R.id.exo_controller).visibility != View.VISIBLE
+            } }
+            rule.mainClock.advanceTimeByFrame()
+            rule.waitForIdle()
             rule.onNodeWithText("← Back").assertDoesNotExist()
         } finally {
             rule.mainClock.autoAdvance = originalAutoAdvance
