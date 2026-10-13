@@ -475,6 +475,7 @@ private fun StbPlayRoot(
     var selectedSeries by remember { mutableStateOf<PortalStream?>(null) }
     var browseContinuedSeries by remember { mutableStateOf(false) }
     var historyPage by remember { mutableStateOf<String?>(null) }
+    val historyScreenStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var continueEpisodeLoading by remember { mutableStateOf(false) }
     var continueEpisodeError by remember { mutableStateOf<String?>(null) }
     var qualityContext by remember { mutableStateOf<QualityContext?>(null) }
@@ -1654,10 +1655,12 @@ private fun StbPlayRoot(
                 )
                 historyPage != null && selectedLiveChannel == null && selectedMovie == null && selectedSeries == null -> {
                     val liveHistory = historyPage == "continue-live"
-                    com.example.stbplay.ui.HomeHistoryScreen(
-                        if (liveHistory) "Recently Watched — Live TV" else "Continue Watching — Movies & Series",
-                        (if (liveHistory) watchedLive else watchedVod).map(::watchUi),
-                        onMediaClick = ::requestMedia, onBack = { historyPage = null })
+                    historyScreenStateHolder.SaveableStateProvider("${storedSettings.id}:${activeViewer.id}:$historyPage") {
+                        com.example.stbplay.ui.HomeHistoryScreen(
+                            if (liveHistory) "Recently Watched — Live TV" else "Continue Watching — Movies & Series",
+                            (if (liveHistory) watchedLive else watchedVod).map(::watchUi),
+                            onMediaClick = ::requestMedia, onBack = { historyPage = null })
+                    }
                 }
                 selectedLiveChannel != null -> {
                     val channel = selectedLiveChannel!!
@@ -1694,13 +1697,15 @@ private fun StbPlayRoot(
                             if (continueEpisodeLoading) return
                             continueEpisodeLoading = true
                             continueEpisodeError = null
+                            val requestViewerId = activeViewer.id
+                            val requestPortalId = storedSettings.id
                             scope.launch {
                                 runCatching {
                                     val saved = continued.episode!!
                                     val episodes = portalRepository.getEpisodes(series.id, saved.seasonId.orEmpty().ifBlank { "0" }, series.cmd)
                                     val episode = episodes.firstOrNull { it.id == saved.episodeId }
                                         ?: error("This episode is no longer available. Open Episodes to choose another.")
-                                    if (selectedSeries?.id == series.id) {
+                                    if (selectedSeries?.id == series.id && activeViewer.id == requestViewerId && storedSettings.id == requestPortalId) {
                                         val progress = if (resume) progressById[episode.id] ?: 0f else 0f
                                         if (!resume) {
                                             progressResetGeneration++

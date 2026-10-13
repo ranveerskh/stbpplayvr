@@ -3,9 +3,11 @@ package com.example.stbplay.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -62,15 +64,24 @@ internal fun HomeLiveChannelCard(
 fun HomeHistoryScreen(title: String, items: List<UiMedia>, onMediaClick: (UiMedia) -> Unit, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     val palette = LocalStbPalette.current
+    val listState = rememberLazyListState()
+    var focusedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val restoreId = focusedId?.takeIf { id -> items.any { it.id == id } }
+    LaunchedEffect(restoreId) {
+        val index = items.indexOfFirst { it.id == restoreId }
+        if (index >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == index }) listState.scrollToItem(index)
+    }
     Column(Modifier.fillMaxSize().stbBackdrop().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        TvHomeSurface(onBack, Modifier.width(100.dp).height(44.dp).questInitialFocus()) {
+        TvHomeSurface(onBack, Modifier.width(100.dp).height(44.dp).then(if (restoreId == null) Modifier.questInitialFocus() else Modifier)) {
             Text("Back", color = palette.text, modifier = Modifier.align(Alignment.Center))
         }
         Text(title, color = palette.text, fontSize = 20.sp)
         if (items.isEmpty()) Text("No watched content", color = palette.muted)
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(items, key = { "${it.streamType}:${it.id}" }) { item ->
-                TvHomeSurface({ onMediaClick(item) }, Modifier.fillMaxWidth().height(72.dp)) {
+                TvHomeSurface({ focusedId = item.id; onMediaClick(item) }, Modifier.fillMaxWidth().height(72.dp)
+                    .then(if (item.id == restoreId) Modifier.questInitialFocus() else Modifier)
+                    .onFocusChanged { if (it.isFocused) focusedId = item.id }) {
                     Row(Modifier.fillMaxSize().padding(8.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         ArtworkImage(item.imageUrl, item.title, Modifier.size(48.dp), ContentScale.Fit, item.imageHeaders)
