@@ -237,7 +237,7 @@ class TvNavigationFocusTest {
         focused("tv-focus:home:hero")
         rule.mainClock.advanceTimeBy(13_000)
         rule.onNode(hasText("Movie 1") and hasAnyAncestor(hasTestTag("tv-focus:home:hero")), useUnmergedTree = true).assertIsDisplayed()
-        down()
+        rail(StbPlayTab.HOME)
         rule.mainClock.advanceTimeBy(13_000)
         // Match the title inside the hero, not its duplicate in the shelf.
         rule.onNode(hasText("Movie 2") and hasAnyAncestor(hasTestTag("tv-focus:home:hero")), useUnmergedTree = true).assertIsDisplayed()

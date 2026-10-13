@@ -87,7 +87,7 @@ fun recommendHome(catalogue: List<PortalStream>, taste: List<ViewingTaste>, unfi
     val counts = HashMap<String, Int>()
     ranked.forEach { candidate ->
         val key = category(candidate.stream.streamType, candidate.stream.categoryId)
-        if (selected.size < 8 && (key == null || (counts[key] ?: 0) < 4)) {
+        if (selected.size < 8 && (key == null || (counts[key] ?: 0) < 6)) {
             selected.add(candidate.stream); if (key != null) counts[key] = (counts[key] ?: 0) + 1
         }
     }
