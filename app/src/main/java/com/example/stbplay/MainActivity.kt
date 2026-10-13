@@ -1272,7 +1272,12 @@ private fun StbPlayRoot(
             value = recommendationKey to ranked
         }
     }
-    val recommendationStreams = rankedHome?.takeIf { it.first == recommendationKey }?.second.orEmpty()
+    // Keep the current pool while a new catalogue ranking is prepared. Revalidate it
+    // against this profile's safe index so restrictions never show a stale title.
+    val recommendationStreams = remember(rankedHome, recommendationKey, historyVodIndex) {
+        rankedHome?.takeIf { it.first.firstOrNull() == viewerCatalogProfileId }?.second.orEmpty()
+            .mapNotNull { historyVodIndex[it.id]?.takeIf { available -> available.streamType == it.streamType } }
+    }
     val homeHeroStreams = remember(recommendationStreams, safeVod) {
         recommendationStreams.take(7).ifEmpty { safeVod.take(7) }
     }
