@@ -5,6 +5,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TvFocusNavigationTest {
+    @Test fun attachedTargetFocusLossIsRepairableButIntentionalRailNavigationWins() {
+        var railCalls = 0
+        val navigation = TvFocusNavigation({ railCalls++ }, {})
+        val target = FocusRequester()
+        navigation.attach("live:channel", target); navigation.focused("live:channel", target)
+        navigation.blurred(target)
+        assertTrue(navigation.pending); assertFalse(navigation.hasPageFocus)
+        assertSame(target, navigation.restoreTarget)
+        navigation.restorePage(); assertTrue(navigation.pending)
+        navigation.returnToRail(); assertTrue(navigation.railOwnsFocus); assertFalse(navigation.pending)
+        navigation.restorePage(); assertFalse(navigation.pending); assertEquals(1, railCalls)
+        navigation.enterPage(); assertTrue(navigation.pending); assertFalse(navigation.railOwnsFocus)
+    }
     @Test fun replacingLoadingCategoryTargetCannotLoseThePendingHandover() {
         val navigation = TvFocusNavigation({ error("Unexpected rail bounce") }, {})
         val old = FocusRequester(); val replacement = FocusRequester()
