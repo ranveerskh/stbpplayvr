@@ -1,0 +1,30 @@
+package com.example.stbplay.ui
+
+import androidx.compose.ui.focus.FocusRequester
+import org.junit.Assert.*
+import org.junit.Test
+
+class TvFocusNavigationTest {
+    @Test fun replacingLoadingCategoryTargetCannotLoseThePendingHandover() {
+        val navigation = TvFocusNavigation({ error("Unexpected rail bounce") }, {})
+        val old = FocusRequester(); val replacement = FocusRequester()
+        navigation.setEntry("category:all")
+        navigation.attach("category:all", old)
+        navigation.focused("category:all", old)
+        navigation.attach("category:all", replacement)
+        navigation.detach("category:all", old)
+        assertTrue(navigation.pending)
+        assertSame(replacement, navigation.targets[navigation.entryId])
+        navigation.focused("category:all", replacement)
+        assertFalse(navigation.pending)
+    }
+    @Test fun disposingOldTargetCannotStealFocusFromAlreadyFocusedReplacement() {
+        val navigation = TvFocusNavigation({}, {})
+        val old = FocusRequester(); val replacement = FocusRequester()
+        navigation.attach("settings:back", old); navigation.focused("settings:back", old)
+        navigation.attach("settings:back", replacement); navigation.focused("settings:back", replacement)
+        navigation.detach("settings:back", old)
+        assertFalse(navigation.pending)
+        assertEquals("settings:back", navigation.focusedId)
+    }
+}

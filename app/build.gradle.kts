@@ -25,9 +25,8 @@ android {
         applicationId = "com.example.stbplay"
         minSdk = 26
         targetSdk = 35
-        versionCode = 80
-        // Stable 2.10.26.1; versionCode remains monotonic for existing installations.
-        versionName = "2.10.26.1"
+        versionCode = 83
+        versionName = "2.10.26.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

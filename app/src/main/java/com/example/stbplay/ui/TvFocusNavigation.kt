@@ -18,13 +18,19 @@ internal class TvFocusNavigation(
     var pending by mutableStateOf(true)
     var requestGeneration by mutableIntStateOf(0)
     var focusedId: String? = null
+    private var focusedRequester: FocusRequester? = null
 
     fun enterPage() { pending = true; requestGeneration++ }
-    fun focused(id: String) { focusedId = id; pending = false; onFocused(id) }
+    fun focused(id: String, requester: FocusRequester) {
+        focusedId = id; focusedRequester = requester; pending = false; onFocused(id)
+    }
     fun detach(id: String, requester: FocusRequester) {
-        if (targets[id] !== requester) return
-        targets.remove(id)
-        if (focusedId == id) { focusedId = null; pending = true }
+        if (targets[id] === requester) targets.remove(id)
+        // Lazy/page replacement can attach the new target with the same ID before
+        // disposing the focused old one. Track ownership, not just the target map.
+        if (focusedRequester === requester) {
+            focusedId = null; focusedRequester = null; pending = true
+        }
     }
     fun setEntry(id: String?) {
         if (entryId == null && id != null) pending = true
@@ -45,7 +51,7 @@ internal fun Modifier.tvFocusTarget(id: String): Modifier {
         onDispose { navigation.detach(id, requester) }
     }
     return this.focusRequester(requester)
-        .onFocusChanged { if (it.isFocused) navigation.focused(id) }
+        .onFocusChanged { if (it.isFocused) navigation.focused(id, requester) }
         .onGloballyPositioned { navigation.attach(id, requester) }
         .testTag("tv-focus:$id")
 }

@@ -10,6 +10,13 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -148,8 +155,37 @@ class PlaybackSmokeTest {
             assertEquals(10_000L, player.seekForwardIncrement)
             assertEquals(5_000L, player.seekBackIncrement)
         }
-        rule.waitUntil(7_000) { rule.runOnIdle { !movieView.isControllerFullyVisible } }
-        rule.onNodeWithText("← Back").assertDoesNotExist()
+        // Compose delay uses virtual time; wall-clock polling can expire before
+        // the virtual clock has advanced through the three-second idle interval.
+        // Keep it fixed while Android finishes hiding the native controller.
+        val originalAutoAdvance = rule.mainClock.autoAdvance
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.runOnIdle {
+                movieView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN))
+                movieView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN))
+            }
+            rule.mainClock.advanceTimeByFrame()
+            rule.waitForIdle()
+            rule.onNodeWithText("← Back").assertIsDisplayed()
+            rule.runOnIdle { assertTrue(movieView.isControllerFullyVisible) }
+            rule.mainClock.advanceTimeBy(2_500)
+            rule.waitForIdle()
+            rule.onNodeWithText("← Back").assertIsDisplayed()
+            rule.runOnIdle { assertTrue(movieView.isControllerFullyVisible) }
+            rule.mainClock.advanceTimeBy(600)
+            rule.waitForIdle()
+            // Media3's Android hide animation finishes outside the Compose clock.
+            // Wait for GONE, then commit its visibility callback on one Compose frame.
+            rule.waitUntil(7_000) { rule.runOnIdle {
+                movieView.findViewById<View>(androidx.media3.ui.R.id.exo_controller).visibility != View.VISIBLE
+            } }
+            rule.mainClock.advanceTimeByFrame()
+            rule.waitForIdle()
+            rule.onNodeWithText("← Back").assertDoesNotExist()
+        } finally {
+            rule.mainClock.autoAdvance = originalAutoAdvance
+        }
         val seekStart = pauseAtKnownPosition(player)
         rule.runOnIdle { player.seekForward() }
         rule.waitUntil(10_000) { rule.runOnIdle { player.currentPosition == seekStart + 10_000L } }
@@ -160,6 +196,75 @@ class PlaybackSmokeTest {
         assertEquals(1, backCount)
         assertEquals(1, started.get())
         assertTrue(failures.isEmpty())
+    }
+
+    @Test fun realProgressPersistenceWithLargeCatalogueDoesNotRemapOrReplacePlayingVideo() {
+        val manager = com.example.stbplay.data.SettingsManager(rule.activity)
+        val previousPortal = runBlocking { manager.portalSettings.first() }
+        val previousViewer = runBlocking { manager.activeViewer.first() }
+        val portal = com.example.stbplay.domain.model.PortalSettings(id = "vod-progress-fixture",
+            name = "Fixture", url = "https://fixture.invalid", mac = "00:1A:79:00:00:01")
+        runBlocking { manager.upsertPortal(portal); manager.activateViewer("owner") }
+        val catalogue = (0 until 100_000).map { com.example.stbplay.data.model.PortalStream("vod-$it", "Movie $it", null, null, "movie") }
+        var playing by mutableStateOf(true)
+        var mappings = 0
+        var projected: List<com.example.stbplay.ui.UiMedia> = emptyList()
+        val savedTicks = AtomicInteger()
+        val saveDurations = CopyOnWriteArrayList<Long>()
+        val request = StalkerPlayRequest("http://10.0.2.2:8765/progress-long.mp4", StalkerContentKind.MOVIE, contentId = "vod-42", title = "Progress fixture")
+        try {
+            rule.setContent {
+                val latestProgress by manager.vodProgress.collectAsState(initial = emptyMap())
+                val scope = rememberCoroutineScope()
+                val catalogueProgress = com.example.stbplay.ui.rememberPlaybackCatalogueProgress(latestProgress, playing)
+                val rows = remember(catalogue, catalogueProgress) {
+                    mappings++
+                    catalogue.map { com.example.stbplay.ui.UiMedia(it.id, it.name, progress = catalogueProgress[it.id] ?: 0f) }
+                }
+                SideEffect { projected = rows }
+                STBPlayTheme {
+                    if (playing) PlaybackRoute(request, portalUiUrl = "http://10.0.2.2:8765",
+                        macAddress = "02:00:00:00:00:01", token = null,
+                        onPlaybackStarted = { started.incrementAndGet() }, onPlaybackFailure = { failures.add(it) },
+                        onProgress = { position, duration -> scope.launch {
+                            val began = android.os.SystemClock.elapsedRealtime()
+                            manager.saveProgress(request.contentId, position, duration)
+                            saveDurations.add(android.os.SystemClock.elapsedRealtime() - began)
+                            savedTicks.incrementAndGet()
+                        } }, onBack = { playing = false })
+                }
+            }
+            val (view, player) = awaitVideo()
+            rule.runOnIdle { player.volume = 0f }
+            val initialMappings = rule.runOnIdle { mappings }
+            val initialRows = projected
+            rule.waitUntil(40_000) { savedTicks.get() >= 5 }
+            rule.runOnIdle {
+                assertEquals("Real five-second saves must not remap 100k hidden rows", initialMappings, mappings)
+                assertSame(initialRows, projected)
+                assertSame(player, view.player)
+                assertTrue(player.isPlaying)
+            }
+            assertEquals(1, started.get())
+            assertTrue(failures.isEmpty())
+            assertTrue("A non-completed fixture must retain its resume record: position=${rule.runOnIdle { player.currentPosition }} duration=${rule.runOnIdle { player.duration }} ticks=${savedTicks.get()}",
+                runBlocking { manager.vodProgress.first() }.containsKey(request.contentId))
+            val beforeExitSaves = savedTicks.get()
+            // Leaving playback applies the latest saved progress to the catalogue immediately.
+            rule.runOnIdle { playing = false }
+            rule.waitUntil(10_000) { savedTicks.get() > beforeExitSaves }
+            val persisted = runBlocking { manager.vodProgress.first() }[request.contentId]!!
+            rule.waitUntil(10_000) { rule.runOnIdle { kotlin.math.abs(projected[42].progress - persisted) < 0.001f } }
+            assertEquals(persisted, projected[42].progress, 0.001f)
+            assertEquals(100_000, projected.size)
+            android.util.Log.i("VODProgressRegression", "rows=100000 saves=${savedTicks.get()} remapsDuringPlayback=0 saveMillis=$saveDurations deviceTv=$isTv")
+        } finally {
+            runBlocking {
+                manager.activateViewer(previousViewer.id)
+                manager.deletePortal(portal.id)
+                if (previousPortal.id.isNotBlank()) manager.activatePortal(previousPortal.id)
+            }
+        }
     }
 
     @Test fun liveTimelineIsHiddenAndPhoneChannelActionsRemainCompact() {

@@ -11,3 +11,9 @@ For local emulator playback checks, serve this directory on the host:
 ```sh
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
+
+`progress-long.mp4` repeats the same generated fixture six times (120 seconds) for five-second persistence checks. This avoids confusing the existing 95%-completed history-removal policy with a failed save. Generate it with:
+
+```sh
+ffmpeg -hide_banner -loglevel error -stream_loop 5 -i video.mp4 -c copy -movflags +faststart progress-long.mp4
+```

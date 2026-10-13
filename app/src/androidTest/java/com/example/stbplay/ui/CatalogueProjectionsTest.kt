@@ -18,6 +18,39 @@ class CatalogueProjectionsTest {
     private fun stream(id: String, type: String = "movie", language: String? = null, searchText: String? = null) =
         PortalStream(id, "$type $id", null, null, type, language = language, searchText = searchText)
 
+    @Test fun progressTicksDoNotRemapLargeHiddenCatalogueAndReturnUsesLatestHistory() {
+        val vod = (0 until 100_000).map { stream("$it") }
+        var playing by mutableStateOf(false)
+        var progress by mutableStateOf<Map<String, Float>>(emptyMap())
+        var mappings = 0
+        var projected: List<UiMedia> = emptyList()
+        rule.setContent {
+            val catalogueProgress = rememberPlaybackCatalogueProgress(progress, playing)
+            val rows = androidx.compose.runtime.remember(vod, catalogueProgress) {
+                mappings++
+                vod.map { UiMedia(it.id, it.name, progress = catalogueProgress[it.id] ?: 0f) }
+            }
+            SideEffect { projected = rows }
+        }
+        rule.waitForIdle()
+        rule.runOnIdle { playing = true }; rule.waitForIdle()
+        val initial = projected
+        val beforeTicks = mappings
+        repeat(5) { tick ->
+            rule.runOnIdle { progress = mapOf("42" to (tick + 1) / 10f) }
+            rule.waitForIdle()
+            assertSame(initial, projected)
+            assertEquals(beforeTicks, mappings)
+        }
+        assertEquals(100_000, projected.size)
+        rule.runOnIdle { playing = false }; rule.waitForIdle()
+        assertEquals(beforeTicks + 1, mappings)
+        assertEquals(0.5f, projected[42].progress, 0.001f)
+        // Normal browsing still responds immediately to history changes.
+        rule.runOnIdle { progress = mapOf("42" to 0.6f) }; rule.waitForIdle()
+        assertEquals(0.6f, projected[42].progress, 0.001f)
+    }
+
     @Test fun focusOnlyUpdatesReuseSearchAndFavouriteObjects() {
         val vod = (0 until 20_000).map { stream("$it", language = "Punjabi") }
         val favorites = vod.take(80)

@@ -12,6 +12,7 @@ import com.example.stbplay.domain.model.PortalSettings
 import com.example.stbplay.domain.model.generateStbPlayMac
 import com.example.stbplay.isAndroidTvDevice
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
@@ -31,6 +32,9 @@ data class WatchProgress(
     val fraction: Float,
     val updatedAt: Long
 )
+
+/** Episode identity only; provider commands are fetched again before playback. */
+data class SeriesHistoryEntry(val seriesId: String, val episodeId: String, val episodeName: String, val seasonId: String?)
 
 data class SettingsBootstrap(
     val profiles: List<PortalSettings>,
@@ -76,7 +80,7 @@ class SettingsManager(private val context: Context) {
             prefs[keyViewers] = serializeViewers(viewers.filterNot { it.id == id })
             if (prefs[keyActiveViewer] == id) prefs[keyActiveViewer] = "owner"
             prefs.asMap().keys.filter { key ->
-                key.name.endsWith(":view:$id") && listOf(keyFavoritesPrefix, keySearchHistoryPrefix, keyProgressPrefix).any { key.name.startsWith(it) }
+                key.name.endsWith(":view:$id") && listOf(keyFavoritesPrefix, keySearchHistoryPrefix, keyProgressPrefix, keySeriesHistoryPrefix, keyViewingTastePrefix).any { key.name.startsWith(it) }
             }.forEach { key -> prefs.remove(key) }
             prefs.remove(intPreferencesKey("phone_movie_columns_viewer_$id"))
         }
@@ -112,6 +116,8 @@ class SettingsManager(private val context: Context) {
     private val keyFavoritesPrefix = "favorite_ids_"
     private val keySearchHistoryPrefix = "search_history_"
     private val keyProgressPrefix = "vod_progress_"
+    private val keySeriesHistoryPrefix = "series_history_"
+    private val keyViewingTastePrefix = "viewing_taste_"
     private val keyPlayer = stringPreferencesKey("player_preference")
     private val keyAndroidBoxVideoCompatibility = booleanPreferencesKey("android_box_video_compatibility")
     private val keyPhoneCategoryPosition = stringPreferencesKey("phone_category_position")
@@ -199,6 +205,45 @@ class SettingsManager(private val context: Context) {
             .map { (id, value) -> WatchProgress(id, value.first, value.second) }
             .sortedByDescending { it.updatedAt }
     }
+
+    val seriesHistory: Flow<Map<String, SeriesHistoryEntry>> = context.dataStore.data.map { prefs ->
+        val profileId = personalProfileId(prefs)
+        if (profileId.isBlank()) emptyMap()
+        else parseSeriesHistory(prefs[stringPreferencesKey(keySeriesHistoryPrefix + profileId)])
+    }
+
+    val viewingTasteSnapshot: Flow<Pair<String, List<ViewingTaste>>> = context.dataStore.data.map { prefs ->
+        val id = personalProfileId(prefs)
+        id to if (id.isBlank()) emptyList() else parseViewingTaste(prefs[stringPreferencesKey(keyViewingTastePrefix + id)])
+    }.distinctUntilChanged()
+
+    suspend fun recordViewingTaste(signal: ViewingTaste, newSession: Boolean, expectedProfileId: String) {
+        context.dataStore.edit { prefs ->
+            val id = personalProfileId(prefs)
+            if (id.isBlank() || id != expectedProfileId) return@edit
+            val key = stringPreferencesKey(keyViewingTastePrefix + id)
+            prefs[key] = JSONArray().apply {
+                updateViewingTaste(parseViewingTaste(prefs[key]), signal, newSession).forEach { item ->
+                    put(JSONObject().apply {
+                        put("id", item.id); put("type", item.type); put("category", item.categoryId.orEmpty())
+                        put("categoryTitle", item.categoryTitle.orEmpty()); put("genre", item.genre.orEmpty())
+                        put("language", item.language.orEmpty()); put("sessions", item.sessions)
+                        put("updatedAt", item.updatedAt); put("completed", item.completed)
+                    })
+                }
+            }.toString()
+        }
+    }
+
+    private fun parseViewingTaste(raw: String?): List<ViewingTaste> = runCatching {
+        val array = JSONArray(raw ?: "[]")
+        (0 until array.length()).map { index ->
+            val item = array.getJSONObject(index)
+            ViewingTaste(item.getString("id"), item.getString("type"), item.optString("category").ifBlank { null },
+                item.optString("categoryTitle").ifBlank { null }, item.optString("genre").ifBlank { null },
+                item.optString("language").ifBlank { null }, item.optInt("sessions", 1), item.optLong("updatedAt"), item.optBoolean("completed"))
+        }
+    }.getOrDefault(emptyList())
 
     val playerPreference: Flow<PlayerPreference> = context.dataStore.data.map {
         runCatching { PlayerPreference.valueOf(it[keyPlayer] ?: PlayerPreference.AUTO.name) }
@@ -342,7 +387,7 @@ class SettingsManager(private val context: Context) {
         }
     }
 
-    suspend fun saveProgress(contentId: String, positionMs: Long, durationMs: Long) {
+    suspend fun saveProgress(contentId: String, positionMs: Long, durationMs: Long, episode: SeriesHistoryEntry? = null) {
         if (contentId.isBlank() || durationMs <= 0L || positionMs <= 0L) return
         val fraction = (positionMs.toDouble() / durationMs.toDouble()).toFloat().coerceIn(0f, 1f)
         context.dataStore.edit { prefs ->
@@ -353,6 +398,13 @@ class SettingsManager(private val context: Context) {
             if (fraction >= 0.95f) progress.remove(contentId)
             else progress[contentId] = fraction to System.currentTimeMillis()
             prefs[key] = encodeProgress(progress)
+            if (episode != null) {
+                val episodeKey = stringPreferencesKey(keySeriesHistoryPrefix + profileId)
+                val entries = parseSeriesHistory(prefs[episodeKey]).toMutableMap()
+                if (fraction >= 0.95f) entries.remove(contentId) else entries[contentId] = episode
+                val retained = parseProgress(prefs[key].orEmpty()).keys
+                prefs[episodeKey] = encodeSeriesHistory(entries.filterKeys { it in retained })
+            }
         }
     }
 
@@ -375,15 +427,23 @@ class SettingsManager(private val context: Context) {
             if (profileId.isBlank()) return@edit
             val key = stringPreferencesKey(keyProgressPrefix + profileId)
             val progress = parseProgress(prefs[key].orEmpty()).toMutableMap()
-            progress.remove(contentId)
+            val episodeKey = stringPreferencesKey(keySeriesHistoryPrefix + profileId)
+            val episodes = parseSeriesHistory(prefs[episodeKey])
+            val removed = episodes.values.filter { it.seriesId == contentId }.map { it.episodeId }.toSet() + contentId
+            removed.forEach { progress.remove(it) }
             prefs[key] = encodeProgress(progress)
+            prefs[episodeKey] = encodeSeriesHistory(episodes.filterKeys { it !in removed })
         }
     }
 
     suspend fun clearWatchHistory() {
         context.dataStore.edit { prefs ->
             val profileId = personalProfileId(prefs)
-            if (profileId.isNotBlank()) prefs.remove(stringPreferencesKey(keyProgressPrefix + profileId))
+            if (profileId.isNotBlank()) {
+                prefs.remove(stringPreferencesKey(keyProgressPrefix + profileId))
+                prefs.remove(stringPreferencesKey(keySeriesHistoryPrefix + profileId))
+                prefs.remove(stringPreferencesKey(keyViewingTastePrefix + profileId))
+            }
         }
     }
 
@@ -514,6 +574,23 @@ class SettingsManager(private val context: Context) {
                 }
             )
         }
+    }.toString()
+
+    private fun parseSeriesHistory(raw: String?): Map<String, SeriesHistoryEntry> = runCatching {
+        val array = JSONArray(raw ?: "[]")
+        (0 until array.length()).associate { index ->
+            val value = array.getJSONObject(index)
+            val entry = SeriesHistoryEntry(value.getString("seriesId"), value.getString("episodeId"),
+                value.getString("episodeName"), value.optString("seasonId").takeIf { it.isNotBlank() })
+            entry.episodeId to entry
+        }
+    }.getOrDefault(emptyMap())
+
+    private fun encodeSeriesHistory(entries: Map<String, SeriesHistoryEntry>): String = JSONArray().apply {
+        entries.values.forEach { entry -> put(JSONObject().apply {
+            put("seriesId", entry.seriesId); put("episodeId", entry.episodeId)
+            put("episodeName", entry.episodeName); put("seasonId", entry.seasonId.orEmpty())
+        }) }
     }.toString()
 
     private fun parseProgress(raw: String): Map<String, Pair<Float, Long>> = raw

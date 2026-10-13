@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
@@ -267,14 +268,16 @@ data class UiMedia(
     val rating: String? = null,
     val cast: String? = null,
     val isLocked: Boolean = false,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val resumeLabel: String? = null
 )
 
 data class UiMediaRow(
     val id: String,
     val title: String,
     val subtitle: String? = null,
-    val items: List<UiMedia>
+    val items: List<UiMedia>,
+    val hasMore: Boolean = false
 )
 
 data class StbPlayHomeState(
@@ -375,6 +378,7 @@ fun StbPlayApp(
     onSearchResults: (List<PortalStream>) -> Unit,
     searchMedia: (PortalStream) -> UiMedia,
     onHomeInteraction: () -> Unit = {},
+    onHomeViewAll: (String) -> Unit = {},
     onMediaFocused: (StbPlayTab, UiMedia) -> Unit = { _, _ -> },
     playingLiveChannelId: String? = null,
     livePreviewActionsRequester: FocusRequester? = null,
@@ -401,6 +405,17 @@ fun StbPlayApp(
         if (tvLayout) inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
     }
     var railCollapsed by remember(tvLayout) { mutableStateOf(tvLayout) }
+    var railHasFocus by remember { mutableStateOf(false) }
+    var pageFocusPending by remember { mutableStateOf(false) }
+    // Ignore the transient platform focus fallback while a settings target is replaced.
+    // This is a focus-settling delay, not a navigation animation or layout change.
+    var settledRailFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(railHasFocus) {
+        if (railHasFocus) {
+            delay(80)
+            settledRailFocus = true
+        } else settledRailFocus = false
+    }
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val compactLayout = configuration.screenWidthDp < 900 &&
@@ -450,6 +465,7 @@ fun StbPlayApp(
                     onToggleFavorite = onToggleFavorite,
                     onRemoveHistory = onRemoveHistory,
                     onInteraction = onHomeInteraction,
+                    onViewAll = onHomeViewAll,
                     onRefresh = onRefresh,
                     onEditPortal = {
                         settingsState.profiles.firstOrNull { it.id == settingsState.activeProfileId }
@@ -517,16 +533,18 @@ fun StbPlayApp(
             tabStateHolder.SaveableStateProvider(selectedTab.name) {
                 var lastPageFocusId by rememberSaveable { mutableStateOf<String?>(null) }
                 val navigation = remember { TvFocusNavigation(::returnToSelectedRail) { lastPageFocusId = it } }
-                SideEffect { enterPageAction[0] = navigation::enterPage }
+                SideEffect {
+                    enterPageAction[0] = navigation::enterPage
+                    pageFocusPending = navigation.pending
+                }
                 val target = navigation.entryId?.let { navigation.targets[it] }
                 LaunchedEffect(navigation.pending, navigation.requestGeneration, navigation.entryId, target) {
                     if (navigation.pending && target != null) {
                         inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
                         target.requestFocus()
-                    } else if (navigation.pending && navigation.entryId == null) {
-                        navigation.returnToRail()
-                        navigation.pending = false
                     }
+                    // A loading page or changing settings subpage may not have a target
+                    // yet. Keep its entry request pending; never bounce through the rail.
                 }
                 CompositionLocalProvider(LocalTvFocusNavigation provides navigation) {
                     Box(Modifier.fillMaxSize().focusProperties {
@@ -560,9 +578,11 @@ fun StbPlayApp(
         }
     } else {
         Row(modifier = Modifier.fillMaxSize().stbBackdrop().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            Box(Modifier.width(if (tvLayout) 62.dp else if (railCollapsed) 78.dp else 220.dp)
+                .fillMaxHeight().zIndex(2f).onFocusChanged { railHasFocus = it.hasFocus }.focusGroup()) {
             StbPlayNavigationRail(
                 selectedTab = selectedTab,
-                collapsed = railCollapsed,
+                collapsed = if (tvLayout) !settledRailFocus || pageFocusPending else railCollapsed,
                 compactTv = tvLayout,
                 onToggle = { if (selectedTab != StbPlayTab.CONTENT) railCollapsed = !railCollapsed },
                 onTabSelected = onTabSelected,
@@ -571,6 +591,7 @@ fun StbPlayApp(
                     if (tab == selectedTab) enterPageAction[0]() else onTabSelected(tab)
                 }
             )
+            }
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 StbPlayHeader(
                     selectedTab = selectedTab,
@@ -638,10 +659,11 @@ private fun StbPlayNavigationRail(
     )
     Column(
         modifier = Modifier
-            .width(if (collapsed) (if (compactTv) 62.dp else 78.dp) else (if (compactTv) 160.dp else 198.dp))
+            .testTag(if (collapsed) "tv-navigation-collapsed" else "tv-navigation-expanded")
+            .wrapContentWidth(Alignment.Start, unbounded = true)
+            .width(if (collapsed) (if (compactTv) 62.dp else 78.dp) else 220.dp)
             .fillMaxHeight()
-            .background(Rail).glassSheen(0.dp).glassEdge(0.dp)
-            .then(if (compactTv || LocalStbPalette.current.glass) Modifier else Modifier.animateContentSize())
+            .background(if (collapsed) Rail else LocalStbPalette.current.background).glassSheen(0.dp).glassEdge(0.dp)
             .zIndex(2f)
             .padding(horizontal = if (compactTv) 6.dp else 12.dp, vertical = if (compactTv) 10.dp else 22.dp),
         verticalArrangement = Arrangement.spacedBy(if (compactTv) 3.dp else 8.dp)
@@ -703,23 +725,14 @@ private fun StbPlayNavigationRail(
 @Composable
 private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compactTv: Boolean, selected: Boolean, focusModifier: Modifier = Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    var showFocusLabel by remember { mutableStateOf(false) }
     // On TV, the selected navigation item and the first page control were both
     // requesting initial focus. Let the page own initial focus on TV.
     val initialFocus = if (selected && !compactTv) Modifier.questInitialFocus() else Modifier
-    LaunchedEffect(collapsed, showFocusLabel) {
-        if (collapsed && showFocusLabel) {
-            delay(2_000)
-            showFocusLabel = false
-        }
-    }
     Box(Modifier.fillMaxWidth().height(if (compactTv) 42.dp else 48.dp)) {
         QuestSurface(
             onClick = onClick, tvContainerColor = if (selected) Gold.copy(alpha = 0.18f) else Color.Transparent, tvFocusedContainerColor = Gold,
             modifier = focusModifier.then(initialFocus).fillMaxSize().onFocusChanged {
                 focused = it.isFocused
-                if (it.isFocused && collapsed) showFocusLabel = true
-                if (!it.isFocused) showFocusLabel = false
             },
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(11.dp)),
             colors = ClickableSurfaceDefaults.colors(
@@ -747,33 +760,16 @@ private fun NavItem(label: String, icon: ImageVector, collapsed: Boolean, compac
                         modifier = Modifier.size(23.dp)
                     )
                 } else {
-                    Text(
-                        label,
-                        color = if (focused) OnAccent else White,
-                        fontSize = 13.sp,
-                        fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(icon, contentDescription = null, tint = if (focused) OnAccent else White, modifier = Modifier.size(23.dp))
+                        Text(label, color = if (focused) OnAccent else White, fontSize = 13.sp,
+                            fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
-        if (collapsed && showFocusLabel) {
-            Text(
-                label,
-                color = White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .offset(x = 68.dp)
-                    .zIndex(3f)
-                    .widthIn(min = 100.dp)
-                    .background(PanelSoft, RoundedCornerShape(8.dp))
-                    .border(1.dp, Gold.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            )
-        }
+
     }
 }
 
@@ -837,7 +833,8 @@ private fun StbPlayHomeScreen(
     onRemoveHistory: (UiMedia) -> Unit,
     onRefresh: () -> Unit,
     onEditPortal: () -> Unit,
-    onInteraction: () -> Unit
+    onInteraction: () -> Unit,
+    onViewAll: (String) -> Unit
 ) {
     if (state.loading) {
         LoadingContent("Loading your portal…")
@@ -958,6 +955,7 @@ private fun StbPlayHomeScreen(
                     onMediaClick,
                     onToggleFavorite,
                     onRemoveHistory,
+                    onViewAll = { onViewAll(row.id) },
                     listState = rowListStates[row.id],
                     firstCardFocusRequester = rowFocusRequesters[row.id],
                     staticTvCards = denseTv,
@@ -1001,17 +999,24 @@ private fun RotatingHero(
     onFocused: () -> Unit
 ) {
     val denseTv = isTelevisionLayout()
-    var index by remember(heroes.map { it.id }) { mutableIntStateOf(0) }
+    // Preserve the displayed title when background catalogue updates reorder the pool.
+    var displayedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var index by remember { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(heroes.map { it.id }, focused, denseTv) {
-        if (!denseTv && !focused && heroes.size > 1) {
+        val retained = heroes.indexOfFirst { it.id == displayedId }
+        index = if (retained >= 0) retained else index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))
+        displayedId = heroes.getOrNull(index)?.id
+        if (!focused && heroes.size > 1) {
             while (true) {
-                delay(8_000)
+                delay(if (denseTv) 12_000 else 8_000)
                 index = (index + 1) % heroes.size
+                displayedId = heroes[index].id
             }
         }
     }
-    val item = heroes.getOrNull(index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))) ?: return
+    val item = heroes.firstOrNull { it.id == displayedId }
+        ?: heroes.getOrNull(index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))) ?: return
     val focusNavigation = LocalTvFocusNavigation.current
     val heroModifier = Modifier.tvFocusTarget("home:hero")
             .onPreviewKeyEvent { event ->
@@ -1090,6 +1095,7 @@ private fun MediaRow(
     onMediaClick: (UiMedia) -> Unit,
     onToggleFavorite: (UiMedia) -> Unit,
     onRemoveHistory: (UiMedia) -> Unit,
+    onViewAll: () -> Unit = {},
     listState: LazyListState? = null,
     firstCardFocusRequester: FocusRequester? = null,
     staticTvCards: Boolean = false,
@@ -1107,6 +1113,7 @@ private fun MediaRow(
         ) {
             Text(row.title, color = White, fontSize = if (denseTv) 18.sp else 21.sp, fontWeight = FontWeight.SemiBold)
             row.subtitle?.let { Text(it, color = Muted, fontSize = 12.sp) }
+
         }
         val shelf: @Composable () -> Unit = { LazyRow(
             state = listState ?: rememberLazyListState(),
@@ -1119,7 +1126,14 @@ private fun MediaRow(
                 key = { _, media -> media.id },
                 contentType = { _, media -> if (media.portrait) "poster" else "landscape" }
             ) { index, media ->
-                if (denseTv && staticTvCards) TvHomeMediaCard(
+                if (row.id == "continue-live" && media.streamType == "live") HomeLiveChannelCard(
+                    item = media, onClick = { onMediaClick(media) },
+                    focusRequester = if (index == 0) firstCardFocusRequester else null,
+                    restoreFocusRequester = if (media.id == restoreItemId) restoreFocusRequester else null,
+                    onFocused = { onMediaFocused(media) }, focusId = "home:${row.id}:${media.streamType}:${media.id}",
+                    onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.returnToRail else null,
+                    onFocusDown = onFocusDown, onFocusUp = onFocusUp
+                ) else if (denseTv && staticTvCards) TvHomeMediaCard(
                     item = media,
                     onClick = { onMediaClick(media) },
                     focusRequester = if (index == 0) firstCardFocusRequester else null,
@@ -1134,12 +1148,26 @@ private fun MediaRow(
                     onClick = { onMediaClick(media) },
                     onFocused = { onMediaFocused(media) },
                     onToggleFavorite = { onToggleFavorite(media) },
-                    onRemoveHistory = if (row.id == "continue") ({ onRemoveHistory(media) }) else null,
+                    onRemoveHistory = if (row.id.startsWith("continue")) ({ onRemoveHistory(media) }) else null,
                     focusRequester = if (index == 0) firstCardFocusRequester else null,
                     onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.returnToRail else null,
                     onFocusDown = onFocusDown,
                     onFocusUp = onFocusUp
                 )
+            }
+            if (row.hasMore) item(key = "view-all:${row.id}") {
+                TvHomeSurface(onViewAll, Modifier.width(86.dp)
+                    .height(if (row.items.firstOrNull()?.streamType == "live") 72.dp else 202.dp)
+                    .testTag("home-view-all:${row.id}")
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) false else when {
+                            event.key == Key.DirectionDown && onFocusDown != null -> { onFocusDown(); true }
+                            event.key == Key.DirectionUp && onFocusUp != null -> { onFocusUp(); true }
+                            else -> false
+                        }
+                    }) {
+                    Text("View all →", color = White, fontSize = 12.sp, modifier = Modifier.align(Alignment.Center))
+                }
             }
         } }
         if (denseTv) CompositionLocalProvider(LocalBringIntoViewSpec provides TvHomeBringIntoViewSpec) { shelf() }
@@ -1163,7 +1191,7 @@ private fun TvHomeMediaCard(
 ) {
     val width = if (item.portrait) 142.dp else 205.dp
     val height = if (item.portrait) 202.dp else 120.dp
-    val footerHeight = if (item.portrait) 46.dp else 38.dp
+    val footerHeight = if (item.resumeLabel != null) 62.dp else if (item.portrait) 46.dp else 38.dp
     val density = LocalDensity.current
     val cardModifier = if (compactGrid) Modifier.fillMaxWidth().aspectRatio(width.value / height.value)
         else Modifier.width(width).height(height)
@@ -1192,9 +1220,12 @@ private fun TvHomeMediaCard(
                     decodeHeightPx = with(density) { (height - footerHeight).roundToPx() }
                 )
                 Box(Modifier.fillMaxWidth().height(footerHeight).background(Panel), contentAlignment = Alignment.CenterStart) {
-                    Text(item.title, color = White, fontSize = 12.sp, lineHeight = 14.sp,
-                        fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                    Column(Modifier.padding(horizontal = 7.dp, vertical = 3.dp)) {
+                        Text(item.title, color = White, fontSize = 12.sp, lineHeight = 14.sp,
+                            fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        item.resumeLabel?.let { Text(it.removePrefix("Resume "), color = Muted, fontSize = 10.sp,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                    }
                 }
             }
             item.badge?.let {

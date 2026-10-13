@@ -64,7 +64,7 @@ fun MovieDetailsScreen(
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
-    if (context.isAndroidTvDevice()) {
+    if (context.isAndroidTvDevice() || item.progress > 0f) {
         TvMediaDetailsScreen(item, onPlay, onResume, onToggleFavorite, onRemoveHistory, onBack)
         return
     }
