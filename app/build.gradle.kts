@@ -25,9 +25,8 @@ android {
         applicationId = "com.example.stbplay"
         minSdk = 26
         targetSdk = 35
-        versionCode = 82
-        // Isolated VOD progress regression candidate; stable 2.10.26.1 remains unchanged.
-        versionName = "2.10.26.3"
+        versionCode = 83
+        versionName = "2.10.26.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
