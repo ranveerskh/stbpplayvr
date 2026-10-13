@@ -1163,9 +1163,14 @@ private fun StbPlayRoot(
         }
     }
 
+    // Progress writes continue every five seconds, but invisible catalogue projections must
+    // not remap tens of thousands of provider rows while the VOD player is on screen.
+    val standaloneVodPlaying = playRequest?.kind?.let { it != StalkerContentKind.LIVE } == true && !tvLivePreviewPlayback
+    val catalogueProgress = com.example.stbplay.ui.rememberPlaybackCatalogueProgress(progressById, standaloneVodPlaying)
+    val liveProjectionEnabled = selectedTab == StbPlayTab.LIVE && !standaloneVodPlaying
     fun toUi(stream: PortalStream): UiMedia = stream.toUiMedia(
         portrait = stream.streamType != "live",
-        progress = progressById[stream.id] ?: 0f,
+        progress = catalogueProgress[stream.id] ?: 0f,
         favorite = stream.id in favoriteIds,
         imageUrl = portalRepository.resolveArtworkUrl(stream.iconUrl),
         imageHeaders = portalRepository.artworkRequestHeaders(stream.iconUrl)
@@ -1175,14 +1180,15 @@ private fun StbPlayRoot(
     // screen's mapped rows stable so those updates do not rebuild every channel.
     // Project provider rows off the UI thread. Never display rows from a previous category.
     val liveProjection by androidx.compose.runtime.produceState<Pair<List<PortalStream>, List<UiMedia>>?>(
-        initialValue = null, filteredLive, progressById, favoriteIds, catalogGeneration
+        initialValue = null, filteredLive, catalogueProgress, favoriteIds, catalogGeneration, liveProjectionEnabled
     ) {
         val source = filteredLive
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { source to source.map(::toUi) }
+        value = if (liveProjectionEnabled) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { source to source.map(::toUi) }
+            else null
     }
     val liveUiItems = liveProjection?.takeIf { it.first == filteredLive }?.second ?: emptyList()
-    val liveProjectionLoading = liveProjection?.first != filteredLive
-    val contentUiItems = remember(filteredVod, progressById, favoriteIds, catalogGeneration, selectedTab) {
+    val liveProjectionLoading = liveProjectionEnabled && liveProjection?.first != filteredLive
+    val contentUiItems = remember(filteredVod, catalogueProgress, favoriteIds, catalogGeneration, selectedTab) {
         if (selectedTab == StbPlayTab.CONTENT) filteredVod.map(::toUi) else emptyList()
     }
 
@@ -1216,10 +1222,10 @@ private fun StbPlayRoot(
             )
         }.distinctBy { "${it.streamType}:${it.id}" }
     }
-    val continueStreams = remember(safeVod, safeLive, progressById) {
-        (safeVod + safeLive).filter { (progressById[it.id] ?: 0f) > 0f }
+    val continueStreams = remember(safeVod, safeLive, catalogueProgress) {
+        (safeVod + safeLive).filter { (catalogueProgress[it.id] ?: 0f) > 0f }
             .distinctBy { "${it.streamType}:${it.id}" }
-            .sortedByDescending { progressById[it.id] ?: 0f }
+            .sortedByDescending { catalogueProgress[it.id] ?: 0f }
     }
     val recommendationCandidates = remember(safeVod) { safeVod.take(1_200) }
     val recommendationStreams = remember(recommendationCandidates, continueStreams, favoriteStreams) {
@@ -1245,10 +1251,10 @@ private fun StbPlayRoot(
     val artworkCookie = portalRepository.getSessionCookie()
     val searchCatalog = rememberSearchCatalog(selectedTab, safeLive, safeVod, favoriteStreams, catalogueLanguage)
     val favouriteUiItems = rememberFavouriteUiItems(
-        favoriteStreams, progressById, favoriteIds, storedSettings, catalogGeneration,
+        favoriteStreams, catalogueProgress, favoriteIds, storedSettings, catalogGeneration,
         artworkToken, artworkCookie, portalReady, ::toUi
     )
-    val homeHeroes = remember(homeHeroStreams, progressById, favoriteIds, catalogGeneration, artworkToken, artworkCookie) {
+    val homeHeroes = remember(homeHeroStreams, catalogueProgress, favoriteIds, catalogGeneration, artworkToken, artworkCookie) {
         homeHeroStreams.map(::toUi)
     }
     val favouriteLive = remember(favoriteStreams) { favoriteStreams.filter { it.streamType == "live" } }
@@ -1256,7 +1262,7 @@ private fun StbPlayRoot(
     val homeFavouriteLive = remember(favouriteLive) { favouriteLive.take(16) }
     val homeLive = remember(safeLive) { safeLive.take(16) }
     val homeRows = remember(homeContinue, recommendationStreams, homeFavouriteLive, homeLive, latestMovies, latestSeries,
-        progressById, favoriteIds, catalogGeneration, artworkToken, artworkCookie) {
+        catalogueProgress, favoriteIds, catalogGeneration, artworkToken, artworkCookie) {
         buildList {
             if (homeContinue.isNotEmpty()) add(UiMediaRow("continue", "Continue Watching", "Saved on this device", homeContinue.map(::toUi)))
             if (recommendationStreams.isNotEmpty()) add(UiMediaRow("recommended", "Recommended for you", "Based on what you watch", recommendationStreams.map(::toUi)))

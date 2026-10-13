@@ -41,3 +41,13 @@ internal fun rememberFavouriteUiItems(
 ): List<UiMedia> = remember(
     streams, progressById, favoriteIds, portal, catalogGeneration, artworkToken, artworkCookie, portalReady
 ) { streams.map(toUi) }
+
+/** Keep hidden catalogue inputs stable during standalone VOD; resume persistence remains live. */
+@Composable
+internal fun rememberPlaybackCatalogueProgress(
+    latestProgress: Map<String, Float>,
+    standaloneVodPlaying: Boolean
+): Map<String, Float> {
+    val entryProgress = remember(standaloneVodPlaying) { latestProgress }
+    return if (standaloneVodPlaying) entryProgress else latestProgress
+}
