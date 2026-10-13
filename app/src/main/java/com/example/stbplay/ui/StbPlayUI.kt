@@ -1029,11 +1029,12 @@ private fun RotatingHero(
     var displayedId by rememberSaveable { mutableStateOf<String?>(null) }
     var index by remember { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(heroes.map { it.id }, denseTv) {
+    val rotationPaused = !denseTv && focused
+    LaunchedEffect(heroes.map { it.id }, rotationPaused, denseTv) {
         val retained = heroes.indexOfFirst { it.id == displayedId }
         index = if (retained >= 0) retained else index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))
         displayedId = heroes.getOrNull(index)?.id
-        if (heroes.size > 1) {
+        if (!rotationPaused && heroes.size > 1) {
             while (true) {
                 delay(if (denseTv) 12_000 else 8_000)
                 index = (index + 1) % heroes.size
