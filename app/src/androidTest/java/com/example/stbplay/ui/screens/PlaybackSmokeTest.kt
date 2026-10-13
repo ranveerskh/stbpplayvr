@@ -182,7 +182,7 @@ class PlaybackSmokeTest {
         var projected: List<com.example.stbplay.ui.UiMedia> = emptyList()
         val savedTicks = AtomicInteger()
         val saveDurations = CopyOnWriteArrayList<Long>()
-        val request = StalkerPlayRequest(videoUrl, StalkerContentKind.MOVIE, contentId = "vod-42", title = "Progress fixture")
+        val request = StalkerPlayRequest("http://10.0.2.2:8765/progress-long.mp4", StalkerContentKind.MOVIE, contentId = "vod-42", title = "Progress fixture")
         try {
             rule.setContent {
                 val latestProgress by manager.vodProgress.collectAsState(initial = emptyMap())
@@ -206,7 +206,7 @@ class PlaybackSmokeTest {
                 }
             }
             val (view, player) = awaitVideo()
-            rule.runOnIdle { player.repeatMode = Player.REPEAT_MODE_ONE; player.volume = 0f }
+            rule.runOnIdle { player.volume = 0f }
             val initialMappings = rule.runOnIdle { mappings }
             val initialRows = projected
             rule.waitUntil(40_000) { savedTicks.get() >= 5 }
@@ -218,7 +218,8 @@ class PlaybackSmokeTest {
             }
             assertEquals(1, started.get())
             assertTrue(failures.isEmpty())
-            assertTrue(runBlocking { manager.vodProgress.first() }.containsKey(request.contentId))
+            assertTrue("A non-completed fixture must retain its resume record: position=${rule.runOnIdle { player.currentPosition }} duration=${rule.runOnIdle { player.duration }} ticks=${savedTicks.get()}",
+                runBlocking { manager.vodProgress.first() }.containsKey(request.contentId))
             val beforeExitSaves = savedTicks.get()
             // Leaving playback applies the latest saved progress to the catalogue immediately.
             rule.runOnIdle { playing = false }
