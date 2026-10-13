@@ -166,7 +166,7 @@ object StalkerParser {
                     series = item.text("series_number", "series_cmd", "series_command")
                         ?: item.optJSONArray("series")?.optString(0)?.takeIf { it.isNotBlank() },
                     description = item.text("description", "plot", "about"),
-                    number = item.text("episode_number", "number", "series_number")?.toIntOrNull()
+                    number = item.text("episode_number", "series_number", "number")?.toIntOrNull()
                         ?: Regex("(?i)(?:episode|ep\\.?)[\\s#:_-]*(\\d+)")
                             .find(item.text("name", "title", "episode_name").orEmpty())?.groupValues?.get(1)?.toIntOrNull()
                 )

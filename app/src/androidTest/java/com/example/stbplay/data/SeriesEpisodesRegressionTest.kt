@@ -13,7 +13,7 @@ class SeriesEpisodesRegressionTest {
             val rows = JSONArray()
             (50 downTo 1).drop((page - 1) * 14).take(14).forEach { number ->
                 rows.put(JSONObject().put("id", "database-$number").put("name", "Episode $number")
-                    .put("is_episode", 1).put("series_number", number).put("season_id", "s1"))
+                    .put("is_episode", 1).put("series_number", number).put("number", 1).put("season_id", "s1"))
             }
             val response = JSONObject().put("js", JSONObject().put("data", rows).put("total_items", 50))
             SeriesPage(StalkerParser.parseEpisodes(response, "ffmpeg parent-command"), 50)
