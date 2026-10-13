@@ -830,12 +830,12 @@ private fun NativePlayerScreen(
                             colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF202020), focusedContainerColor = Color(0xFF464646))
                         ) {
                             Box(Modifier.fillMaxSize().padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
-                                Text("${index + 1}. $name${if (index == currentEpisodeIndex) " • Playing" else ""}",
+                                Text("$name${if (index == currentEpisodeIndex) " • Playing" else ""}",
                                     fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         } else QuestButton(onClick = { episodePickerVisible = false; onEpisodeSelected(index) },
                             modifier = Modifier.fillMaxWidth()) {
-                            Text("${index + 1}. $name${if (index == currentEpisodeIndex) " • Playing" else ""}")
+                            Text("$name${if (index == currentEpisodeIndex) " • Playing" else ""}")
                         }
                     }
                 }

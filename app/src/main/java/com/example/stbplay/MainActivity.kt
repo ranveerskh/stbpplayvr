@@ -1660,7 +1660,8 @@ private fun StbPlayRoot(
                             }
                         }
                     },
-                    episodeTitles = if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE) playingEpisodes.map { it.name } else emptyList(),
+                    episodeTitles = if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE)
+                        playingEpisodes.map { com.example.stbplay.data.model.episodeDisplayLabel(it) } else emptyList(),
                     currentEpisodeIndex = playingEpisodeIndex,
                     onEpisodeSelected = { playEpisodeAt(it) },
                     onPlaybackEnded = {

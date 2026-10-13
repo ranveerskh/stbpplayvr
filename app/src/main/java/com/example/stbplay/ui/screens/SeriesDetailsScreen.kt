@@ -285,7 +285,7 @@ private fun EpisodeRow(episode: PortalEpisode, initialFocus: Boolean = false, ha
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = if (television) 8.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(episode.name, color = SeriesWhite, fontSize = if (television) 12.sp else 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(com.example.stbplay.data.model.episodeDisplayLabel(episode), color = SeriesWhite, fontSize = if (television) 12.sp else 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (!television) episode.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = SeriesMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             Text(if (!playable) "Unavailable" else if (television && hasProgress) "Resume" else "Play", color = if (playable) SeriesGoldLight else SeriesMuted, fontSize = if (television) 10.sp else 11.sp, fontWeight = FontWeight.Bold)

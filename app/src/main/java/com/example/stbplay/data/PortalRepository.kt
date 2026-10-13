@@ -280,12 +280,12 @@ class PortalRepository {
             "category" to "*",
             "sortby" to "added"
         )
-        val vodResult = fetchWithPageFallback(settings, session, "series", "get_ordered_list", params + mapOf("series_id" to seriesId)) {
+        val vodResult = fetchSeriesPages(settings, session, "series", "get_ordered_list", params + mapOf("series_id" to seriesId), { it.id }, useTotal = false) {
             StalkerParser.parseSeasons(it)
         }
         if (vodResult.isNotEmpty()) return@withContext vodResult
 
-        val legacyVodResult = fetchWithPageFallback(settings, session, "vod", "get_ordered_list", params) {
+        val legacyVodResult = fetchSeriesPages(settings, session, "vod", "get_ordered_list", params, { it.id }, useTotal = false) {
             StalkerParser.parseSeasons(it)
         }
         if (legacyVodResult.isNotEmpty()) return@withContext legacyVodResult
@@ -296,9 +296,9 @@ class PortalRepository {
         )
         candidates.firstNotNullOfOrNull { (action, extra) ->
             runCatching {
-                StalkerParser.parseSeasons(
-                    stalkerClient.call(settings.url, settings.mac, session, "series", action, extra)
-                ).takeIf { it.isNotEmpty() }
+                fetchSeriesPages(settings, session, "series", action, extra, { it.id }, useTotal = false) {
+                    StalkerParser.parseSeasons(it)
+                }.takeIf { it.isNotEmpty() }
             }.getOrNull()
         }.orEmpty()
     }
@@ -314,29 +314,30 @@ class PortalRepository {
             "category" to "*",
             "sortby" to "added"
         )
-        val seriesParams = params + mapOf("series_id" to seriesId)
-        val seriesResult = fetchWithPageFallback(settings, session, "series", "get_ordered_list", seriesParams) {
-            StalkerParser.parseEpisodes(it, parentCommand)
+        var loadError: Exception? = null
+        suspend fun attempt(type: String, action: String, extra: Map<String, String>): List<PortalEpisode> = try {
+            fetchSeriesPages(settings, session, type, action, extra, { it.id }) {
+                StalkerParser.parseEpisodes(it, parentCommand)
+            }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            loadError = error
+            emptyList()
         }
+        val seriesResult = attempt("series", "get_ordered_list", params + mapOf("series_id" to seriesId))
         if (seriesResult.isNotEmpty()) return@withContext seriesResult
-
-        val vodResult = fetchWithPageFallback(settings, session, "vod", "get_ordered_list", params) {
-            StalkerParser.parseEpisodes(it, parentCommand)
-        }
+        val vodResult = attempt("vod", "get_ordered_list", params)
         if (vodResult.isNotEmpty()) return@withContext vodResult
-
         val candidates = listOf(
             "get_episodes" to mapOf("series_id" to seriesId, "movie_id" to seriesId, "season_id" to seasonId, "category" to "*"),
             "get_ordered_list" to mapOf("series_id" to seriesId, "movie_id" to seriesId, "season_id" to seasonId, "episode_id" to "0", "category" to "*")
         )
-        candidates.firstNotNullOfOrNull { (action, extra) ->
-            runCatching {
-                StalkerParser.parseEpisodes(
-                    stalkerClient.call(settings.url, settings.mac, session, "series", action, extra),
-                    parentCommand
-                ).takeIf { it.isNotEmpty() }
-            }.getOrNull()
-        }.orEmpty()
+        for ((action, extra) in candidates) {
+            val result = attempt("series", action, extra)
+            if (result.isNotEmpty()) return@withContext result
+        }
+        loadError?.let { throw it }
+        emptyList()
     }
 
     suspend fun getStreamUrl(stream: PortalStream): String = withContext(Dispatchers.IO) {
@@ -646,6 +647,14 @@ class PortalRepository {
         put("hd", "0")
         put("not_ended", "0")
         put("category", categoryId?.takeIf { it.isNotBlank() && it != "0" } ?: "*")
+    }
+
+    private suspend fun <T> fetchSeriesPages(
+        settings: PortalSettings, session: StalkerSession, type: String, action: String,
+        parameters: Map<String, String>, key: (T) -> String, useTotal: Boolean = true, parser: (JSONObject) -> List<T>
+    ): List<T> = loadAllSeriesPages(key) { page ->
+        val response = stalkerClient.call(settings.url, settings.mac, session, type, action, parameters + ("p" to page.toString()))
+        SeriesPage(parser(response), if (useTotal) response.optJSONObject("js")?.optInt("total_items", -1)?.takeIf { it >= 0 } else null)
     }
 
     private suspend fun <T> fetchWithPageFallback(

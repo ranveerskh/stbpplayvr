@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.toPixelMap
@@ -114,6 +115,27 @@ class PlaybackSmokeTest {
             rule.runOnIdle { !player.isPlaying && player.currentPosition == position }
         }
         return position
+    }
+
+    @Test fun playerEpisodePickerScrollsPastFourteenAndUsesProviderLabels() {
+        var selectedEpisode = -1
+        val titles = (50 downTo 1).map { "Episode $it" }
+        rule.setContent { STBPlayTheme {
+            PlaybackRoute(StalkerPlayRequest(videoUrl, StalkerContentKind.SERIES_EPISODE, title = "Episode regression"),
+                portalUiUrl = "http://10.0.2.2:8765", macAddress = "02:00:00:00:00:01", token = null,
+                episodeTitles = titles, currentEpisodeIndex = 0, onEpisodeSelected = { selectedEpisode = it }, onBack = {})
+        } }
+        val (view, _) = awaitVideo()
+        rule.runOnIdle {
+            view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN))
+            view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN)); view.showController()
+        }
+        rule.onNodeWithText("Episodes").performClick()
+        rule.onNodeWithText("1. Episode 50", substring = true).assertDoesNotExist()
+        rule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Episode 50", substring = true)))
+            .performScrollToNode(hasText("Episode 1"))
+        rule.onNodeWithText("Episode 1").performClick()
+        assertEquals(49, selectedEpisode)
     }
 
     @Test fun moviePlaysAndBackCallbackWorksOnTvAndPhone() {

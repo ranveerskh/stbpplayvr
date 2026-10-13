@@ -73,7 +73,8 @@ data class PortalEpisode(
     val seasonId: String?,
     /** The provider's series command, when it supplies one. This is not a database id. */
     val series: String? = null,
-    val description: String? = null
+    val description: String? = null,
+    val number: Int? = null
 )
 
 data class LoginResponse(
