@@ -540,7 +540,7 @@ fun StbPlayApp(
                 SideEffect {
                     activeNavigation[0] = navigation
                     enterPageAction[0] = navigation::enterPage
-                    pageFocusPending = navigation.pending
+                    pageFocusPending = navigation.pending || (!navigation.groupHasFocus && !navigation.railOwnsFocus)
                 }
                 val target = navigation.restoreTarget
                 LaunchedEffect(navigation.pending, navigation.requestGeneration, navigation.entryId, target, windowFocused) {
@@ -556,10 +556,10 @@ fun StbPlayApp(
                     // A loading page or changing settings subpage may not have a target
                     // yet. Keep its entry request pending; never bounce through the rail.
                 }
-                LaunchedEffect(navigation.lossGeneration, navigation.hasPageFocus, windowFocused) {
-                    if (windowFocused && !navigation.hasPageFocus && !navigation.railOwnsFocus) {
+                LaunchedEffect(navigation.lossGeneration, navigation.groupHasFocus, windowFocused) {
+                    if (windowFocused && !navigation.groupHasFocus && !navigation.railOwnsFocus) {
                         delay(80)
-                        if (!navigation.hasPageFocus && !navigation.railOwnsFocus) navigation.restorePage()
+                        if (!navigation.groupHasFocus && !navigation.railOwnsFocus) navigation.restorePage()
                     }
                 }
                 CompositionLocalProvider(LocalTvFocusNavigation provides navigation) {
@@ -567,7 +567,7 @@ fun StbPlayApp(
                         exit = { direction -> if (direction == androidx.compose.ui.focus.FocusDirection.Left) {
                             navigation.leavePage(); railRequesters.getValue(selectedTab)
                         } else FocusRequester.Default }
-                    }.focusGroup()) { renderTab() }
+                    }.onFocusChanged { navigation.groupHasFocus = it.hasFocus }.focusGroup()) { renderTab() }
                 }
             }
         }

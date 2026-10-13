@@ -11,7 +11,7 @@ class TvFocusNavigationTest {
         val target = FocusRequester()
         navigation.attach("live:channel", target); navigation.focused("live:channel", target)
         navigation.blurred(target)
-        assertTrue(navigation.pending); assertFalse(navigation.hasPageFocus)
+        assertFalse(navigation.pending); assertFalse(navigation.hasPageFocus)
         assertSame(target, navigation.restoreTarget)
         navigation.restorePage(); assertTrue(navigation.pending)
         navigation.returnToRail(); assertTrue(navigation.railOwnsFocus); assertFalse(navigation.pending)

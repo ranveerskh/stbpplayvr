@@ -22,6 +22,7 @@ internal class TvFocusNavigation(
     var railOwnsFocus by mutableStateOf(false)
     var lossGeneration by mutableIntStateOf(0)
     var hasPageFocus by mutableStateOf(false)
+    var groupHasFocus by mutableStateOf(false)
     var lastFocusedId: String? = null
 
     fun enterPage() { railOwnsFocus = false; pending = true; requestGeneration++ }
@@ -39,7 +40,6 @@ internal class TvFocusNavigation(
     fun blurred(requester: FocusRequester) {
         if (focusedRequester === requester) {
             hasPageFocus = false; focusedRequester = null; lossGeneration++
-            if (!railOwnsFocus) pending = true
         }
     }
     fun detach(id: String, requester: FocusRequester) {
