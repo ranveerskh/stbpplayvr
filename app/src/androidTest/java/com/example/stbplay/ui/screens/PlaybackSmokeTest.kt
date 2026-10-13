@@ -155,7 +155,16 @@ class PlaybackSmokeTest {
             assertEquals(10_000L, player.seekForwardIncrement)
             assertEquals(5_000L, player.seekBackIncrement)
         }
-        rule.waitUntil(7_000) { rule.runOnIdle { !movieView.isControllerFullyVisible } }
+        val idleClockStart = rule.mainClock.currentTime
+        val idleRealStart = android.os.SystemClock.elapsedRealtime()
+        try {
+            rule.waitUntil(7_000) { rule.runOnIdle { !movieView.isControllerFullyVisible } }
+        } catch (failure: Throwable) {
+            rule.runOnIdle {
+                android.util.Log.e("ControlIdleDiagnostic", "virtualDelta=${rule.mainClock.currentTime - idleClockStart} realDelta=${android.os.SystemClock.elapsedRealtime() - idleRealStart} autoAdvance=${rule.mainClock.autoAdvance} playing=${player.isPlaying} state=${player.playbackState} position=${player.currentPosition} controller=${movieView.isControllerFullyVisible} focused=${movieView.findFocus()?.javaClass?.simpleName}")
+            }
+            throw failure
+        }
         rule.onNodeWithText("← Back").assertDoesNotExist()
         val seekStart = pauseAtKnownPosition(player)
         rule.runOnIdle { player.seekForward() }
