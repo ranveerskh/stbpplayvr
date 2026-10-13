@@ -155,8 +155,31 @@ class PlaybackSmokeTest {
             assertEquals(10_000L, player.seekForwardIncrement)
             assertEquals(5_000L, player.seekBackIncrement)
         }
-        rule.waitUntil(7_000) { rule.runOnIdle { !movieView.isControllerFullyVisible } }
-        rule.onNodeWithText("← Back").assertDoesNotExist()
+        // Compose delay uses virtual time; wall-clock polling can expire before
+        // the virtual clock has advanced through the three-second idle interval.
+        // Keep it fixed while Android finishes hiding the native controller.
+        val originalAutoAdvance = rule.mainClock.autoAdvance
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.runOnIdle {
+                movieView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN))
+                movieView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN))
+            }
+            rule.mainClock.advanceTimeByFrame()
+            rule.waitForIdle()
+            rule.onNodeWithText("← Back").assertIsDisplayed()
+            rule.runOnIdle { assertTrue(movieView.isControllerFullyVisible) }
+            rule.mainClock.advanceTimeBy(2_500)
+            rule.waitForIdle()
+            rule.onNodeWithText("← Back").assertIsDisplayed()
+            rule.runOnIdle { assertTrue(movieView.isControllerFullyVisible) }
+            rule.mainClock.advanceTimeBy(600)
+            rule.waitForIdle()
+            rule.waitUntil(7_000) { rule.runOnIdle { !movieView.isControllerFullyVisible } }
+            rule.onNodeWithText("← Back").assertDoesNotExist()
+        } finally {
+            rule.mainClock.autoAdvance = originalAutoAdvance
+        }
         val seekStart = pauseAtKnownPosition(player)
         rule.runOnIdle { player.seekForward() }
         rule.waitUntil(10_000) { rule.runOnIdle { player.currentPosition == seekStart + 10_000L } }

@@ -44,3 +44,19 @@ fixture playback/persistence with 100k titles, series storage isolation/actions,
 recency/deduplication and rail geometry/focus checks using the signed test workflow.
 Report actual results after completion. Real provider imagery/series availability,
 TV/box navigation speed and Meta Quest require user/physical-device testing.
+
+### Control-idle test clock diagnosis
+
+The unchanged phone movie smoke check timed out twice at its seven-second
+wall-clock wait. Isolated diagnostics (run 38404972277, commit
+16c00f3405be104f4aced3ca61210ace72fa8677) measured **2304ms virtual time versus
+7066ms real time**, while decoded video was still playing and the native
+controller visible. The production Compose idle delay is 3000ms: wall-clock
+polling had not advanced the virtual timer far enough. Player production source
+matches the working .2 foundation byte for byte.
+
+The test now explicitly drives virtual time, asserts both Compose and native
+controls remain visible at 2500ms, and asserts both hide after 3100ms. During
+native drawing synchronization the virtual clock stays fixed, so extra polling
+cannot accidentally grant a longer application timeout. Seek/back/playback
+assertions remain. No production player timeout was changed.
