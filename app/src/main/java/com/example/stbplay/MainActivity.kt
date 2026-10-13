@@ -1596,7 +1596,11 @@ private fun StbPlayRoot(
                 playRequest != null && !tvLivePreviewPlayback -> {
                     val currentRequest = playRequest!!
                     val currentProgressGeneration = remember(currentRequest) { progressResetGeneration }
-                    val viewingTracker = remember(currentRequest, viewerCatalogProfileId) { com.example.stbplay.data.ViewingSessionTracker() }
+                    val viewingTracker = remember(currentRequest, viewerCatalogProfileId) {
+                        com.example.stbplay.data.ViewingSessionTracker(previouslyQualified = latestTaste.any {
+                            it.id == playingTasteSource?.id && it.type == playingTasteSource?.streamType
+                        })
+                    }
                     val tasteSource = remember(currentRequest) { playingTasteSource }
                     val tasteProfile = remember(currentRequest) { viewerCatalogProfileId }
                     fun playEpisodeAt(index: Int, promptForResume: Boolean = true) {

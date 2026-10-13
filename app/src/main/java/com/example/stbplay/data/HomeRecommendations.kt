@@ -24,7 +24,7 @@ fun updateViewingTaste(old: List<ViewingTaste>, signal: ViewingTaste, newSession
 }
 
 /** Counts progress actually traversed; resume offsets, seeks and previews do not qualify. */
-class ViewingSessionTracker {
+class ViewingSessionTracker(private val previouslyQualified: Boolean = false) {
     private var lastPosition: Long? = null
     private var lastTime: Long? = null
     private var watchedMs = 0L
@@ -40,7 +40,7 @@ class ViewingSessionTracker {
         val threshold = minOf(120_000L, maxOf(10_000L, duration / 5))
         val first = !qualified && watchedMs >= threshold
         if (first) qualified = true
-        val finished = qualified && !completionRecorded && position.toDouble() / duration >= .95
+        val finished = (qualified || previouslyQualified) && !completionRecorded && position.toDouble() / duration >= .95
         if (finished) completionRecorded = true
         return if (first || finished) first to finished else null
     }

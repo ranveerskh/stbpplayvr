@@ -53,4 +53,11 @@ class HomeRecommendationsTest {
         assertEquals(false to true, playing.observe(575_000, 600_000, 130_000))
         assertNull(playing.observe(580_000, 600_000, 135_000))
     }
+
+    @Test fun finishingLastMinuteOnResumeRetainsEarlierQualifiedWatchingWithoutAnotherSession() {
+        val tracker = ViewingSessionTracker(previouslyQualified = true)
+        assertNull(tracker.observe(940_000, 1_000_000, 0))
+        assertEquals(false to true, tracker.observe(950_000, 1_000_000, 10_000))
+        assertNull(tracker.observe(955_000, 1_000_000, 15_000))
+    }
 }
