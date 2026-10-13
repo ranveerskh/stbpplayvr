@@ -61,6 +61,15 @@ jobs:
           grep -Fq 'Signer #1 certificate SHA-256 digest: 91943d0efc4125eb6aeda132ba6b8d79855496e030477c2d5cd00e9bedd4fdb0' "$RUNNER_TEMP/release-cert.txt"
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" | head -n 1
           sha256sum "$apk"
+      - name: Upload verified stable APK and signing evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: STB-PLAY-Android-${{ env.RELEASE_TAG }}-signed
+          path: |
+            STB-PLAY-Android-${{ env.RELEASE_TAG }}.apk
+            ${{ runner.temp }}/release-cert.txt
+          if-no-files-found: error
+          retention-days: 30
       - name: Publish APK to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
