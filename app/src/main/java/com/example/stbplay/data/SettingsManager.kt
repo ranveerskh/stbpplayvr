@@ -12,6 +12,7 @@ import com.example.stbplay.domain.model.PortalSettings
 import com.example.stbplay.domain.model.generateStbPlayMac
 import com.example.stbplay.isAndroidTvDevice
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
@@ -79,7 +80,7 @@ class SettingsManager(private val context: Context) {
             prefs[keyViewers] = serializeViewers(viewers.filterNot { it.id == id })
             if (prefs[keyActiveViewer] == id) prefs[keyActiveViewer] = "owner"
             prefs.asMap().keys.filter { key ->
-                key.name.endsWith(":view:$id") && listOf(keyFavoritesPrefix, keySearchHistoryPrefix, keyProgressPrefix, keySeriesHistoryPrefix).any { key.name.startsWith(it) }
+                key.name.endsWith(":view:$id") && listOf(keyFavoritesPrefix, keySearchHistoryPrefix, keyProgressPrefix, keySeriesHistoryPrefix, keyViewingTastePrefix).any { key.name.startsWith(it) }
             }.forEach { key -> prefs.remove(key) }
             prefs.remove(intPreferencesKey("phone_movie_columns_viewer_$id"))
         }
@@ -116,6 +117,7 @@ class SettingsManager(private val context: Context) {
     private val keySearchHistoryPrefix = "search_history_"
     private val keyProgressPrefix = "vod_progress_"
     private val keySeriesHistoryPrefix = "series_history_"
+    private val keyViewingTastePrefix = "viewing_taste_"
     private val keyPlayer = stringPreferencesKey("player_preference")
     private val keyAndroidBoxVideoCompatibility = booleanPreferencesKey("android_box_video_compatibility")
     private val keyPhoneCategoryPosition = stringPreferencesKey("phone_category_position")
@@ -209,6 +211,39 @@ class SettingsManager(private val context: Context) {
         if (profileId.isBlank()) emptyMap()
         else parseSeriesHistory(prefs[stringPreferencesKey(keySeriesHistoryPrefix + profileId)])
     }
+
+    val viewingTasteSnapshot: Flow<Pair<String, List<ViewingTaste>>> = context.dataStore.data.map { prefs ->
+        val id = personalProfileId(prefs)
+        id to if (id.isBlank()) emptyList() else parseViewingTaste(prefs[stringPreferencesKey(keyViewingTastePrefix + id)])
+    }.distinctUntilChanged()
+
+    suspend fun recordViewingTaste(signal: ViewingTaste, newSession: Boolean, expectedProfileId: String) {
+        context.dataStore.edit { prefs ->
+            val id = personalProfileId(prefs)
+            if (id.isBlank() || id != expectedProfileId) return@edit
+            val key = stringPreferencesKey(keyViewingTastePrefix + id)
+            prefs[key] = JSONArray().apply {
+                updateViewingTaste(parseViewingTaste(prefs[key]), signal, newSession).forEach { item ->
+                    put(JSONObject().apply {
+                        put("id", item.id); put("type", item.type); put("category", item.categoryId.orEmpty())
+                        put("categoryTitle", item.categoryTitle.orEmpty()); put("genre", item.genre.orEmpty())
+                        put("language", item.language.orEmpty()); put("sessions", item.sessions)
+                        put("updatedAt", item.updatedAt); put("completed", item.completed)
+                    })
+                }
+            }.toString()
+        }
+    }
+
+    private fun parseViewingTaste(raw: String?): List<ViewingTaste> = runCatching {
+        val array = JSONArray(raw ?: "[]")
+        (0 until array.length()).map { index ->
+            val item = array.getJSONObject(index)
+            ViewingTaste(item.getString("id"), item.getString("type"), item.optString("category").ifBlank { null },
+                item.optString("categoryTitle").ifBlank { null }, item.optString("genre").ifBlank { null },
+                item.optString("language").ifBlank { null }, item.optInt("sessions", 1), item.optLong("updatedAt"), item.optBoolean("completed"))
+        }
+    }.getOrDefault(emptyList())
 
     val playerPreference: Flow<PlayerPreference> = context.dataStore.data.map {
         runCatching { PlayerPreference.valueOf(it[keyPlayer] ?: PlayerPreference.AUTO.name) }
@@ -407,6 +442,7 @@ class SettingsManager(private val context: Context) {
             if (profileId.isNotBlank()) {
                 prefs.remove(stringPreferencesKey(keyProgressPrefix + profileId))
                 prefs.remove(stringPreferencesKey(keySeriesHistoryPrefix + profileId))
+                prefs.remove(stringPreferencesKey(keyViewingTastePrefix + profileId))
             }
         }
     }

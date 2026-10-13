@@ -396,6 +396,7 @@ private fun StbPlayRoot(
     val progressById by settingsManager.vodProgress.collectAsState(initial = emptyMap())
     val watchHistory by settingsManager.watchHistory.collectAsState(initial = emptyList())
     val seriesHistory by settingsManager.seriesHistory.collectAsState(initial = emptyMap())
+    val viewingTasteSnapshot by settingsManager.viewingTasteSnapshot.collectAsState(initial = "" to emptyList())
     val playerPreference by settingsManager.playerPreference.collectAsState(initial = PlayerPreference.AUTO)
     val androidBoxVideoCompatibility by settingsManager.androidBoxVideoCompatibility.collectAsState(initial = false)
     val subtitlePreference by settingsManager.subtitlePreference.collectAsState(initial = com.example.stbplay.data.SubtitlePreference.AUTO)
@@ -431,6 +432,7 @@ private fun StbPlayRoot(
     var portalReady by remember { mutableStateOf(false) }
     var pendingPlaybackMedia by remember { mutableStateOf<UiMedia?>(null) }
     var playbackSessionGeneration by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var playingTasteSource by remember { mutableStateOf<PortalStream?>(null) }
     var recoveryAttemptedContentIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     var liveStreams by remember { mutableStateOf<List<PortalStream>>(emptyList()) }
@@ -929,6 +931,8 @@ private fun StbPlayRoot(
             scope.launch { settingsManager.markRecentlyPlayed(stream.id) }
         }
         tvLivePreviewPlayback = livePreview
+        playingTasteSource = stream.copy(categoryTitle = stream.categoryTitle ?: (movieCategories + seriesCategories)
+            .firstOrNull { it.id == stream.categoryId }?.name)
         livePreviewVlcAction = null
         livePreviewStream = if (livePreview) stream else null
         if (!livePreview) livePreviewFullscreen = false
@@ -1245,25 +1249,32 @@ private fun StbPlayRoot(
         subtitle = item.episode?.episodeName ?: item.stream.originalTitle,
         resumeLabel = item.episode?.let { "Resume ${it.episodeName} · ${(item.progress.fraction * 100).toInt()}%" }
     )
-    val recommendationCandidates = remember(safeVod) { safeVod.take(1_200) }
-    val recommendationStreams = remember(recommendationCandidates, continueStreams, favoriteStreams) {
-        val signalGenres = (continueStreams + favoriteStreams).mapNotNull { it.genre?.lowercase() }.toSet()
-        val signalLanguages = (continueStreams + favoriteStreams).mapNotNull { it.language?.lowercase() }.toSet()
-        val watchedIds = continueStreams.mapTo(HashSet()) { it.id }
-        // Provider catalogues can contain 100k+ titles. Score a bounded, recent
-        // candidate window instead of sorting the full catalogue on the UI thread.
-        recommendationCandidates.asSequence()
-            .filter { it.id !in watchedIds }
-            .sortedByDescending { stream ->
-                (if (stream.genre?.lowercase() in signalGenres) 2 else 0) +
-                    (if (stream.language?.lowercase() in signalLanguages) 1 else 0)
-            }
-            .take(10)
-            .toList()
+    val latestTaste = viewingTasteSnapshot.takeIf { it.first == viewerCatalogProfileId }?.second.orEmpty()
+    val entryTaste = remember(standaloneVodPlaying, viewerCatalogProfileId) { latestTaste }
+    val catalogueTaste = if (standaloneVodPlaying) entryTaste else latestTaste
+    // Previous versions only saved unfinished history. Use that as a modest cold-start
+    // signal until real viewing sessions accumulate; never pretend it measures watch time.
+    val homeTaste = remember(catalogueTaste, homeWatchItems) {
+        if (catalogueTaste.isNotEmpty()) catalogueTaste else homeWatchItems.filter {
+            it.stream.streamType != "live" && it.progress.fraction >= .1f
+        }.map { com.example.stbplay.data.ViewingTaste(it.stream.id, it.stream.streamType,
+            it.stream.categoryId, it.stream.categoryTitle, it.stream.genre, it.stream.language, 1, it.progress.updatedAt) }
     }
-
-    val homeHeroStreams = remember(safeVod, safeLive) {
-        (safeVod.asSequence() + safeLive.asSequence()).take(7).toList()
+    val unfinishedIds = remember(watchedVod) { watchedVod.mapTo(HashSet()) { it.stream.id } }
+    val recommendationKey = listOf(viewerCatalogProfileId, safeVod, homeTaste, unfinishedIds)
+    val rankedHome by androidx.compose.runtime.produceState<Pair<List<Any>, List<PortalStream>>?>(
+        initialValue = null, recommendationKey, standaloneVodPlaying
+    ) {
+        if (!standaloneVodPlaying) {
+            val ranked = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                com.example.stbplay.data.recommendHome(safeVod, homeTaste, unfinishedIds)
+            }
+            value = recommendationKey to ranked
+        }
+    }
+    val recommendationStreams = rankedHome?.takeIf { it.first == recommendationKey }?.second.orEmpty()
+    val homeHeroStreams = remember(recommendationStreams, safeVod) {
+        recommendationStreams.take(7).ifEmpty { safeVod.take(7) }
     }
     val artworkToken = portalRepository.getHandshakeToken()
     val artworkCookie = portalRepository.getSessionCookie()
@@ -1278,9 +1289,9 @@ private fun StbPlayRoot(
     val homeRows = remember(watchedVod, watchedLive, recommendationStreams, latestMovies, latestSeries,
         catalogueProgress, favoriteIds, catalogGeneration, artworkToken, artworkCookie) {
         buildList {
-            if (watchedVod.isNotEmpty()) add(UiMediaRow("continue", "Continue Watching", "Movies & Series", watchedVod.take(10).map(::watchUi), watchedVod.size > 10))
-            if (watchedLive.isNotEmpty()) add(UiMediaRow("continue-live", "Recently Watched", "Live TV", watchedLive.take(10).map(::watchUi), watchedLive.size > 10))
-            if (recommendationStreams.isNotEmpty()) add(UiMediaRow("recommended", "Recommended for you", "Based on what you watch", recommendationStreams.map(::toUi), true))
+            if (watchedVod.isNotEmpty()) add(UiMediaRow("continue", "Continue Watching", "Movies & Series", watchedVod.take(10).map(::watchUi), false))
+            if (watchedLive.isNotEmpty()) add(UiMediaRow("continue-live", "Recently Watched", "Live TV", watchedLive.take(10).map(::watchUi), false))
+            if (recommendationStreams.isNotEmpty()) add(UiMediaRow("recommended", "Recommended for you", "Based on what you watch", recommendationStreams.map(::toUi), false))
             if (latestMovies.isNotEmpty()) add(UiMediaRow("latest-movies", "Latest releases", "Movies", latestMovies.map(::toUi), true))
             if (latestSeries.isNotEmpty()) add(UiMediaRow("latest-series", "Latest releases", "Series", latestSeries.map(::toUi), true))
         }
@@ -1580,6 +1591,9 @@ private fun StbPlayRoot(
                 playRequest != null && !tvLivePreviewPlayback -> {
                     val currentRequest = playRequest!!
                     val currentProgressGeneration = remember(currentRequest) { progressResetGeneration }
+                    val viewingTracker = remember(currentRequest, viewerCatalogProfileId) { com.example.stbplay.data.ViewingSessionTracker() }
+                    val tasteSource = remember(currentRequest) { playingTasteSource }
+                    val tasteProfile = remember(currentRequest) { viewerCatalogProfileId }
                     fun playEpisodeAt(index: Int, promptForResume: Boolean = true) {
                         val series = playingSeries ?: return
                         val episode = playingEpisodes.getOrNull(index) ?: return
@@ -1596,6 +1610,16 @@ private fun StbPlayRoot(
                     androidBoxVideoCompatibility = androidBoxVideoCompatibility,
                     subtitlePreference = subtitlePreference,
                     onProgress = { position, duration ->
+                        if (currentRequest.kind != StalkerContentKind.LIVE && currentProgressGeneration == progressResetGeneration) {
+                            val signal = viewingTracker.observe(position, duration, SystemClock.elapsedRealtime())
+                            if (signal != null && tasteSource != null) scope.launch {
+                                if (currentProgressGeneration == progressResetGeneration)
+                                    settingsManager.recordViewingTaste(com.example.stbplay.data.ViewingTaste(
+                                        tasteSource.id, tasteSource.streamType, tasteSource.categoryId, tasteSource.categoryTitle,
+                                        tasteSource.genre, tasteSource.language, 1, System.currentTimeMillis(), signal.second),
+                                        signal.first, tasteProfile)
+                            }
+                        }
                         if (currentRequest.kind != StalkerContentKind.LIVE && currentProgressGeneration == progressResetGeneration)
                             scope.launch {
                                 if (currentProgressGeneration == progressResetGeneration)
