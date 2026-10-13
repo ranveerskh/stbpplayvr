@@ -1093,9 +1093,7 @@ private fun MediaRow(
         ) {
             Text(row.title, color = White, fontSize = if (denseTv) 18.sp else 21.sp, fontWeight = FontWeight.SemiBold)
             row.subtitle?.let { Text(it, color = Muted, fontSize = 12.sp) }
-            if (row.hasMore) TvHomeSurface(onViewAll, Modifier.width(76.dp).height(32.dp).testTag("home-view-all:${row.id}")) {
-                Text("View all", color = White, fontSize = 11.sp, modifier = Modifier.align(Alignment.Center))
-            }
+
         }
         val shelf: @Composable () -> Unit = { LazyRow(
             state = listState ?: rememberLazyListState(),
@@ -1136,6 +1134,20 @@ private fun MediaRow(
                     onFocusDown = onFocusDown,
                     onFocusUp = onFocusUp
                 )
+            }
+            if (row.hasMore) item(key = "view-all:${row.id}") {
+                TvHomeSurface(onViewAll, Modifier.width(86.dp)
+                    .height(if (row.items.firstOrNull()?.streamType == "live") 72.dp else 202.dp)
+                    .testTag("home-view-all:${row.id}")
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) false else when {
+                            event.key == Key.DirectionDown && onFocusDown != null -> { onFocusDown(); true }
+                            event.key == Key.DirectionUp && onFocusUp != null -> { onFocusUp(); true }
+                            else -> false
+                        }
+                    }) {
+                    Text("View all →", color = White, fontSize = 12.sp, modifier = Modifier.align(Alignment.Center))
+                }
             }
         } }
         if (denseTv) CompositionLocalProvider(LocalBringIntoViewSpec provides TvHomeBringIntoViewSpec) { shelf() }
