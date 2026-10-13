@@ -133,7 +133,7 @@ class PlaybackSmokeTest {
         }
         rule.onNodeWithText("Episodes").performClick()
         rule.onNodeWithText("1. Episode 50", substring = true).assertDoesNotExist()
-        rule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Episode 50", substring = true)))
+        rule.onNodeWithTag("player-episode-list")
             .performScrollToNode(hasText("Episode 1"))
         rule.onNodeWithText("Episode 1").performClick()
         assertEquals(49, selectedEpisode)

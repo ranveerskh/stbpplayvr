@@ -24,16 +24,20 @@ internal class TvFocusNavigation(
     var hasPageFocus by mutableStateOf(false)
     var groupHasFocus by mutableStateOf(false)
     var lastFocusedId: String? = null
+    private var restoringLostFocus by mutableStateOf(false)
 
-    fun enterPage() { railOwnsFocus = false; pending = true; requestGeneration++ }
+    fun enterPage() { restoringLostFocus = false; railOwnsFocus = false; pending = true; requestGeneration++ }
     fun leavePage() { railOwnsFocus = true; pending = false }
     fun returnToRail() { leavePage(); railAction() }
     fun restorePage() {
-        if (railOwnsFocus) return
+        if (railOwnsFocus || pending) return
+        restoringLostFocus = true
         pending = true; requestGeneration++
     }
-    val restoreTarget: FocusRequester? get() = lastFocusedId?.let { targets[it] } ?: entryId?.let { targets[it] }
+    val restoreTarget: FocusRequester? get() =
+        (if (restoringLostFocus) lastFocusedId?.let { targets[it] } else null) ?: entryId?.let { targets[it] }
     fun focused(id: String, requester: FocusRequester) {
+        restoringLostFocus = false
         focusedId = id; lastFocusedId = id; focusedRequester = requester
         hasPageFocus = true; railOwnsFocus = false; pending = false; onFocused(id)
     }

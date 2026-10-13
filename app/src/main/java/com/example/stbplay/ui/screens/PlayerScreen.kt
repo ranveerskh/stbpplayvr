@@ -69,6 +69,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
@@ -819,7 +820,7 @@ private fun NativePlayerScreen(
                 LazyColumn(
                     state = rememberLazyListState(initialFirstVisibleItemIndex = if (isAndroidTv)
                         currentEpisodeIndex.coerceIn(0, (episodeTitles.size - 1).coerceAtLeast(0)) else 0),
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f, fill = false).testTag("player-episode-list"),
                     verticalArrangement = Arrangement.spacedBy(if (isAndroidTv) 2.dp else 6.dp)
                 ) {
                     itemsIndexed(episodeTitles) { index, name ->
