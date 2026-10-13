@@ -406,6 +406,16 @@ fun StbPlayApp(
     }
     var railCollapsed by remember(tvLayout) { mutableStateOf(tvLayout) }
     var railHasFocus by remember { mutableStateOf(false) }
+    var pageFocusPending by remember { mutableStateOf(false) }
+    // Ignore the transient platform focus fallback while a settings target is replaced.
+    // This is a focus-settling delay, not a navigation animation or layout change.
+    var settledRailFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(railHasFocus) {
+        if (railHasFocus) {
+            delay(80)
+            settledRailFocus = true
+        } else settledRailFocus = false
+    }
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val compactLayout = configuration.screenWidthDp < 900 &&
@@ -523,16 +533,18 @@ fun StbPlayApp(
             tabStateHolder.SaveableStateProvider(selectedTab.name) {
                 var lastPageFocusId by rememberSaveable { mutableStateOf<String?>(null) }
                 val navigation = remember { TvFocusNavigation(::returnToSelectedRail) { lastPageFocusId = it } }
-                SideEffect { enterPageAction[0] = navigation::enterPage }
+                SideEffect {
+                    enterPageAction[0] = navigation::enterPage
+                    pageFocusPending = navigation.pending
+                }
                 val target = navigation.entryId?.let { navigation.targets[it] }
                 LaunchedEffect(navigation.pending, navigation.requestGeneration, navigation.entryId, target) {
                     if (navigation.pending && target != null) {
                         inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
                         target.requestFocus()
-                    } else if (navigation.pending && navigation.entryId == null) {
-                        navigation.returnToRail()
-                        navigation.pending = false
                     }
+                    // A loading page or changing settings subpage may not have a target
+                    // yet. Keep its entry request pending; never bounce through the rail.
                 }
                 CompositionLocalProvider(LocalTvFocusNavigation provides navigation) {
                     Box(Modifier.fillMaxSize().focusProperties {
@@ -570,7 +582,7 @@ fun StbPlayApp(
                 .fillMaxHeight().zIndex(2f).onFocusChanged { railHasFocus = it.hasFocus }.focusGroup()) {
             StbPlayNavigationRail(
                 selectedTab = selectedTab,
-                collapsed = if (tvLayout) !railHasFocus else railCollapsed,
+                collapsed = if (tvLayout) !settledRailFocus || pageFocusPending else railCollapsed,
                 compactTv = tvLayout,
                 onToggle = { if (selectedTab != StbPlayTab.CONTENT) railCollapsed = !railCollapsed },
                 onTabSelected = onTabSelected,
@@ -647,6 +659,7 @@ private fun StbPlayNavigationRail(
     )
     Column(
         modifier = Modifier
+            .testTag(if (collapsed) "tv-navigation-collapsed" else "tv-navigation-expanded")
             .wrapContentWidth(Alignment.Start, unbounded = true)
             .width(if (collapsed) (if (compactTv) 62.dp else 78.dp) else 220.dp)
             .fillMaxHeight()
@@ -986,17 +999,24 @@ private fun RotatingHero(
     onFocused: () -> Unit
 ) {
     val denseTv = isTelevisionLayout()
-    var index by remember(heroes.map { it.id }) { mutableIntStateOf(0) }
+    // Preserve the displayed title when background catalogue updates reorder the pool.
+    var displayedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var index by remember { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(heroes.map { it.id }, focused, denseTv) {
-        if (!denseTv && !focused && heroes.size > 1) {
+        val retained = heroes.indexOfFirst { it.id == displayedId }
+        index = if (retained >= 0) retained else index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))
+        displayedId = heroes.getOrNull(index)?.id
+        if (!focused && heroes.size > 1) {
             while (true) {
-                delay(8_000)
+                delay(if (denseTv) 12_000 else 8_000)
                 index = (index + 1) % heroes.size
+                displayedId = heroes[index].id
             }
         }
     }
-    val item = heroes.getOrNull(index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))) ?: return
+    val item = heroes.firstOrNull { it.id == displayedId }
+        ?: heroes.getOrNull(index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))) ?: return
     val focusNavigation = LocalTvFocusNavigation.current
     val heroModifier = Modifier.tvFocusTarget("home:hero")
             .onPreviewKeyEvent { event ->
