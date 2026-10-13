@@ -16,6 +16,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.requestFocus
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -396,6 +398,8 @@ fun StbPlayApp(
     val inputMode = androidx.compose.ui.platform.LocalInputModeManager.current
     val railRequesters = remember { StbPlayTab.entries.associateWith { FocusRequester() } }
     val enterPageAction = remember { arrayOf<() -> Unit>({}) }
+    val activeNavigation = remember { arrayOfNulls<TvFocusNavigation>(1) }
+    val windowFocused = androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
     fun returnToSelectedRail() { railRequesters.getValue(selectedTab).requestFocus() }
     val searchInputRequester = remember(searchSession) { FocusRequester() }
     val searchFocusNavigation = remember(searchSession) {
@@ -534,23 +538,36 @@ fun StbPlayApp(
                 var lastPageFocusId by rememberSaveable { mutableStateOf<String?>(null) }
                 val navigation = remember { TvFocusNavigation(::returnToSelectedRail) { lastPageFocusId = it } }
                 SideEffect {
+                    activeNavigation[0] = navigation
                     enterPageAction[0] = navigation::enterPage
-                    pageFocusPending = navigation.pending
+                    pageFocusPending = navigation.pending || (!navigation.groupHasFocus && !navigation.railOwnsFocus)
                 }
-                val target = navigation.entryId?.let { navigation.targets[it] }
-                LaunchedEffect(navigation.pending, navigation.requestGeneration, navigation.entryId, target) {
-                    if (navigation.pending && target != null) {
+                val target = navigation.restoreTarget
+                LaunchedEffect(navigation.pending, navigation.requestGeneration, navigation.entryId, target, windowFocused) {
+                    if (windowFocused && navigation.pending && target != null) {
                         inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
-                        target.requestFocus()
+                        repeat(8) {
+                            withFrameNanos { }
+                            if (!navigation.pending || navigation.railOwnsFocus) return@LaunchedEffect
+                            // A positioned lazy target can still be attaching its focus node.
+                            runCatching { target.requestFocus() }
+                        }
                     }
                     // A loading page or changing settings subpage may not have a target
                     // yet. Keep its entry request pending; never bounce through the rail.
                 }
+                LaunchedEffect(navigation.lossGeneration, navigation.groupHasFocus, windowFocused) {
+                    if (windowFocused && !navigation.groupHasFocus && !navigation.railOwnsFocus) {
+                        delay(80)
+                        if (!navigation.groupHasFocus && !navigation.railOwnsFocus) navigation.restorePage()
+                    }
+                }
                 CompositionLocalProvider(LocalTvFocusNavigation provides navigation) {
                     Box(Modifier.fillMaxSize().focusProperties {
-                        exit = { direction -> if (direction == androidx.compose.ui.focus.FocusDirection.Left)
-                            railRequesters.getValue(selectedTab) else FocusRequester.Default }
-                    }.focusGroup()) { renderTab() }
+                        exit = { direction -> if (direction == androidx.compose.ui.focus.FocusDirection.Left) {
+                            navigation.leavePage(); railRequesters.getValue(selectedTab)
+                        } else FocusRequester.Default }
+                    }.onFocusChanged { navigation.groupHasFocus = it.hasFocus }.focusGroup()) { renderTab() }
                 }
             }
         }
@@ -579,14 +596,19 @@ fun StbPlayApp(
     } else {
         Row(modifier = Modifier.fillMaxSize().stbBackdrop().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Box(Modifier.width(if (tvLayout) 62.dp else if (railCollapsed) 78.dp else 220.dp)
-                .fillMaxHeight().zIndex(2f).onFocusChanged { railHasFocus = it.hasFocus }.focusGroup()) {
+                .fillMaxHeight().zIndex(2f).onFocusChanged { railHasFocus = it.hasFocus }
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown) activeNavigation[0]?.leavePage()
+                    false
+                }.focusGroup()) {
             StbPlayNavigationRail(
                 selectedTab = selectedTab,
-                collapsed = if (tvLayout) !settledRailFocus || pageFocusPending else railCollapsed,
+                collapsed = if (tvLayout) !railHasFocus || !settledRailFocus || pageFocusPending else railCollapsed,
                 compactTv = tvLayout,
                 onToggle = { if (selectedTab != StbPlayTab.CONTENT) railCollapsed = !railCollapsed },
                 onTabSelected = onTabSelected,
                 railRequesters = railRequesters,
+                onManualRailFocus = { activeNavigation[0]?.leavePage() },
                 onEnterPage = { tab ->
                     if (tab == selectedTab) enterPageAction[0]() else onTabSelected(tab)
                 }
@@ -648,6 +670,7 @@ private fun StbPlayNavigationRail(
     onToggle: () -> Unit,
     onTabSelected: (StbPlayTab) -> Unit,
     railRequesters: Map<StbPlayTab, FocusRequester>,
+    onManualRailFocus: () -> Unit,
     onEnterPage: (StbPlayTab) -> Unit
 ) {
     val tabs = listOf(
@@ -701,6 +724,9 @@ private fun StbPlayNavigationRail(
                 selected = selectedTab == tab,
                 focusModifier = if (compactTv) Modifier.focusRequester(railRequesters.getValue(tab))
                     .testTag("tv-rail:${tab.name}")
+                    .semantics { requestFocus {
+                        onManualRailFocus(); railRequesters.getValue(tab).requestFocus()
+                    } }
                     .focusProperties {
                         val position = StbPlayTab.entries.indexOf(tab)
                         up = StbPlayTab.entries.getOrNull(position - 1)?.let { railRequesters.getValue(it) } ?: FocusRequester.Cancel
@@ -1003,11 +1029,12 @@ private fun RotatingHero(
     var displayedId by rememberSaveable { mutableStateOf<String?>(null) }
     var index by remember { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(heroes.map { it.id }, focused, denseTv) {
+    val rotationPaused = !denseTv && focused
+    LaunchedEffect(heroes.map { it.id }, rotationPaused, denseTv) {
         val retained = heroes.indexOfFirst { it.id == displayedId }
         index = if (retained >= 0) retained else index.coerceIn(0, (heroes.size - 1).coerceAtLeast(0))
         displayedId = heroes.getOrNull(index)?.id
-        if (!focused && heroes.size > 1) {
+        if (!rotationPaused && heroes.size > 1) {
             while (true) {
                 delay(if (denseTv) 12_000 else 8_000)
                 index = (index + 1) % heroes.size
@@ -1131,7 +1158,7 @@ private fun MediaRow(
                     focusRequester = if (index == 0) firstCardFocusRequester else null,
                     restoreFocusRequester = if (media.id == restoreItemId) restoreFocusRequester else null,
                     onFocused = { onMediaFocused(media) }, focusId = "home:${row.id}:${media.streamType}:${media.id}",
-                    onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.returnToRail else null,
+                    onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.let { it::returnToRail } else null,
                     onFocusDown = onFocusDown, onFocusUp = onFocusUp
                 ) else if (denseTv && staticTvCards) TvHomeMediaCard(
                     item = media,
@@ -1140,7 +1167,7 @@ private fun MediaRow(
                     restoreFocusRequester = if (media.id == restoreItemId) restoreFocusRequester else null,
                     onFocused = { onMediaFocused(media) },
                     focusId = "home:${row.id}:${media.streamType}:${media.id}",
-                    onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.returnToRail else null,
+                    onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.let { it::returnToRail } else null,
                     onFocusDown = onFocusDown,
                     onFocusUp = onFocusUp
                 ) else MediaCard(
@@ -1150,7 +1177,7 @@ private fun MediaRow(
                     onToggleFavorite = { onToggleFavorite(media) },
                     onRemoveHistory = if (row.id.startsWith("continue")) ({ onRemoveHistory(media) }) else null,
                     focusRequester = if (index == 0) firstCardFocusRequester else null,
-                    onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.returnToRail else null,
+                    onReturnToCategory = if (index == 0) LocalTvFocusNavigation.current?.let { it::returnToRail } else null,
                     onFocusDown = onFocusDown,
                     onFocusUp = onFocusUp
                 )
@@ -2041,7 +2068,8 @@ private fun MediaCard(
             onRemoveHistory?.let { remove ->
                 QuestSurface(
                     onClick = remove,
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).height(30.dp),
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).width(66.dp).height(30.dp)
+                        .testTag("history-remove:${item.id}"),
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = Color(0xCC070707),
@@ -2060,7 +2088,8 @@ private fun MediaCard(
       FavoriteButton(
           item.isFavorite,
           onToggleFavorite,
-          Modifier.align(Alignment.TopEnd).padding(if (compactGrid) 4.dp else 6.dp),
+          Modifier.align(Alignment.TopEnd).padding(if (compactGrid) 4.dp else 6.dp)
+              .testTag("media-favourite:${item.id}"),
           if (compactGrid || compact) 34.dp else 40.dp
       )
     }

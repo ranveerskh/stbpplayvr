@@ -1595,6 +1595,10 @@ private fun StbPlayRoot(
                     Box(Modifier.fillMaxSize().background(Color(0xFF071425)))
                 playRequest != null && !tvLivePreviewPlayback -> {
                     val currentRequest = playRequest!!
+                    val playerEpisodeTitles = remember(playingEpisodes, currentRequest.kind) {
+                        if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE)
+                            playingEpisodes.map { com.example.stbplay.data.model.episodeDisplayLabel(it) } else emptyList()
+                    }
                     val currentProgressGeneration = remember(currentRequest) { progressResetGeneration }
                     val viewingTracker = remember(currentRequest, viewerCatalogProfileId) {
                         com.example.stbplay.data.ViewingSessionTracker(previouslyQualified = latestTaste.any {
@@ -1660,7 +1664,7 @@ private fun StbPlayRoot(
                             }
                         }
                     },
-                    episodeTitles = if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE) playingEpisodes.map { it.name } else emptyList(),
+                    episodeTitles = playerEpisodeTitles,
                     currentEpisodeIndex = playingEpisodeIndex,
                     onEpisodeSelected = { playEpisodeAt(it) },
                     onPlaybackEnded = {

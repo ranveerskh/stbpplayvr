@@ -16,6 +16,7 @@ internal fun Batch2AppFixture(
     session: SearchSession,
     channels: List<UiMedia> = listOf(UiMedia("ch1", "Channel 1", streamType = "live")),
     movies: List<UiMedia> = (1..24).map { UiMedia("film$it", "Film $it", portrait = true) },
+    homeOverride: StbPlayHomeState? = null,
     onPlay: (UiMedia) -> Unit = {},
     onSwitchViewer: () -> Unit = {},
     onCategoryPosition: (CategoryDropdownPosition) -> Unit = {},
@@ -26,7 +27,7 @@ internal fun Batch2AppFixture(
     remote: suspend (String, Int) -> VodCatalogBatch = { _, _ -> VodCatalogBatch(emptyList(), 1, 0, false) }
 ) {
     StbPlayApp(
-        homeState = StbPlayHomeState(heroes = movies.take(1)),
+        homeState = homeOverride ?: StbPlayHomeState(heroes = movies.take(1)),
         liveState = StbPlayLibraryState(categories = listOf(UiCategory("all", "All"), UiCategory("news", "News")), items = channels),
         contentState = StbPlayLibraryState(categories = listOf(UiCategory("all", "All"), UiCategory("films", "Films")), items = movies),
         favouritesState = StbPlayLibraryState(), settingsState = settings,

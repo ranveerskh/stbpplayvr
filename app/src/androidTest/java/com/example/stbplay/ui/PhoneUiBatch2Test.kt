@@ -29,6 +29,20 @@ class PhoneUiBatch2Test {
     @org.junit.Before fun setupPhoneCast() = prewarmBatch2PhoneCast(rule)
     private fun phoneOnly() = assumeTrue(!InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice())
 
+    @Test fun homeHistoryRemoveAndFavouriteButtonsHaveSeparateTouchBounds() {
+        phoneOnly()
+        val item = UiMedia("history-item", "Watched movie", portrait = true, progress = .2f)
+        rule.setContent { STBPlayTheme {
+            Batch2AppFixture(StbPlayTab.HOME, session = SearchSession(),
+                homeOverride = StbPlayHomeState(rows = listOf(UiMediaRow("continue", "Continue Watching", items = listOf(item)))))
+        } }
+        val remove = rule.onNodeWithTag("history-remove:history-item").fetchSemanticsNode().boundsInRoot
+        val favourite = rule.onNodeWithTag("media-favourite:history-item").fetchSemanticsNode().boundsInRoot
+        assertTrue("Remove must not overlap favourite", remove.right <= favourite.left)
+        rule.onNodeWithTag("history-remove:history-item").performClick()
+        rule.onNodeWithTag("media-favourite:history-item").performClick()
+    }
+
     @Test fun settingsMoveCategoriesOnlyInLiveAndMoviesAndGridUsesTwoThreeFourColumns() {
         phoneOnly()
         var selected by mutableStateOf(StbPlayTab.HOME)

@@ -37,6 +37,7 @@ class TvNavigationFocusTest {
     private var heroItems by mutableStateOf(movies.take(1))
     private var focusedMovie by mutableStateOf<String?>(null)
     private var favorites by mutableStateOf(channels.take(4) + movies.take(4))
+    private var clearPageFocus: () -> Unit = {}
     private var played = 0
     private var previewChannel by mutableStateOf<UiMedia?>(null)
 
@@ -45,6 +46,8 @@ class TvNavigationFocusTest {
         selected = tab
         rule.setContent {
             STBPlayTheme(preference = theme) {
+                val manager = androidx.compose.ui.platform.LocalFocusManager.current
+                SideEffect { clearPageFocus = { manager.clearFocus(force = true) } }
                 val previewRequester = remember { FocusRequester() }
                 Box(Modifier.fillMaxSize()) {
                     StbPlayApp(
@@ -231,20 +234,39 @@ class TvNavigationFocusTest {
         focused("tv-focus:settings:Content sources")
     }
 
-    @Test fun tvHeroRotatesWhenIdlePausesOnFocusAndRetainsTitleAcrossPoolReorder() {
+    @Test fun tvHeroRotatesWithAndWithoutFocusAndRetainsTitleAcrossPoolReorder() {
         heroItems = movies.take(3)
         start()
         focused("tv-focus:home:hero")
         rule.mainClock.advanceTimeBy(13_000)
-        rule.onNode(hasText("Movie 1") and hasAnyAncestor(hasTestTag("tv-focus:home:hero")), useUnmergedTree = true).assertIsDisplayed()
+        rule.onNode(hasText("Movie 2") and hasAnyAncestor(hasTestTag("tv-focus:home:hero")), useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithTag("tv-focus:home:hero").assertIsFocused()
         rail(StbPlayTab.HOME)
         rule.mainClock.advanceTimeBy(13_000)
-        // Match the title inside the hero, not its duplicate in the shelf.
-        rule.onNode(hasText("Movie 2") and hasAnyAncestor(hasTestTag("tv-focus:home:hero")), useUnmergedTree = true).assertIsDisplayed()
+        rule.onNode(hasText("Movie 3") and hasAnyAncestor(hasTestTag("tv-focus:home:hero")), useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithTag("tv-focus:home:hero").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
         rule.runOnIdle { heroItems = listOf(movies[2], movies[0], movies[1]) }
+        rule.waitForIdle()
+        rule.onNode(hasText("Movie 3") and hasAnyAncestor(hasTestTag("tv-focus:home:hero")), useUnmergedTree = true).assertIsDisplayed()
         rule.mainClock.advanceTimeBy(13_000)
-        rule.onNode(hasText("Movie 2") and hasAnyAncestor(hasTestTag("tv-focus:home:hero")), useUnmergedTree = true).assertIsDisplayed()
+        rule.onNode(hasText("Movie 1") and hasAnyAncestor(hasTestTag("tv-focus:home:hero")), useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test fun actualFocusLossRestoresLastLiveChannelAndSettingsControlWithoutStealingRail() {
+        start(StbPlayTab.LIVE)
+        focused("tv-focus:category:all"); right()
+        repeat(4) { down() }
+        focused("tv-focus:live:ch5")
+        repeat(3) { rule.runOnIdle { clearPageFocus() }; focused("tv-focus:live:ch5") }
+        left(); focused("tv-focus:category:all")
+        left(); focused("tv-rail:LIVE")
+        rule.mainClock.advanceTimeBy(1_000); focused("tv-rail:LIVE")
+        rail(StbPlayTab.SETTINGS); ok(); focused("tv-focus:settings:Subscription")
+        down(); down(); focused("tv-focus:settings:Content sources")
+        rule.runOnIdle { clearPageFocus() }; focused("tv-focus:settings:Content sources")
+        ok(); focused("tv-focus:settings:back")
+        rule.runOnIdle { clearPageFocus() }; focused("tv-focus:settings:back")
+        device.pressBack(); rule.waitForIdle(); focused("tv-focus:settings:Content sources")
     }
 
     @Test fun homeShelfAndMovieFocusSurviveTabSwitches() {
