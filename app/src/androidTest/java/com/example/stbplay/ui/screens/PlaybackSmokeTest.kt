@@ -155,17 +155,31 @@ class PlaybackSmokeTest {
             assertEquals(10_000L, player.seekForwardIncrement)
             assertEquals(5_000L, player.seekBackIncrement)
         }
-        val idleClockStart = rule.mainClock.currentTime
-        val idleRealStart = android.os.SystemClock.elapsedRealtime()
+        // Compose delay uses virtual time; wall-clock polling can expire before
+        // the virtual clock has advanced through the three-second idle interval.
+        // Keep it fixed while Android finishes hiding the native controller.
+        val originalAutoAdvance = rule.mainClock.autoAdvance
+        rule.mainClock.autoAdvance = false
         try {
-            rule.waitUntil(7_000) { rule.runOnIdle { !movieView.isControllerFullyVisible } }
-        } catch (failure: Throwable) {
             rule.runOnIdle {
-                android.util.Log.e("ControlIdleDiagnostic", "virtualDelta=${rule.mainClock.currentTime - idleClockStart} realDelta=${android.os.SystemClock.elapsedRealtime() - idleRealStart} autoAdvance=${rule.mainClock.autoAdvance} playing=${player.isPlaying} state=${player.playbackState} position=${player.currentPosition} controller=${movieView.isControllerFullyVisible} focused=${movieView.findFocus()?.javaClass?.simpleName}")
+                movieView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN))
+                movieView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN))
             }
-            throw failure
+            rule.mainClock.advanceTimeByFrame()
+            rule.waitForIdle()
+            rule.onNodeWithText("← Back").assertIsDisplayed()
+            rule.runOnIdle { assertTrue(movieView.isControllerFullyVisible) }
+            rule.mainClock.advanceTimeBy(2_500)
+            rule.waitForIdle()
+            rule.onNodeWithText("← Back").assertIsDisplayed()
+            rule.runOnIdle { assertTrue(movieView.isControllerFullyVisible) }
+            rule.mainClock.advanceTimeBy(600)
+            rule.waitForIdle()
+            rule.waitUntil(7_000) { rule.runOnIdle { !movieView.isControllerFullyVisible } }
+            rule.onNodeWithText("← Back").assertDoesNotExist()
+        } finally {
+            rule.mainClock.autoAdvance = originalAutoAdvance
         }
-        rule.onNodeWithText("← Back").assertDoesNotExist()
         val seekStart = pauseAtKnownPosition(player)
         rule.runOnIdle { player.seekForward() }
         rule.waitUntil(10_000) { rule.runOnIdle { player.currentPosition == seekStart + 10_000L } }
