@@ -126,7 +126,7 @@ fun SeriesDetailsScreen(
         loadingEpisodes = true
         error = null
         runCatching { repository.getEpisodes(series.id, season.id, series.cmd) }
-            .onSuccess { episodes = it }
+            .onSuccess { list -> episodes = list.map { if (it.seasonId.isNullOrBlank()) it.copy(seasonId = season.id) else it } }
             .onFailure { error = it.message ?: "Could not load episodes." }
         loadingEpisodes = false
     }

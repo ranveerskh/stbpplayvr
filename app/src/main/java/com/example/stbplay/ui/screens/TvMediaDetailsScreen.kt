@@ -37,16 +37,18 @@ fun TvMediaDetailsScreen(
     onResume: () -> Unit,
     onToggleFavorite: () -> Unit,
     onRemoveHistory: (() -> Unit)? = null,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onBrowseEpisodes: (() -> Unit)? = null
 ) {
     BackHandler(onBack = onBack)
     val palette = LocalStbPalette.current
     val canResume = item.streamType != "live" && item.progress > 0f && item.progress < 0.95f
     BoxWithConstraints(Modifier.fillMaxSize().stbBackdrop().padding(24.dp)) {
         val posterHeight = (maxHeight * 0.75f).coerceAtMost(300.dp)
+        val compact = maxWidth < 500.dp
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            ArtworkImage(item.imageUrl, item.title,
+            if (!compact) ArtworkImage(item.imageUrl, item.title,
                 Modifier.width(if (item.portrait) posterHeight * 0.7f else 210.dp)
                     .height(if (item.portrait) posterHeight else 130.dp),
                 contentScale = ContentScale.Fit, requestHeaders = item.imageHeaders)
@@ -68,10 +70,11 @@ fun TvMediaDetailsScreen(
                             modifier = Modifier.align(Alignment.CenterStart).padding(horizontal = 14.dp))
                     }
                 }
-                if (canResume) action("Resume ${(item.progress * 100).toInt()}%", true, onResume)
+                if (canResume) action(item.resumeLabel ?: "Resume ${(item.progress * 100).toInt()}%", true, onResume)
                 action(if (canResume) "Start over" else "Play", !canResume, onPlay)
                 action(if (item.isFavorite) "Remove from favourites" else "Add to favourites", onClick = onToggleFavorite)
                 onRemoveHistory?.let { action("Remove from history", onClick = it) }
+                onBrowseEpisodes?.let { action("Episodes", onClick = it) }
                 action("Back", onClick = onBack)
             }
         }

@@ -51,3 +51,14 @@ internal fun rememberPlaybackCatalogueProgress(
     val entryProgress = remember(standaloneVodPlaying) { latestProgress }
     return if (standaloneVodPlaying) entryProgress else latestProgress
 }
+
+/** Freeze recency/episode inputs too: DataStore still saves every player tick. */
+@Composable
+internal fun rememberPlaybackHomeHistory(
+    history: List<com.example.stbplay.data.WatchProgress>,
+    episodes: Map<String, com.example.stbplay.data.SeriesHistoryEntry>,
+    standaloneVodPlaying: Boolean
+): Pair<List<com.example.stbplay.data.WatchProgress>, Map<String, com.example.stbplay.data.SeriesHistoryEntry>> {
+    val entry = remember(standaloneVodPlaying) { history to episodes }
+    return if (standaloneVodPlaying) entry else history to episodes
+}

@@ -78,6 +78,20 @@ class TvNavigationFocusTest {
         rule.waitForIdle()
     }
 
+    @Test fun expandedRailShowsFullLabelsWithoutMovingHomeContent() {
+        theme = ThemePreference.GLASS
+        start()
+        val before = rule.onNodeWithText("Recommended").fetchSemanticsNode().boundsInRoot.left
+        rail(StbPlayTab.LIVE)
+        rule.onNodeWithText("Movies & Series").assertIsDisplayed()
+        rule.onNodeWithText("Favourites").assertIsDisplayed()
+        val after = rule.onNodeWithText("Recommended").fetchSemanticsNode().boundsInRoot.left
+        assertEquals(before, after, 0.1f)
+        rail(StbPlayTab.HOME); right()
+        focused("tv-focus:home:hero")
+        rule.onNodeWithText("Movies & Series").assertDoesNotExist()
+    }
+
     @Test fun adultCategoryLoadingMovesFocusToFirstChannelAndResetReturnsToTop() {
         theme = ThemePreference.GLASS
         liveCategories = listOf(UiCategory("adult", "Adult", isAdult = true))

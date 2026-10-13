@@ -394,6 +394,8 @@ private fun StbPlayRoot(
 
     val favoriteIds by settingsManager.favoriteIds.collectAsState(initial = emptySet())
     val progressById by settingsManager.vodProgress.collectAsState(initial = emptyMap())
+    val watchHistory by settingsManager.watchHistory.collectAsState(initial = emptyList())
+    val seriesHistory by settingsManager.seriesHistory.collectAsState(initial = emptyMap())
     val playerPreference by settingsManager.playerPreference.collectAsState(initial = PlayerPreference.AUTO)
     val androidBoxVideoCompatibility by settingsManager.androidBoxVideoCompatibility.collectAsState(initial = false)
     val subtitlePreference by settingsManager.subtitlePreference.collectAsState(initial = com.example.stbplay.data.SubtitlePreference.AUTO)
@@ -471,6 +473,10 @@ private fun StbPlayRoot(
     var selectedMovie by remember { mutableStateOf<PortalStream?>(null) }
     var selectedLiveChannel by remember { mutableStateOf<PortalStream?>(null) }
     var selectedSeries by remember { mutableStateOf<PortalStream?>(null) }
+    var browseContinuedSeries by remember { mutableStateOf(false) }
+    var historyPage by remember { mutableStateOf<String?>(null) }
+    var continueEpisodeLoading by remember { mutableStateOf(false) }
+    var continueEpisodeError by remember { mutableStateOf<String?>(null) }
     var qualityContext by remember { mutableStateOf<QualityContext?>(null) }
     var qualityOptions by remember { mutableStateOf<List<PortalQualityOption>>(emptyList()) }
     var qualityLoading by remember { mutableStateOf(false) }
@@ -953,8 +959,8 @@ private fun StbPlayRoot(
                     livePreviewFullscreen = false
                     launchPlayback(stream, livePreview = true)
                 }
-            } else if (isAndroidTv) selectedLiveChannel = stream else launchPlayback(stream)
-            "series" -> selectedSeries = stream
+            } else if (isAndroidTv || selectedTab == StbPlayTab.HOME) selectedLiveChannel = stream else launchPlayback(stream)
+            "series" -> { selectedSeries = stream; browseContinuedSeries = false; continueEpisodeError = null }
             else -> selectedMovie = stream
         }
     }
@@ -998,7 +1004,7 @@ private fun StbPlayRoot(
     fun chooseSeriesEpisode(series: PortalStream, episode: PortalEpisode, episodes: List<PortalEpisode>) {
         val progress = (progressById[episode.id] ?: 0f).coerceIn(0f, 1f)
         val choice = QualityContext(episode.name, series, episode, resumeFraction = progress)
-        if (isAndroidTv && progress > 0f && progress < 0.95f) {
+        if (progress > 0f && progress < 0.95f) {
             pendingEpisodeList = episodes
             pendingEpisodePlayback = choice
         } else launchSeriesEpisode(choice, episodes, 0f)
@@ -1167,6 +1173,9 @@ private fun StbPlayRoot(
     // not remap tens of thousands of provider rows while the VOD player is on screen.
     val standaloneVodPlaying = playRequest?.kind?.let { it != StalkerContentKind.LIVE } == true && !tvLivePreviewPlayback
     val catalogueProgress = com.example.stbplay.ui.rememberPlaybackCatalogueProgress(progressById, standaloneVodPlaying)
+    // Keep timestamp/episode flows just as stable as progress while VOD is playing.
+    val (catalogueHistory, catalogueEpisodes) = com.example.stbplay.ui.rememberPlaybackHomeHistory(
+        watchHistory, seriesHistory, standaloneVodPlaying)
     val liveProjectionEnabled = selectedTab == StbPlayTab.LIVE && !standaloneVodPlaying
     fun toUi(stream: PortalStream): UiMedia = stream.toUiMedia(
         portrait = stream.streamType != "live",
@@ -1203,8 +1212,8 @@ private fun StbPlayRoot(
     val safeVod = remember(activeViewer.id, kidsCategoryIds, allVod, parentalMode, explicitAdultVodCategoryIds) {
         allVod.filter { isAllowedInMode(it, explicitAdultVodCategoryIds) }
     }
-    val latestMovies = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "movie" }.take(18).toList() }
-    val latestSeries = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "series" }.take(18).toList() }
+    val latestMovies = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "movie" }.take(10).toList() }
+    val latestSeries = remember(safeVod) { safeVod.asSequence().filter { it.streamType == "series" }.take(10).toList() }
     LaunchedEffect(viewerCatalogProfileId, favoriteIds, liveStreams, movieStreams, seriesStreams, vodCatalogs) {
         val profileId = viewerCatalogProfileId
         if (profileId.isNotBlank() && favoriteIds.isNotEmpty()) {
@@ -1222,11 +1231,19 @@ private fun StbPlayRoot(
             )
         }.distinctBy { "${it.streamType}:${it.id}" }
     }
-    val continueStreams = remember(safeVod, safeLive, catalogueProgress) {
-        (safeVod + safeLive).filter { (catalogueProgress[it.id] ?: 0f) > 0f }
-            .distinctBy { "${it.streamType}:${it.id}" }
-            .sortedByDescending { catalogueProgress[it.id] ?: 0f }
+    val historyVodIndex = remember(safeVod) { safeVod.associateBy { it.id } }
+    val historyLiveIndex = remember(safeLive) { safeLive.associateBy { it.id } }
+    val homeWatchItems = remember(catalogueHistory, catalogueEpisodes, historyVodIndex, historyLiveIndex) {
+        com.example.stbplay.data.projectHomeWatchHistory(catalogueHistory, catalogueEpisodes, historyVodIndex, historyLiveIndex)
     }
+    val continueStreams = remember(homeWatchItems) { homeWatchItems.map { it.stream } }
+    val watchedVod = remember(homeWatchItems) { homeWatchItems.filter { it.stream.streamType != "live" } }
+    val watchedLive = remember(homeWatchItems) { homeWatchItems.filter { it.stream.streamType == "live" } }
+    fun watchUi(item: com.example.stbplay.data.HomeWatchItem): UiMedia = toUi(item.stream).copy(
+        progress = if (item.stream.streamType == "live") 0f else item.progress.fraction,
+        subtitle = item.episode?.episodeName ?: item.stream.originalTitle,
+        resumeLabel = item.episode?.let { "Resume ${it.episodeName} · ${(item.progress.fraction * 100).toInt()}%" }
+    )
     val recommendationCandidates = remember(safeVod) { safeVod.take(1_200) }
     val recommendationStreams = remember(recommendationCandidates, continueStreams, favoriteStreams) {
         val signalGenres = (continueStreams + favoriteStreams).mapNotNull { it.genre?.lowercase() }.toSet()
@@ -1240,7 +1257,7 @@ private fun StbPlayRoot(
                 (if (stream.genre?.lowercase() in signalGenres) 2 else 0) +
                     (if (stream.language?.lowercase() in signalLanguages) 1 else 0)
             }
-            .take(18)
+            .take(10)
             .toList()
     }
 
@@ -1257,19 +1274,14 @@ private fun StbPlayRoot(
     val homeHeroes = remember(homeHeroStreams, catalogueProgress, favoriteIds, catalogGeneration, artworkToken, artworkCookie) {
         homeHeroStreams.map(::toUi)
     }
-    val favouriteLive = remember(favoriteStreams) { favoriteStreams.filter { it.streamType == "live" } }
-    val homeContinue = remember(continueStreams) { continueStreams.take(16) }
-    val homeFavouriteLive = remember(favouriteLive) { favouriteLive.take(16) }
-    val homeLive = remember(safeLive) { safeLive.take(16) }
-    val homeRows = remember(homeContinue, recommendationStreams, homeFavouriteLive, homeLive, latestMovies, latestSeries,
+    val homeRows = remember(watchedVod, watchedLive, recommendationStreams, latestMovies, latestSeries,
         catalogueProgress, favoriteIds, catalogGeneration, artworkToken, artworkCookie) {
         buildList {
-            if (homeContinue.isNotEmpty()) add(UiMediaRow("continue", "Continue Watching", "Saved on this device", homeContinue.map(::toUi)))
-            if (recommendationStreams.isNotEmpty()) add(UiMediaRow("recommended", "Recommended for you", "Based on what you watch", recommendationStreams.map(::toUi)))
-            if (homeFavouriteLive.isNotEmpty()) add(UiMediaRow("favorites-live", "Favourite channels", items = homeFavouriteLive.map(::toUi)))
-            if (homeLive.isNotEmpty()) add(UiMediaRow("live", "Live TV", items = homeLive.map(::toUi)))
-            if (latestMovies.isNotEmpty()) add(UiMediaRow("latest-movies", "Latest releases", "Movies", latestMovies.map(::toUi)))
-            if (latestSeries.isNotEmpty()) add(UiMediaRow("latest-series", "Latest releases", "Series", latestSeries.map(::toUi)))
+            if (watchedVod.isNotEmpty()) add(UiMediaRow("continue", "Continue Watching", "Movies & Series", watchedVod.take(10).map(::watchUi), watchedVod.size > 10))
+            if (watchedLive.isNotEmpty()) add(UiMediaRow("continue-live", "Recently Watched", "Live TV", watchedLive.take(10).map(::watchUi), watchedLive.size > 10))
+            if (recommendationStreams.isNotEmpty()) add(UiMediaRow("recommended", "Recommended for you", "Based on what you watch", recommendationStreams.map(::toUi), true))
+            if (latestMovies.isNotEmpty()) add(UiMediaRow("latest-movies", "Latest releases", "Movies", latestMovies.map(::toUi), true))
+            if (latestSeries.isNotEmpty()) add(UiMediaRow("latest-series", "Latest releases", "Series", latestSeries.map(::toUi), true))
         }
     }
     val homeLoading = screen == AppScreen.LOADING
@@ -1586,7 +1598,14 @@ private fun StbPlayRoot(
                         if (currentRequest.kind != StalkerContentKind.LIVE && currentProgressGeneration == progressResetGeneration)
                             scope.launch {
                                 if (currentProgressGeneration == progressResetGeneration)
-                                    settingsManager.saveProgress(currentRequest.contentId, position, duration)
+                                    settingsManager.saveProgress(currentRequest.contentId, position, duration,
+                                        if (currentRequest.kind == StalkerContentKind.SERIES_EPISODE) {
+                                            val series = playingSeries
+                                            val episode = playingEpisodes.getOrNull(playingEpisodeIndex)
+                                            if (series != null && episode?.id == currentRequest.contentId)
+                                                com.example.stbplay.data.SeriesHistoryEntry(series.id, episode.id, episode.name, episode.seasonId)
+                                            else null
+                                        } else null)
                             }
                     },
                     onPlaybackFailure = {
@@ -1633,6 +1652,13 @@ private fun StbPlayRoot(
                     onOptionClick = ::chooseQuality,
                     onBack = { qualityContext = null; qualityOptions = emptyList() }
                 )
+                historyPage != null && selectedLiveChannel == null && selectedMovie == null && selectedSeries == null -> {
+                    val liveHistory = historyPage == "continue-live"
+                    com.example.stbplay.ui.HomeHistoryScreen(
+                        if (liveHistory) "Recently Watched — Live TV" else "Continue Watching — Movies & Series",
+                        (if (liveHistory) watchedLive else watchedVod).map(::watchUi),
+                        onMediaClick = ::requestMedia, onBack = { historyPage = null })
+                }
                 selectedLiveChannel != null -> {
                     val channel = selectedLiveChannel!!
                     val media = toUi(channel)
@@ -1654,7 +1680,7 @@ private fun StbPlayRoot(
                         onResume = { startQualityChoice(QualityContext(movie.name, movie, resumeFraction = media.progress)) },
                         onToggleFavorite = { setFavorite(media) },
                         onBack = { selectedMovie = null; startCategoryPreload(storedSettings) },
-                        onRemoveHistory = if (isAndroidTv && movie.id in progressById) ({
+                        onRemoveHistory = if (movie.id in progressById) ({
                             scope.launch { settingsManager.removeFromHistory(movie.id) }
                             selectedMovie = null
                         }) else null
@@ -1662,12 +1688,44 @@ private fun StbPlayRoot(
                 }
                 selectedSeries != null -> {
                     val series = selectedSeries!!
-                    SeriesDetailsScreen(
+                    val continued = homeWatchItems.firstOrNull { it.stream.id == series.id && it.episode != null }
+                    if (selectedTab == StbPlayTab.HOME && continued != null && !browseContinuedSeries) {
+                        fun playContinued(resume: Boolean) {
+                            if (continueEpisodeLoading) return
+                            continueEpisodeLoading = true
+                            continueEpisodeError = null
+                            scope.launch {
+                                runCatching {
+                                    val saved = continued.episode!!
+                                    val episodes = portalRepository.getEpisodes(series.id, saved.seasonId.orEmpty().ifBlank { "0" }, series.cmd)
+                                    val episode = episodes.firstOrNull { it.id == saved.episodeId }
+                                        ?: error("This episode is no longer available. Open Episodes to choose another.")
+                                    if (selectedSeries?.id == series.id) {
+                                        val progress = if (resume) progressById[episode.id] ?: 0f else 0f
+                                        if (!resume) {
+                                            progressResetGeneration++
+                                            settingsManager.removeFromHistory(episode.id)
+                                        }
+                                        launchSeriesEpisode(QualityContext(episode.name, series, episode), episodes, progress)
+                                    }
+                                }.onFailure { continueEpisodeError = it.message ?: "Could not load this episode. Try again." }
+                                continueEpisodeLoading = false
+                            }
+                        }
+                        TvMediaDetailsScreen(watchUi(continued).copy(
+                            description = continueEpisodeError ?: continued.episode?.episodeName,
+                            resumeLabel = if (continueEpisodeLoading) "Loading episode…" else watchUi(continued).resumeLabel),
+                            onPlay = { playContinued(false) }, onResume = { playContinued(true) },
+                            onToggleFavorite = { setFavorite(toUi(series)) },
+                            onRemoveHistory = { scope.launch { settingsManager.removeFromHistory(series.id) }; selectedSeries = null },
+                            onBrowseEpisodes = { browseContinuedSeries = true },
+                            onBack = { selectedSeries = null; startCategoryPreload(storedSettings) })
+                    } else SeriesDetailsScreen(
                         series = series,
                         repository = portalRepository,
                         isFavorite = series.id in favoriteIds,
                         onToggleFavorite = { setFavorite(toUi(series)) },
-                        episodeProgress = if (isAndroidTv) progressById else emptyMap(),
+                        episodeProgress = progressById,
                         onEpisodeClick = { episode, episodes ->
                             chooseSeriesEpisode(series, episode, episodes)
                         },
@@ -1831,6 +1889,10 @@ private fun StbPlayRoot(
                     },
                     onSearchResults = { remoteSearchStreams = it },
                     searchMedia = ::toUi,
+                    onHomeViewAll = { rowId ->
+                        if (rowId == "continue" || rowId == "continue-live") historyPage = rowId
+                        else { contentCategoryIndex = 0; selectedTab = StbPlayTab.CONTENT }
+                    },
                     onHomeInteraction = { if (isAndroidTv) lastHomeInteractionMs[0] = SystemClock.elapsedRealtime() },
                     onMediaFocused = { tab, media ->
                         if (isAndroidTv) when (tab) {
