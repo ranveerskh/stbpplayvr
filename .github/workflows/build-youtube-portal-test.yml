@@ -12,7 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      STB_RELEASE_KEYSTORE: ${{ runner.temp }}/stb-release.jks
       STB_RELEASE_STORE_PASSWORD: ${{ secrets.STB_RELEASE_STORE_PASSWORD }}
       STB_RELEASE_KEY_ALIAS: ${{ secrets.STB_RELEASE_KEY_ALIAS }}
       STB_RELEASE_KEY_PASSWORD: ${{ secrets.STB_RELEASE_KEY_PASSWORD }}
@@ -36,6 +35,7 @@ jobs:
           test -n "$STB_SIGNING_KEYSTORE_B64"
           printf '%s' "$STB_SIGNING_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/stb-release.jks"
           chmod 600 "$RUNNER_TEMP/stb-release.jks"
+          echo "STB_RELEASE_KEYSTORE=$RUNNER_TEMP/stb-release.jks" >> "$GITHUB_ENV"
       - name: Build signed isolated app and run unit tests
         env:
           STB_RELEASE_KEYSTORE: ${{ runner.temp }}/stb-release.jks
