@@ -41,7 +41,7 @@ class TvNavigationFocusTest {
     private var played = 0
     private var previewChannel by mutableStateOf<UiMedia?>(null)
 
-    private fun start(tab: StbPlayTab = StbPlayTab.HOME) {
+    private fun start(tab: StbPlayTab = StbPlayTab.HOME, portalSwitcher: Boolean = false) {
         assertTrue("Must run on a real Android TV system image", InstrumentationRegistry.getInstrumentation().targetContext.isAndroidTvDevice())
         selected = tab
         rule.setContent {
@@ -49,6 +49,7 @@ class TvNavigationFocusTest {
                 val manager = androidx.compose.ui.platform.LocalFocusManager.current
                 SideEffect { clearPageFocus = { manager.clearFocus(force = true) } }
                 val previewRequester = remember { FocusRequester() }
+                val render: @Composable () -> Unit = {
                 Box(Modifier.fillMaxSize()) {
                     StbPlayApp(
                         homeState = StbPlayHomeState(heroes = heroItems, rows = listOf(UiMediaRow("recommended", "Recommended", items = movies))),
@@ -77,9 +78,25 @@ class TvNavigationFocusTest {
                         }
                     )
                 }
+                }
+                if (portalSwitcher) ExperimentalPortalHost { render() } else render()
             }
         }
         rule.waitForIdle()
+    }
+
+    @Test fun portalSelectorKeepsIntentionalFocusAndSwitchesWithRemote() {
+        val prefs = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSharedPreferences("free_drama_experiment", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("iptv_selected", true).commit()
+        start(StbPlayTab.LIVE, portalSwitcher = true)
+        focused("tv-focus:category:all")
+        rule.onNodeWithTag("portal_default").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+        rule.mainClock.advanceTimeBy(500)
+        rule.waitForIdle()
+        rule.onNodeWithTag("portal_default").assertIsFocused()
+        ok()
+        rule.onNodeWithTag("drama_zanjeerain").assertIsDisplayed()
     }
 
     @Test fun expandedRailShowsFullLabelsWithoutMovingHomeContent() {

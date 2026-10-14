@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -32,6 +33,7 @@ fun ExperimentalPortalHost(isKids: Boolean = false, onPlayEpisode: ((Int) -> Uni
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("free_drama_experiment", Context.MODE_PRIVATE) }
     var iptv by rememberSaveable { mutableStateOf(prefs.getBoolean("iptv_selected", false)) }
+    var switcherFocused by remember { mutableStateOf(false) }
     var showPrivacy by remember { mutableStateOf(false) }
     var details by rememberSaveable { mutableStateOf(false) }
     val palette = LocalStbPalette.current
@@ -43,7 +45,7 @@ fun ExperimentalPortalHost(isKids: Boolean = false, onPlayEpisode: ((Int) -> Uni
     )
     BackHandler(enabled = !iptv && details) { details = false }
     Column(Modifier.fillMaxSize().background(palette.background).safeDrawingPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).onFocusChanged { switcherFocused = it.hasFocus }.focusGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PortalTestButton(if (!iptv) "✓ Free Drama" else "Free Drama", "portal_default") {
                 iptv = false
                 prefs.edit().putBoolean("iptv_selected", false).apply()
@@ -54,7 +56,7 @@ fun ExperimentalPortalHost(isKids: Boolean = false, onPlayEpisode: ((Int) -> Uni
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (iptv) iptvContent()
+            if (iptv) CompositionLocalProvider(LocalPortalSwitcherFocused provides switcherFocused) { iptvContent() }
             else if (isKids) {
                 Text("Free Drama test is available for adult profiles. Switch profile in IPTV settings.",
                     color = palette.text, modifier = Modifier.padding(24.dp))
