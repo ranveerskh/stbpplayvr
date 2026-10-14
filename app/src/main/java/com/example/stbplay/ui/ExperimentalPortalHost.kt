@@ -68,7 +68,7 @@ fun ExperimentalPortalHost(isKids: Boolean = false, onPlayEpisode: ((Int) -> Uni
                     Text("Source: HUM TV on YouTube. Catalogue checked 14 Oct 2026.", color = palette.muted)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                LazyColumn(Modifier.fillMaxSize().testTag("drama_episodes").padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     item {
                         Text("Zanjeerain", color = palette.text, fontSize = 26.sp)
                         Text("HUM TV · Urdu · YouTube · Episodes 1–39", color = palette.muted)

@@ -37,6 +37,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/stb-release.jks"
           echo "STB_RELEASE_KEYSTORE=$RUNNER_TEMP/stb-release.jks" >> "$GITHUB_ENV"
       - name: Build signed isolated app and run unit tests
+        id: build
         env:
           STB_RELEASE_KEYSTORE: ${{ runner.temp }}/stb-release.jks
           STB_RELEASE_STORE_PASSWORD: ${{ secrets.STB_RELEASE_STORE_PASSWORD }}
@@ -82,6 +83,7 @@ jobs:
           mkdir -p validation/phone
           cp -R app/build/outputs/androidTest-results validation/phone/ 2>/dev/null || true
       - name: Test TV catalogue and portal switching
+        if: ${{ always() && !cancelled() && steps.build.outcome == 'success' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -105,6 +107,7 @@ jobs:
             sha256.txt
             source-commit.txt
       - name: Upload passed signed test APK
+        if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
           name: STB-PLAY-Portal-Test-1-signed

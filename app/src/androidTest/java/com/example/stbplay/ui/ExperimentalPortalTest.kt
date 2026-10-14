@@ -25,7 +25,8 @@ class ExperimentalPortalTest {
             STBPlayTheme { ExperimentalPortalHost(onPlayEpisode = { chosen = it }) { Text("IPTV fixture") } }
         }
         rule.onNodeWithTag("drama_zanjeerain").performClick()
-        rule.onNodeWithTag("drama_episode_39").performScrollTo().performClick()
+        rule.onNodeWithTag("drama_episodes").performScrollToNode(hasTestTag("drama_episode_39"))
+        rule.onNodeWithTag("drama_episode_39").performClick()
         rule.runOnIdle { assertEquals(39, chosen) }
         rule.onNodeWithTag("portal_iptv").performClick()
         rule.onNodeWithText("IPTV fixture").assertIsDisplayed()
