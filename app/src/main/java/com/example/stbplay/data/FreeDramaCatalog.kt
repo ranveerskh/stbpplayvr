@@ -7,6 +7,7 @@ data class FreeDramaEpisode(val number: Int, val videoId: String) {
 }
 
 object FreeDramaCatalog {
+    const val playbackPrivacy = "STB PLAY uses YouTube API Services. Google receives your IP address, app identity and playback/device information, and may use cookies and show ads under Google's Privacy Policy. STB PLAY saves your portal selection locally; it does not download or store videos. This test does not request your YouTube login. Google privacy: https://policies.google.com/privacy. YouTube terms: https://www.youtube.com/t/terms."
     const val title = "Zanjeerain"
     const val channel = "HUM TV"
     const val playlistId = "PLbVdwtmx18stmrt0S-XSV42ote0HaHR65"

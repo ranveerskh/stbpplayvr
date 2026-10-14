@@ -33,7 +33,7 @@ class ExperimentalPortalTest {
         rule.onNodeWithText("IPTV fixture").assertDoesNotExist()
         rule.runOnIdle { assertEquals(before, iptvStore.all) }
     }
-    @Test fun selectedPortalSurvivesActivityRecreation() {
+    @Test fun selectedPortalIsRememberedInExperimentPreferences() {
         rule.setContent { STBPlayTheme { ExperimentalPortalHost { Text("IPTV fixture") } } }
         rule.onNodeWithTag("portal_iptv").performClick()
         rule.runOnIdle { assertTrue(context.getSharedPreferences("free_drama_experiment", Context.MODE_PRIVATE).getBoolean("iptv_selected", false)) }

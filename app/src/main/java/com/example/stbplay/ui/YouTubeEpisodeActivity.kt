@@ -65,16 +65,26 @@ class YouTubeEpisodeActivity : Activity() {
         setContentView(container)
         updateHeading()
         val prefs = getSharedPreferences("free_drama_experiment", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("youtube_policy_accepted_v1", false)) setupPlayer()
+        if (prefs.getBoolean("youtube_policy_accepted_v1", false)) trySetupPlayer()
         else AlertDialog.Builder(this)
             .setTitle("YouTube playback")
-            .setMessage("STB PLAY uses YouTube API Services. By continuing you agree to YouTube's Terms of Service and this playback privacy notice.\n\nGoogle receives your IP address, app identity and playback/device information, and may use cookies and show ads under Google's Privacy Policy. STB PLAY saves your portal selection locally; it does not download or store videos. This test does not request your YouTube login.\n\nPrivacy policy: https://policies.google.com/privacy\nYouTube terms: https://www.youtube.com/t/terms")
+            .setMessage("By continuing you agree to YouTube's Terms of Service and this playback privacy notice.\n\n" + FreeDramaCatalog.playbackPrivacy)
             .setPositiveButton("Agree & continue") { _, _ ->
-                prefs.edit().putBoolean("youtube_policy_accepted_v1", true).apply(); setupPlayer()
+                prefs.edit().putBoolean("youtube_policy_accepted_v1", true).apply(); trySetupPlayer()
             }
             .setNegativeButton("Cancel") { _, _ -> finish() }
             .setNeutralButton("Read policies") { _, _ -> openExternal("https://policies.google.com/privacy"); finish() }
             .setOnCancelListener { finish() }.show()
+    }
+
+    private fun trySetupPlayer() {
+        runCatching { setupPlayer() }.onFailure {
+            normal.addView(TextView(this).apply {
+                text = "YouTube player could not start on this device. Use Open in YouTube."
+                setTextColor(Color.WHITE)
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+            })
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")

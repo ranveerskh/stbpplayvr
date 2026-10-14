@@ -11,6 +11,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      STB_RELEASE_KEYSTORE: ${{ runner.temp }}/stb-release.jks
+      STB_RELEASE_STORE_PASSWORD: ${{ secrets.STB_RELEASE_STORE_PASSWORD }}
+      STB_RELEASE_KEY_ALIAS: ${{ secrets.STB_RELEASE_KEY_ALIAS }}
+      STB_RELEASE_KEY_PASSWORD: ${{ secrets.STB_RELEASE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:

@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -31,8 +32,15 @@ fun ExperimentalPortalHost(isKids: Boolean = false, onPlayEpisode: ((Int) -> Uni
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("free_drama_experiment", Context.MODE_PRIVATE) }
     var iptv by rememberSaveable { mutableStateOf(prefs.getBoolean("iptv_selected", false)) }
+    var showPrivacy by remember { mutableStateOf(false) }
     var details by rememberSaveable { mutableStateOf(false) }
     val palette = LocalStbPalette.current
+    if (showPrivacy) AlertDialog(
+        onDismissRequest = { showPrivacy = false },
+        title = { Text("YouTube playback privacy") },
+        text = { Text(FreeDramaCatalog.playbackPrivacy) },
+        confirmButton = { PortalTestButton("Close", "privacy_close") { showPrivacy = false } }
+    )
     BackHandler(enabled = !iptv && details) { details = false }
     Column(Modifier.fillMaxSize().background(palette.background).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -71,7 +79,7 @@ fun ExperimentalPortalHost(isKids: Boolean = false, onPlayEpisode: ((Int) -> Uni
                     item {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             PortalTestButton("YouTube terms", "youtube_terms") { openDramaLink(context, "https://www.youtube.com/t/terms") }
-                            PortalTestButton("Google privacy", "youtube_privacy") { openDramaLink(context, "https://policies.google.com/privacy") }
+                            PortalTestButton("Playback privacy", "youtube_privacy") { showPrivacy = true }
                         }
                     }
                     items(FreeDramaCatalog.episodes, key = { it.videoId }) { episode ->
