@@ -49,6 +49,7 @@ class UpdateManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("android_updates", Context.MODE_PRIVATE)
 
     suspend fun check(currentVersion: String): UpdateCheckResult = withContext(Dispatchers.IO) {
+        if (com.example.stbplay.BuildConfig.PORTAL_EXPERIMENT) return@withContext UpdateCheckResult(hasPublishedRelease = false)
         val request = Request.Builder().url(LATEST_RELEASE_URL).header("Cache-Control", "no-cache").build()
         val json = client.newCall(request).execute().use { response ->
             if (response.code == 404) {
@@ -80,6 +81,7 @@ class UpdateManager(private val context: Context) {
     }
 
     fun cachedAvailable(currentVersion: String): UpdateInfo? {
+        if (com.example.stbplay.BuildConfig.PORTAL_EXPERIMENT) return null
         val cached = prefs.getString("available", null) ?: return null
         return runCatching {
             val json = JSONObject(cached)
@@ -111,6 +113,7 @@ class UpdateManager(private val context: Context) {
     }
 
     fun download(info: UpdateInfo): Long {
+        check(!com.example.stbplay.BuildConfig.PORTAL_EXPERIMENT) { "Stable updates are disabled in Portal Test." }
         require(info.downloadUrl.startsWith(RELEASE_DOWNLOAD_PREFIX))
         val request = DownloadManager.Request(Uri.parse(info.downloadUrl))
             .setTitle("STB Play ${info.version}")

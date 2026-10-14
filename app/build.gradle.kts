@@ -27,6 +27,7 @@ android {
         targetSdk = 35
         versionCode = 84
         versionName = "2.10.26.5"
+        buildConfigField("boolean", "PORTAL_EXPERIMENT", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -38,6 +39,17 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+    // Opt-in only: a different installed package and private data directory.
+    buildTypes.create("portalTest") {
+        initWith(buildTypes.getByName("release"))
+        applicationIdSuffix = ".portaltest"
+        versionNameSuffix = "-portal-test.1"
+        isDebuggable = true
+        matchingFallbacks += listOf("release")
+        buildConfigField("boolean", "PORTAL_EXPERIMENT", "true")
+    }
+    testBuildType = providers.gradleProperty("stbTestBuildType").getOrElse("debug")
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
