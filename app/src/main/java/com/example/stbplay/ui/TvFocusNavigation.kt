@@ -64,6 +64,9 @@ internal class TvFocusNavigation(
     }
 }
 
+/** Intentional focus in the experimental portal selector is not page focus loss. */
+internal val LocalPortalSwitcherFocused = staticCompositionLocalOf { false }
+
 internal val LocalTvFocusNavigation = staticCompositionLocalOf<TvFocusNavigation?> { null }
 
 @Composable

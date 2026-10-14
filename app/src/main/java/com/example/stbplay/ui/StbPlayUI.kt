@@ -533,6 +533,7 @@ fun StbPlayApp(
     }
     val focusEntry = remember(selectedTab) { java.util.UUID.randomUUID().toString() }
     val renderPage: @Composable () -> Unit = {
+        val portalSwitcherFocused = LocalPortalSwitcherFocused.current
         if (tvLayout) CompositionLocalProvider(LocalTvFocusEntry provides focusEntry) {
             tabStateHolder.SaveableStateProvider(selectedTab.name) {
                 var lastPageFocusId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -543,12 +544,12 @@ fun StbPlayApp(
                     pageFocusPending = navigation.pending || (!navigation.groupHasFocus && !navigation.railOwnsFocus)
                 }
                 val target = navigation.restoreTarget
-                LaunchedEffect(navigation.pending, navigation.requestGeneration, navigation.entryId, target, windowFocused) {
-                    if (windowFocused && navigation.pending && target != null) {
+                LaunchedEffect(navigation.pending, navigation.requestGeneration, navigation.entryId, target, windowFocused, portalSwitcherFocused) {
+                    if (windowFocused && !portalSwitcherFocused && navigation.pending && target != null) {
                         inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
                         repeat(8) {
                             withFrameNanos { }
-                            if (!navigation.pending || navigation.railOwnsFocus) return@LaunchedEffect
+                            if (!navigation.pending || navigation.railOwnsFocus || portalSwitcherFocused) return@LaunchedEffect
                             // A positioned lazy target can still be attaching its focus node.
                             runCatching { target.requestFocus() }
                         }
@@ -556,10 +557,10 @@ fun StbPlayApp(
                     // A loading page or changing settings subpage may not have a target
                     // yet. Keep its entry request pending; never bounce through the rail.
                 }
-                LaunchedEffect(navigation.lossGeneration, navigation.groupHasFocus, windowFocused) {
-                    if (windowFocused && !navigation.groupHasFocus && !navigation.railOwnsFocus) {
+                LaunchedEffect(navigation.lossGeneration, navigation.groupHasFocus, windowFocused, portalSwitcherFocused) {
+                    if (windowFocused && !portalSwitcherFocused && !navigation.groupHasFocus && !navigation.railOwnsFocus) {
                         delay(80)
-                        if (!navigation.groupHasFocus && !navigation.railOwnsFocus) navigation.restorePage()
+                        if (!portalSwitcherFocused && !navigation.groupHasFocus && !navigation.railOwnsFocus) navigation.restorePage()
                     }
                 }
                 CompositionLocalProvider(LocalTvFocusNavigation provides navigation) {

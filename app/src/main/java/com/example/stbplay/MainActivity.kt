@@ -268,7 +268,7 @@ class MainActivity : ComponentActivity() {
         updateManager = UpdateManager(applicationContext)
         // Scheduling background work is optional; never let a scheduler failure
         // prevent the player UI from starting on a device.
-        runCatching { UpdateCheckWorker.schedule(applicationContext) }
+        if (!BuildConfig.PORTAL_EXPERIMENT) runCatching { UpdateCheckWorker.schedule(applicationContext) }
         runCatching { PortalExpiryReminderWorker.schedule(applicationContext) }
         registerUpdateReceiver()
 
@@ -280,7 +280,13 @@ class MainActivity : ComponentActivity() {
             val parentalMode = if (activeViewer.isKids) ParentalMode.HIDE_ADULT else if (activeViewer.pinMode == com.example.stbplay.data.ViewerPinMode.RESTRICTED_ONLY && savedParentalMode == ParentalMode.ADULT_ONLY) ParentalMode.ALL_CONTENT else savedParentalMode
             LaunchedEffect(themePreference) { LauncherIconManager.apply(applicationContext, themePreference) }
             STBPlayTheme(preference = themePreference, adultOnly = parentalMode == ParentalMode.ADULT_ONLY, appearance = glassAppearance) {
-                StbPlayRoot(settingsManager, updateManager, ::queueUpdateDownload, ::shareApp, openUpdates)
+                if (BuildConfig.PORTAL_EXPERIMENT) {
+                    com.example.stbplay.ui.ExperimentalPortalHost(isKids = activeViewer.isKids) {
+                        StbPlayRoot(settingsManager, updateManager, ::queueUpdateDownload, ::shareApp, openUpdates)
+                    }
+                } else {
+                    StbPlayRoot(settingsManager, updateManager, ::queueUpdateDownload, ::shareApp, openUpdates)
+                }
             }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
