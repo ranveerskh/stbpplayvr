@@ -1,8 +1,8 @@
-name: Verify complete series episodes and focus recovery
+name: Verify Search and category focus release candidate
 
 on:
   push:
-    branches: [update/episodes-focus-2.10.26.5]
+    branches: [fix/search-category-focus-2.10.26.6]
 
 permissions:
   contents: read
@@ -47,14 +47,14 @@ jobs:
           STB_RELEASE_KEY_ALIAS: ${{ secrets.STB_RELEASE_KEY_ALIAS }}
           STB_RELEASE_KEY_PASSWORD: ${{ secrets.STB_RELEASE_KEY_PASSWORD }}
         run: |
-          grep -Fq 'versionCode = 84' app/build.gradle.kts
-          grep -Fq 'versionName = "2.10.26.5"' app/build.gradle.kts
+          grep -Fq 'versionCode = 85' app/build.gradle.kts
+          grep -Fq 'versionName = "2.10.26.6"' app/build.gradle.kts
           chmod +x ./gradlew
           ./gradlew --no-daemon testDebugUnitTest assembleRelease assembleDebugAndroidTest
       - name: Check lint against exact tested baseline
         run: |
           ./gradlew --no-daemon lintDebug || candidate_lint_exit=$?
-          git worktree add --detach "$RUNNER_TEMP/stb-lint-baseline" f90249b466cace478e5a038c1cd96ca0e4fc7aba
+          git worktree add --detach "$RUNNER_TEMP/stb-lint-baseline" 92771b7053997a2712ab1660d3b7cca457cc2abc
           ./gradlew --no-daemon --project-dir "$RUNNER_TEMP/stb-lint-baseline" lintDebug || baseline_lint_exit=$?
           cp "$RUNNER_TEMP/stb-lint-baseline/app/build/reports/lint-results-debug.xml" "$RUNNER_TEMP/stb-baseline-lint.xml"
           python3 ci/verify_lint_regressions.py "$RUNNER_TEMP/stb-baseline-lint.xml" app/build/reports/lint-results-debug.xml
@@ -113,9 +113,9 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/stb-apk-verification.txt"
           grep -Fq 'Signer #1 certificate SHA-256 digest: 91943d0efc4125eb6aeda132ba6b8d79855496e030477c2d5cd00e9bedd4fdb0' "$RUNNER_TEMP/stb-apk-verification.txt"
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" > "$RUNNER_TEMP/stb-apk-badging.txt"
-          grep -F "package: name='com.example.stbplay' versionCode='84' versionName='2.10.26.5'" "$RUNNER_TEMP/stb-apk-badging.txt"
-          cp "$apk" STB-PLAY-Android-2.10.26.5-test-phone-test.apk
-          sha256sum STB-PLAY-Android-2.10.26.5-test-phone-test.apk > "$RUNNER_TEMP/stb-apk-sha256.txt"
+          grep -F "package: name='com.example.stbplay' versionCode='85' versionName='2.10.26.6'" "$RUNNER_TEMP/stb-apk-badging.txt"
+          cp "$apk" STB-PLAY-Android-2.10.26.6-candidate.apk
+          sha256sum STB-PLAY-Android-2.10.26.6-candidate.apk > "$RUNNER_TEMP/stb-apk-sha256.txt"
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -137,7 +137,7 @@ jobs:
       - name: Upload verified test APK only
         uses: actions/upload-artifact@v4
         with:
-          name: STB-PLAY-Android-2.10.26.5-test-phone-test-signed
-          path: STB-PLAY-Android-2.10.26.5-test-phone-test.apk
+          name: STB-PLAY-Android-2.10.26.6-candidate-signed
+          path: STB-PLAY-Android-2.10.26.6-candidate.apk
           if-no-files-found: error
           retention-days: 14
