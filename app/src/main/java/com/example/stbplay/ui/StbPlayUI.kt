@@ -567,7 +567,16 @@ fun StbPlayApp(
                         exit = { direction -> if (direction == androidx.compose.ui.focus.FocusDirection.Left) {
                             navigation.leavePage(); railRequesters.getValue(selectedTab)
                         } else FocusRequester.Default }
-                    }.onFocusChanged { navigation.groupHasFocus = it.hasFocus }.focusGroup()) { renderTab() }
+                    }.onFocusChanged { navigation.groupHasFocus = it.hasFocus }.focusGroup()) {
+                        // Search belongs to the same focus owner as the page below it.
+                        // Otherwise recovery mistakes intentional Up navigation for loss.
+                        Column(Modifier.fillMaxSize()) {
+                            StbPlayHeader(selectedTab, settingsState.themePreference, settingsState.viewerName,
+                                onSearchClick = { searchSession.show(selectedTab); onSearchVisibilityChanged(true) },
+                                denseTv = true)
+                            Box(Modifier.weight(1f).fillMaxWidth()) { renderTab() }
+                        }
+                    }
                 }
             }
         }
@@ -615,7 +624,7 @@ fun StbPlayApp(
             )
             }
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                StbPlayHeader(
+                if (!tvLayout) StbPlayHeader(
                     selectedTab = selectedTab,
                     themePreference = settingsState.themePreference,
                 viewerName = settingsState.viewerName,
@@ -829,7 +838,7 @@ private fun StbPlayHeader(
             )
         }
         Spacer(modifier = Modifier.weight(1f))
-        HeaderAction(if (compact) "⌕" else "Search", onSearchClick, modifier = Modifier.width(if (compact) 44.dp else if (denseTv) 92.dp else 120.dp))
+        HeaderAction(if (compact) "⌕" else "Search", onSearchClick, modifier = Modifier.tvFocusTarget("header:search").width(if (compact) 44.dp else if (denseTv) 92.dp else 120.dp))
         Spacer(modifier = Modifier.width(if (compact) 6.dp else 10.dp))
         if (compact) MatchingCastButton(Modifier.width(72.dp).height(44.dp))
     }
@@ -1356,6 +1365,12 @@ private fun LiveTvScreen(
     val categoryListState = rememberLazyListState(
         initialFirstVisibleItemIndex = state.selectedCategory.coerceIn(0, (state.categories.size - 1).coerceAtLeast(0))
     )
+    val categoryEntry = LocalTvFocusEntry.current
+    LaunchedEffect(categoryEntry, state.categories.size) {
+        if (denseTv && state.categories.isNotEmpty()) {
+            categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+        }
+    }
     val selectedCategoryFocusRequester = remember { FocusRequester() }
     val categoryScope = rememberCoroutineScope()
     val initialCategoryFocusRequested = remember { mutableStateOf(false) }
@@ -1754,6 +1769,12 @@ private fun ContentBrowserScreen(
     TvPageEntry(focusedContentId?.takeIf { id -> state.items.any { it.id == id } }?.let { id -> state.items.first { it.id == id }.let { "media:${it.streamType}:${it.id}" } }
         ?: state.categories.getOrNull(state.selectedCategory)?.let { "category:${it.id}" })
     val contentFocusRequester = remember { FocusRequester() }
+    val categoryEntry = LocalTvFocusEntry.current
+    LaunchedEffect(categoryEntry, state.categories.size) {
+        if (denseTv && state.categories.isNotEmpty()) {
+            categoryListState.scrollToItem(state.selectedCategory.coerceIn(0, state.categories.lastIndex))
+        }
+    }
     val selectedCategoryFocusRequester = remember { FocusRequester() }
     val categoryScope = rememberCoroutineScope()
     val initialCategoryFocusRequested = remember { mutableStateOf(false) }

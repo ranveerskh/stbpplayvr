@@ -33,6 +33,9 @@ class TvNavigationFocusTest {
     private var loading by mutableStateOf(false)
     private var liveCategories by mutableStateOf(listOf(UiCategory("all", "All")))
     private var liveFocusReset by mutableStateOf(0)
+    private var liveCategoryIndex by mutableStateOf(0)
+    private var movieCategories by mutableStateOf(listOf(UiCategory("all", "All")))
+    private var movieCategoryIndex by mutableStateOf(0)
     private var focusFirstChannelAfterLoad by mutableStateOf(false)
     private var heroItems by mutableStateOf(movies.take(1))
     private var focusedMovie by mutableStateOf<String?>(null)
@@ -52,13 +55,20 @@ class TvNavigationFocusTest {
                 Box(Modifier.fillMaxSize()) {
                     StbPlayApp(
                         homeState = StbPlayHomeState(heroes = heroItems, rows = listOf(UiMediaRow("recommended", "Recommended", items = movies))),
-                        liveState = StbPlayLibraryState(loading = loading, categories = liveCategories, focusResetGeneration = liveFocusReset, focusFirstChannelAfterLoad = focusFirstChannelAfterLoad, items = if (loading) emptyList() else channels),
-                        contentState = StbPlayLibraryState(categories = listOf(UiCategory("all", "All")), items = movies),
+                        liveState = StbPlayLibraryState(loading = loading, categories = liveCategories, selectedCategory = liveCategoryIndex, focusResetGeneration = liveFocusReset, focusFirstChannelAfterLoad = focusFirstChannelAfterLoad, items = if (loading) emptyList() else channels),
+                        contentState = StbPlayLibraryState(categories = movieCategories, selectedCategory = movieCategoryIndex, items = movies),
                         favouritesState = StbPlayLibraryState(items = favorites), settingsState = StbPlaySettingsState(themePreference = theme),
                         onActivateLicense = {}, selectedTab = selected,
                         liveChannelListState = rememberLazyListState(), focusedLiveChannelId = null,
                         focusedContentId = focusedMovie, contentGridState = rememberLazyGridState(),
-                        onTabSelected = { selected = it }, onLoadMoreContent = {}, onCategorySelected = { _, _ -> },
+                        onTabSelected = {
+                            if (it != selected && it == StbPlayTab.LIVE) { liveCategoryIndex = 0; liveFocusReset++ }
+                            if (it != selected && it == StbPlayTab.CONTENT) { movieCategoryIndex = 0; focusedMovie = null }
+                            selected = it
+                        }, onLoadMoreContent = {}, onCategorySelected = { tab, index ->
+                            if (tab == StbPlayTab.LIVE) liveCategoryIndex = index
+                            if (tab == StbPlayTab.CONTENT) { movieCategoryIndex = index; focusedMovie = null }
+                        },
                         onMediaClick = { played++; if (selected == StbPlayTab.LIVE) previewChannel = it }, onToggleFavorite = {}, onRemoveHistory = {},
                         onRefresh = {}, onClearCache = {}, onClearHistory = {}, onAddPortal = {},
                         onEditPortal = {}, onUsePortal = {}, onDeletePortal = {}, onProviderPair = {},
@@ -80,6 +90,47 @@ class TvNavigationFocusTest {
             }
         }
         rule.waitForIdle()
+    }
+
+    @Test fun searchKeepsFocusAndOpensWithRemoteAcrossSections() {
+        start(StbPlayTab.CONTENT)
+        repeat(3) {
+            rule.onNodeWithText("Search", substring = false).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+            rule.mainClock.advanceTimeBy(1_000)
+            rule.onNodeWithText("Search", substring = false).assertIsFocused()
+            ok()
+            rule.onNodeWithText("Search Movies & Series").assertIsDisplayed()
+            device.pressBack(); rule.waitForIdle()
+            rail(StbPlayTab.SETTINGS); ok(); focused("tv-focus:settings:Subscription")
+            rail(StbPlayTab.CONTENT); right(); focused("tv-focus:category:all")
+        }
+    }
+
+    @Test fun offscreenSavedCategoryListReturnsToAttachedTopCategory() {
+        movieCategories = listOf(UiCategory("all", "All")) + (1..40).map { UiCategory("cat$it", "Category $it") }
+        start(StbPlayTab.CONTENT)
+        focused("tv-focus:category:all")
+        repeat(28) { down() }
+        focused("tv-focus:category:cat28")
+        ok()
+        rail(StbPlayTab.SETTINGS); ok(); focused("tv-focus:settings:Subscription")
+        rail(StbPlayTab.CONTENT); right(); focused("tv-focus:category:all")
+        down(); focused("tv-focus:category:cat1")
+        right(); focused("tv-focus:media:movie:film1")
+    }
+
+    @Test fun repeatedLiveMoviesSettingsRoundTripsAlwaysAllowCategoryEntry() {
+        start(StbPlayTab.LIVE)
+        repeat(4) {
+            focused("tv-focus:category:all"); right(); focused("tv-focus:live:ch1")
+            rail(StbPlayTab.SETTINGS); ok(); focused("tv-focus:settings:Subscription")
+            down(); down(); ok(); focused("tv-focus:settings:back")
+            device.pressBack(); rule.waitForIdle(); focused("tv-focus:settings:Content sources")
+            rail(StbPlayTab.CONTENT); right(); focused("tv-focus:category:all")
+            right(); focused("tv-focus:media:movie:film1")
+            rail(StbPlayTab.LIVE); ok()
+        }
+        focused("tv-focus:category:all")
     }
 
     @Test fun expandedRailShowsFullLabelsWithoutMovingHomeContent() {
@@ -145,19 +196,17 @@ class TvNavigationFocusTest {
 
     @Test fun modernThemesKeepFocusVisibleAcrossHomeLiveAndMovies() {
         start()
-        ThemePreference.entries.forEachIndexed { index, preference ->
+        ThemePreference.entries.forEach { preference ->
             rule.runOnIdle { theme = preference }
             rule.waitForIdle()
             rail(StbPlayTab.HOME); right(); focused("tv-focus:home:hero")
             saveThemePreview(rule, "tv-home-${preference.name.lowercase()}")
             rail(StbPlayTab.LIVE); right()
-            // First entry starts at categories; subsequent entries restore the channel.
-            if (index == 0) { focused("tv-focus:category:all"); right() }
+            focused("tv-focus:category:all"); right()
             focused("tv-focus:live:ch1")
             saveThemePreview(rule, "tv-live-${preference.name.lowercase()}")
             rail(StbPlayTab.CONTENT); ok()
-            // The remembered movie is the entry target after the first theme.
-            if (index == 0) { focused("tv-focus:category:all"); right() }
+            focused("tv-focus:category:all"); right()
             focused("tv-focus:media:movie:film1")
             saveThemePreview(rule, "tv-movies-${preference.name.lowercase()}")
         }
@@ -269,7 +318,7 @@ class TvNavigationFocusTest {
         device.pressBack(); rule.waitForIdle(); focused("tv-focus:settings:Content sources")
     }
 
-    @Test fun homeShelfAndMovieFocusSurviveTabSwitches() {
+    @Test fun homeShelfIsRememberedAndMovieSectionReentryStartsAtCategories() {
         start()
         focused("tv-focus:home:hero")
         down(); focused("tv-focus:home:recommended:movie:film1")
@@ -280,7 +329,8 @@ class TvNavigationFocusTest {
         right(); focused("tv-focus:media:movie:film1")
         right(); focused("tv-focus:media:movie:film2")
         rail(StbPlayTab.SETTINGS); ok(); focused("tv-focus:settings:Subscription")
-        rail(StbPlayTab.CONTENT); ok(); focused("tv-focus:media:movie:film2")
+        rail(StbPlayTab.CONTENT); ok(); focused("tv-focus:category:all")
+        right(); focused("tv-focus:media:movie:film1")
     }
 
     @Test fun previewOptionsReturnToSameChannelWithoutChangingSelectedTab() {

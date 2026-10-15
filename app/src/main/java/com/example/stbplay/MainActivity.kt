@@ -1828,6 +1828,19 @@ private fun StbPlayRoot(
                                 contentCategoryIndex = 0
                                 scope.launch { contentGridState.scrollToItem(0) }
                             }
+                            // A section change starts TV browsing at the first category.
+                            // Player/details returns do not pass here and keep their position.
+                            if (isAndroidTv && tab == StbPlayTab.LIVE) {
+                                focusedLiveChannelId = null
+                                liveFocusResetGeneration++
+                                applyCategorySelection(StbPlayTab.LIVE, 0)
+                                scope.launch { liveChannelListState.scrollToItem(0) }
+                            }
+                            if (isAndroidTv && tab == StbPlayTab.CONTENT) {
+                                focusedContentId = null
+                                applyCategorySelection(StbPlayTab.CONTENT, 0)
+                                scope.launch { contentGridState.scrollToItem(0) }
+                            }
                             unlockedAdultCategoryKey = null
                             liveFocusFirstAfterLoad = false
                         }
