@@ -95,7 +95,8 @@ class TvNavigationFocusTest {
     @Test fun searchKeepsFocusAndOpensWithRemoteAcrossSections() {
         start(StbPlayTab.CONTENT)
         repeat(3) {
-            rule.onNodeWithText("Search", substring = false).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+            focused("tv-focus:category:all")
+            device.pressDPadUp(); rule.waitForIdle()
             rule.mainClock.advanceTimeBy(1_000)
             rule.onNodeWithText("Search", substring = false).assertIsFocused()
             ok()
@@ -121,10 +122,12 @@ class TvNavigationFocusTest {
 
     @Test fun repeatedLiveMoviesSettingsRoundTripsAlwaysAllowCategoryEntry() {
         start(StbPlayTab.LIVE)
-        repeat(4) {
+        repeat(4) { iteration ->
             focused("tv-focus:category:all"); right(); focused("tv-focus:live:ch1")
-            rail(StbPlayTab.SETTINGS); ok(); focused("tv-focus:settings:Subscription")
-            down(); down(); ok(); focused("tv-focus:settings:back")
+            rail(StbPlayTab.SETTINGS); ok()
+            if (iteration == 0) { focused("tv-focus:settings:Subscription"); down(); down() }
+            focused("tv-focus:settings:Content sources")
+            ok(); focused("tv-focus:settings:back")
             device.pressBack(); rule.waitForIdle(); focused("tv-focus:settings:Content sources")
             rail(StbPlayTab.CONTENT); right(); focused("tv-focus:category:all")
             right(); focused("tv-focus:media:movie:film1")
