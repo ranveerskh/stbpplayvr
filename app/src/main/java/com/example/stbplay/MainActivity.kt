@@ -1099,7 +1099,7 @@ private fun StbPlayRoot(
         val needsPin = stream.isLocked || (parentalMode == ParentalMode.ALL_CONTENT && (properAdultCategory || (activeViewer.pinMode == com.example.stbplay.data.ViewerPinMode.RESTRICTED_ONLY && stream.isAdultContent())))
         val personalContentUnlocked = activeViewer.pinMode == com.example.stbplay.data.ViewerPinMode.RESTRICTED_ONLY &&
             (stream.id in personalPinUnlockedIds || (stream.categoryId != null && stream.categoryId == personalPinUnlockedCategory))
-        if (needsPin && parentalMode != ParentalMode.ADULT_ONLY && !categoryUnlocked && !personalContentUnlocked && !(activeViewer.id != "owner" && activeViewer.needsEntryPin && activeViewer.pinHash.isNotBlank() && unlockedViewerId == activeViewer.id)) pendingLockedMedia = stream else openMedia(stream, media.progress)
+        if (needsPin && parentalMode != ParentalMode.ADULT_ONLY && !categoryUnlocked && !personalContentUnlocked && !(activeViewer.needsEntryPin && (if (activeViewer.id == "owner") storedSettings.pin.isNotBlank() else activeViewer.pinHash.isNotBlank()) && unlockedViewerId == activeViewer.id)) pendingLockedMedia = stream else openMedia(stream, media.progress)
     }
 
     LaunchedEffect(portalReady, connecting, pendingPlaybackMedia) {
@@ -1505,10 +1505,10 @@ private fun StbPlayRoot(
             else -> null
         }
         val key = "${tab.name}:$index"
-        if (category?.isAdult == true && parentalMode == ParentalMode.ALL_CONTENT && unlockedAdultCategoryKey != key && !(activeViewer.id != "owner" && activeViewer.needsEntryPin && activeViewer.pinHash.isNotBlank() && unlockedViewerId == activeViewer.id)) {
+        if (category?.isAdult == true && parentalMode == ParentalMode.ALL_CONTENT && unlockedAdultCategoryKey != key && !(activeViewer.needsEntryPin && (if (activeViewer.id == "owner") storedSettings.pin.isNotBlank() else activeViewer.pinHash.isNotBlank()) && unlockedViewerId == activeViewer.id)) {
             pendingCategory = PendingCategory(tab, index, category.title)
         } else {
-            if (category?.isAdult == true && activeViewer.id != "owner" && activeViewer.needsEntryPin && activeViewer.pinHash.isNotBlank() && unlockedViewerId == activeViewer.id) unlockedAdultCategoryKey = key
+            if (category?.isAdult == true && activeViewer.needsEntryPin && (if (activeViewer.id == "owner") storedSettings.pin.isNotBlank() else activeViewer.pinHash.isNotBlank()) && unlockedViewerId == activeViewer.id) unlockedAdultCategoryKey = key
             else if (category?.isLocked != true) unlockedAdultCategoryKey = null
             applyCategorySelection(tab, index)
         }
@@ -2076,8 +2076,13 @@ private fun StbPlayRoot(
                         onCancel = { pendingLockedMedia = null; pendingPersonalPlayback = null }, title = locked.name)
                 } else PinPrompt(
                     title = locked.name, expectedPin = storedSettings.pin,
-                    onVerified = { pendingLockedMedia = null; openMedia(locked) },
-                    onCancel = { pendingLockedMedia = null }
+                    onVerified = {
+                        personalPinUnlockedIds = personalPinUnlockedIds + locked.id
+                        pendingLockedMedia = null
+                        val resumePlayback = pendingPersonalPlayback; pendingPersonalPlayback = null
+                        if (resumePlayback != null) resumePlayback() else openMedia(locked)
+                    },
+                    onCancel = { pendingLockedMedia = null; pendingPersonalPlayback = null }
                 )
             }
             pendingEpisodePlayback?.let { choice ->
@@ -2124,11 +2129,17 @@ private fun StbPlayRoot(
                     onCancel = { pendingParentalMode = null }
                 )
             }
+            var ownerPinModeChoice by remember(activeViewer.pinMode, changingPin, providerPinSetup) { mutableStateOf(activeViewer.pinMode) }
             if (changingPin) {
                 ChangePinPrompt(
                     expectedPin = storedSettings.pin,
+                    pinMode = ownerPinModeChoice.takeIf { activeViewer.id == "owner" },
+                    onPinModeChanged = { ownerPinModeChoice = it },
                     onSave = { newPin ->
-                        scope.launch { settingsManager.updateParentalPin(storedSettings.pin, newPin) }
+                        scope.launch {
+                            settingsManager.updateParentalPin(storedSettings.pin, newPin)
+                            if (activeViewer.id == "owner") settingsManager.saveViewer(activeViewer.copy(pinMode = ownerPinModeChoice), "")
+                        }
                         changingPin = false
                     },
                     onCancel = { changingPin = false }
@@ -2136,10 +2147,13 @@ private fun StbPlayRoot(
             }
             providerPinSetup?.let { portal ->
                 ProviderPinSetupPrompt(
+                    pinMode = ownerPinModeChoice.takeIf { activeViewer.id == "owner" },
+                    onPinModeChanged = { ownerPinModeChoice = it },
                     onSave = { pin ->
                         scope.launch {
                             val pinnedPortal = portal.copy(pin = pin)
                             settingsManager.upsertPortal(pinnedPortal)
+                            if (activeViewer.id == "owner") settingsManager.saveViewer(activeViewer.copy(pinMode = ownerPinModeChoice), "")
                             providerPinSetup = null
                             startConnection(pinnedPortal)
                         }

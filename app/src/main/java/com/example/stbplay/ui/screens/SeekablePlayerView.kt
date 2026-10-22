@@ -59,9 +59,9 @@ class SeekablePlayerView @JvmOverloads constructor(
             (params as? android.widget.FrameLayout.LayoutParams)?.gravity ?: -1)
     }
 
-    fun configureGlassControls(enabled: Boolean, compactLandscape: Boolean = false) {
-        findViewById<View>(androidx.media3.ui.R.id.exo_center_controls)?.translationY =
-            if (enabled && compactLandscape) -48 * resources.displayMetrics.density else 0f
+    fun configureGlassControls(enabled: Boolean) {
+        // Phone footer space is reserved by the controller container, including landscape.
+        findViewById<View>(androidx.media3.ui.R.id.exo_center_controls)?.translationY = 0f
         if (enabled == glassControlsApplied) return
         val bar = findViewById<View>(androidx.media3.ui.R.id.exo_bottom_bar) ?: return
         val density = resources.displayMetrics.density

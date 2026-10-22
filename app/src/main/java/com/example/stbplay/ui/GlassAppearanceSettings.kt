@@ -47,6 +47,15 @@ internal fun GlassAppearanceSettings(adultOnly: Boolean, normalGlass: Boolean) {
             }
         }
         if ((!adultOnly && normalGlass) || (adultOnly && appearance.adultTheme == AdultThemePreference.GLASS)) {
+            Text("Background blur", color = p.text)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(0, 50, 100).forEach { value ->
+                    QuestButton(onClick = { scope.launch { manager.setGlassBlur(value) } },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                        Text("${if (appearance.blurPercent == value) "✓ " else ""}$value%")
+                    }
+                }
+            }
             Text("Glass background", color = p.text)
             if (adultOnly) {
                 QuestButton(onClick = { scope.launch { manager.useBuiltInAdultBackground() } }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {

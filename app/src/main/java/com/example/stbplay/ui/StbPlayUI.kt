@@ -3049,7 +3049,7 @@ fun PinPrompt(title: String, expectedPin: String, onVerified: () -> Unit, onCanc
 }
 
 @Composable
-fun ProviderPinSetupPrompt(onSave: (String) -> Unit, onCancel: () -> Unit) {
+fun ProviderPinSetupPrompt(onSave: (String) -> Unit, onCancel: () -> Unit, pinMode: com.example.stbplay.data.ViewerPinMode? = null, onPinModeChanged: (com.example.stbplay.data.ViewerPinMode) -> Unit = {}) {
     var next by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
@@ -3064,7 +3064,7 @@ fun ProviderPinSetupPrompt(onSave: (String) -> Unit, onCancel: () -> Unit) {
             colors = SurfaceDefaults.colors(containerColor = Panel)
         ) {
             Column(
-                Modifier.padding(24.dp),
+                Modifier.verticalScroll(rememberScrollState()).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -3078,6 +3078,7 @@ fun ProviderPinSetupPrompt(onSave: (String) -> Unit, onCancel: () -> Unit) {
                 PinField("Confirm PIN", confirmation, focusRequester = confirmPinFocus,
                     previousFocusRequester = newPinFocus, nextFocusRequester = savePinFocus,
                     nextIsAction = true) { confirmation = it; error = "" }
+                pinMode?.let { mode -> OwnerPinModeOptions(mode, onPinModeChanged) }
                 if (error.isNotBlank()) Text(error, color = Danger, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     PrimaryAction("Save PIN", Modifier.focusRequester(savePinFocus).focusProperties { up = confirmPinFocus }) {
@@ -3095,7 +3096,7 @@ fun ProviderPinSetupPrompt(onSave: (String) -> Unit, onCancel: () -> Unit) {
 }
 
 @Composable
-fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () -> Unit) {
+fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () -> Unit, pinMode: com.example.stbplay.data.ViewerPinMode? = null, onPinModeChanged: (com.example.stbplay.data.ViewerPinMode) -> Unit = {}) {
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
@@ -3105,16 +3106,17 @@ fun ChangePinPrompt(expectedPin: String, onSave: (String) -> Unit, onCancel: () 
     BackHandler(onBack = onCancel)
     Box(Modifier.fillMaxSize().background(Color(0xD9070707)), contentAlignment = Alignment.Center) {
         Surface(
-            modifier = Modifier.widthIn(min = 400.dp, max = 560.dp),
+            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 560.dp),
             shape = RoundedCornerShape(18.dp),
             colors = SurfaceDefaults.colors(containerColor = Panel)
         ) {
-            Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(13.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(13.dp)) {
                 Text("Change owner PIN", color = GoldLight, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 PinField("Current PIN", current, initialFocus = true, focusRequester = currentPinFocus,
                     nextFocusRequester = newPinFocus, imeAction = ImeAction.Next) { current = it; error = "" }
                 PinField("New PIN", next, focusRequester = newPinFocus, previousFocusRequester = currentPinFocus,
                     nextFocusRequester = savePinFocus, nextIsAction = true) { next = it; error = "" }
+                pinMode?.let { mode -> OwnerPinModeOptions(mode, onPinModeChanged) }
                 if (error.isNotBlank()) Text(error, color = Danger, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     PrimaryAction("Update", Modifier.focusRequester(savePinFocus).focusProperties { up = newPinFocus }) {

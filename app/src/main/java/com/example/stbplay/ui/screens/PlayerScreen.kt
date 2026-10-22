@@ -335,6 +335,30 @@ private fun NativePlayerScreen(
         if (compactLayout) CastPlayer.Builder(context).setLocalPlayer(player).build() else null
     }
     val activePlayer: Player = castPlayer ?: player
+    val playbackLifecycle = (context.findActivity() as? androidx.lifecycle.LifecycleOwner)?.lifecycle
+    DisposableEffect(player, playbackLifecycle) {
+        var resumeAfterStop = false
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
+                    resumeAfterStop = player.playWhenReady
+                    player.pause()
+                    if (player.duration > 0L) progressCallback(player.currentPosition, player.duration)
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_START -> {
+                    if (resumeAfterStop) player.play()
+                    resumeAfterStop = false
+                }
+                else -> Unit
+            }
+        }
+        if (playbackLifecycle != null && !playbackLifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+            resumeAfterStop = player.playWhenReady
+            player.pause()
+        }
+        playbackLifecycle?.addObserver(observer)
+        onDispose { playbackLifecycle?.removeObserver(observer) }
+    }
 
     var volumePercent by remember(activePlayer) { mutableIntStateOf((activePlayer.volume * 100f).toInt().coerceIn(0, 100)) }
     fun adjustVolume(delta: Int) {
@@ -422,6 +446,9 @@ private fun NativePlayerScreen(
     val originalOrientation = remember(phoneActivity) {
         phoneActivity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
+    val phoneControls = compactLayout && !isMetaQuest && !isAndroidTv && phoneActivity != null
+    val controlDensity = androidx.compose.ui.platform.LocalDensity.current
+    val footerSpacePx = with(controlDensity) { 72.dp.roundToPx() } + WindowInsets.safeDrawing.getBottom(controlDensity)
     var phoneFullscreen by remember(playbackUrl) { mutableStateOf(false) }
     fun setPhoneFullscreen(enabled: Boolean) {
         phoneActivity?.let { applyPhoneFullscreen(it, enabled, originalOrientation) }
@@ -631,10 +658,14 @@ private fun NativePlayerScreen(
                 }
             },
             update = {
+                if (phoneControls && !embeddedMode) {
+                    it.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_controller)?.let { controller ->
+                        controller.setPadding(controller.paddingLeft, controller.paddingTop, controller.paddingRight, footerSpacePx)
+                    }
+                }
                 it.setShowPreviousButton(false)
                 it.setShowNextButton(false)
-                it.configureGlassControls(glassControls,
-                    compactLayout && !isAndroidTv && !isMetaQuest && configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+                it.configureGlassControls(glassControls)
                 it.configureLiveTimeline(showChannelStepButtons)
                 it.configurePhoneGestures(
                     phoneFullscreen && compactLayout && hasTouchscreen && !isAndroidTv && !isMetaQuest && !embeddedMode,
@@ -648,7 +679,7 @@ private fun NativePlayerScreen(
             }
         ) }
         if (!embedded && playerControlsVisible && playerError == null) {
-            val phoneActionBar = compactLayout && !isMetaQuest && !isAndroidTv && phoneActivity != null
+            val phoneActionBar = phoneControls
             if (phoneActionBar) {
                 com.example.stbplay.ui.MatchingCastButton(
                     Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing)
@@ -727,9 +758,9 @@ private fun NativePlayerScreen(
                 ) { Text("Episodes") }
             }
             Row(
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier.align(Alignment.BottomCenter).testTag("player-extra-actions")
                     .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(start = 10.dp, end = 10.dp, bottom = if (showChannelStepButtons) 18.dp else 120.dp),
+                    .padding(start = 10.dp, end = 10.dp, bottom = if (phoneActionBar) 8.dp else if (showChannelStepButtons) 18.dp else 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

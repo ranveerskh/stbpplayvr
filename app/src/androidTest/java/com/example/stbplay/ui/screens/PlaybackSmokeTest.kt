@@ -117,6 +117,59 @@ class PlaybackSmokeTest {
         return position
     }
 
+    @Test fun homeButtonPausesMovieAndPreservesManualPause() = verifyHomePause(StalkerContentKind.MOVIE)
+    @Test fun homeButtonPausesLiveAndPreservesManualPause() = verifyHomePause(StalkerContentKind.LIVE)
+    private fun verifyHomePause(kind: StalkerContentKind) {
+        rule.setContent { STBPlayTheme {
+            PlaybackRoute(StalkerPlayRequest(videoUrl, kind, title = "Lifecycle fixture"),
+                portalUiUrl = "http://10.0.2.2:8765", macAddress = "02:00:00:00:00:01", token = null,
+                onPlaybackStarted = { started.incrementAndGet() }, onPlaybackFailure = { failures.add(it) }, onBack = {})
+        } }
+        val (_, player) = awaitVideo()
+        rule.runOnIdle { player.repeatMode = Player.REPEAT_MODE_ONE }
+        repeat(2) {
+            rule.runOnIdle { player.play() }
+            rule.waitUntil(10_000) { rule.runOnIdle { player.isPlaying } }
+            androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()).pressHome()
+            rule.waitUntil(10_000) { rule.runOnIdle { !player.playWhenReady && !player.isPlaying } }
+            rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            rule.waitUntil(10_000) { rule.runOnIdle { player.isPlaying } }
+            rule.runOnIdle { player.pause() }
+            rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            rule.runOnIdle { assertFalse("A manually paused video must stay paused", player.playWhenReady) }
+        }
+    }
+
+    @Test fun compactPhoneActionsDoNotIntersectNativePlaybackControls() {
+        assumeTrue(!isTv)
+        rule.setContent { STBPlayTheme {
+            Box(Modifier.fillMaxSize()) {
+                Box(Modifier.size(height = 220.dp, width = 360.dp)) {
+                    PlaybackRoute(StalkerPlayRequest(videoUrl, StalkerContentKind.MOVIE, title = "Compact controls"),
+                        portalUiUrl = "http://10.0.2.2:8765", macAddress = "02:00:00:00:00:01", token = null,
+                        onPlaybackStarted = { started.incrementAndGet() }, onPlaybackFailure = { failures.add(it) }, onBack = {})
+                }
+            }
+        } }
+        val (view, _) = awaitVideo()
+        rule.runOnIdle { view.showController() }
+        rule.waitForIdle()
+        val actions = rule.onNodeWithTag("player-extra-actions").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        rule.runOnIdle {
+            val origin = IntArray(2)
+            rule.activity.findViewById<View>(android.R.id.content).getLocationOnScreen(origin)
+            for (id in listOf(androidx.media3.ui.R.id.exo_play_pause, androidx.media3.ui.R.id.exo_bottom_bar)) {
+                val target = requireNotNull(view.findViewById<View>(id))
+                val rect = android.graphics.Rect()
+                assertTrue(target.getGlobalVisibleRect(rect))
+                rect.offset(-origin[0], -origin[1])
+                assertFalse("Native control $id overlaps app footer", android.graphics.RectF.intersects(
+                    android.graphics.RectF(rect), android.graphics.RectF(actions.left, actions.top, actions.right, actions.bottom)))
+            }
+        }
+    }
+
     @Test fun playerEpisodePickerScrollsPastFourteenAndUsesProviderLabels() {
         var selectedEpisode = -1
         val titles = (50 downTo 1).map { "Episode $it" }

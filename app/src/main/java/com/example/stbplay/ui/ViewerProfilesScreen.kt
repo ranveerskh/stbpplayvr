@@ -82,6 +82,11 @@ private fun ViewerProfilesContent(
     var pinMode by remember { mutableStateOf(ViewerPinMode.PROFILE_ENTRY) }
     var authorizeManagement by remember { mutableStateOf(false) }
     var setOwner by remember { mutableStateOf(false) }
+    var ownerSetupMode by remember { mutableStateOf(profiles.firstOrNull { it.id == "owner" }?.pinMode ?: ViewerPinMode.PROFILE_ENTRY) }
+    fun saveOwnerPin(value: String) {
+        onSetOwnerPin(value)
+        onSave((profiles.firstOrNull { it.id == "owner" } ?: ViewerProfile("owner", "Owner", 18)).copy(pinMode = ownerSetupMode), "")
+    }
     var deleting by remember { mutableStateOf<ViewerProfile?>(null) }
     var editing by remember { mutableStateOf<ViewerProfile?>(null) }
     var allowedLive by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -200,8 +205,8 @@ private fun ViewerProfilesContent(
                 if (editing?.id != "owner") ProfileField("Your age (years)", age, true) { age = it.filter(Char::isDigit).take(3); error = null }
                 val kids = age.toIntOrNull()?.let { it < 18 } == true
                 if (editing?.id != "owner") Text(if (kids) "Kids enter without a PIN. Only owner-approved Kids categories appear." else "Anyone can save a profile. New adults need one-time owner approval before first entry.", color = palette.muted, fontSize = 13.sp)
-                if (!kids && editing?.id != "owner") {
-                    ProfileField(if (editing == null) "Personal PIN (4–8 digits)" else "New personal PIN (blank keeps current PIN)", pin, true) { pin = it.filter(Char::isDigit).take(8); error = null }
+                if (!kids) {
+                    if (editing?.id != "owner") ProfileField(if (editing == null) "Personal PIN (4–8 digits)" else "New personal PIN (blank keeps current PIN)", pin, true) { pin = it.filter(Char::isDigit).take(8); error = null }
                     Text("When should we ask for your PIN?", color = palette.text, fontSize = 14.sp)
                     ProfileButton(onClick = { pinMode = ViewerPinMode.PROFILE_ENTRY }, modifier = Modifier.fillMaxWidth()) { Text("${if (pinMode == ViewerPinMode.PROFILE_ENTRY) "✓ " else ""}Every time I enter my profile") }
                     ProfileButton(onClick = { pinMode = ViewerPinMode.RESTRICTED_ONLY }, modifier = Modifier.fillMaxWidth()) { Text("${if (pinMode == ViewerPinMode.RESTRICTED_ONLY) "✓ " else ""}Only for restricted content") }
@@ -256,7 +261,7 @@ private fun ViewerProfilesContent(
         }
     }
     }
-    if (setOwner) ProviderPinSetupPrompt(onSave = { onSetOwnerPin(it); setOwner = false; openOwnerManagement() }, onCancel = { setOwner = false })
+    if (setOwner) ProviderPinSetupPrompt(pinMode = ownerSetupMode, onPinModeChanged = { ownerSetupMode = it }, onSave = { saveOwnerPin(it); setOwner = false; openOwnerManagement(); pinMode = ownerSetupMode }, onCancel = { setOwner = false })
     if (authorizeManagement) PinPrompt("profile management", ownerPin, { authorizeManagement = false; openOwnerManagement() }, { authorizeManagement = false })
     deleting?.let { profile ->
         androidx.compose.ui.window.Dialog(onDismissRequest = { deleting = null }) {
@@ -273,14 +278,15 @@ private fun ViewerProfilesContent(
     }
     pending?.let { profile ->
         if (profile.id == "owner") {
-            if (ownerPin.isBlank()) ProviderPinSetupPrompt(onSave = { onSetOwnerPin(it); pending = null; onSelected(profile) }, onCancel = { pending = null })
-            else PinPrompt(profile.name, ownerPin, { pending = null; onSelected(profile) }, { pending = null })
+            if (ownerPin.isBlank()) ProviderPinSetupPrompt(pinMode = ownerSetupMode, onPinModeChanged = { ownerSetupMode = it }, onSave = { saveOwnerPin(it); pending = null; onSelected(profile) }, onCancel = { pending = null })
+            else if (profile.needsEntryPin) PinPrompt(profile.name, ownerPin, { pending = null; onSelected(profile) }, { pending = null })
+            else LaunchedEffect(profile.id) { pending = null; onSelected(profile) }
         } else if (!profile.isKids && !profile.adultApproved) {
             val approve = {
                 val approved = profile.copy(adultApproved = true)
                 onSave(approved, ""); pending = approved
             }
-            if (ownerPin.isBlank()) ProviderPinSetupPrompt(onSave = { onSetOwnerPin(it); approve() }, onCancel = { pending = null })
+            if (ownerPin.isBlank()) ProviderPinSetupPrompt(pinMode = ownerSetupMode, onPinModeChanged = { ownerSetupMode = it }, onSave = { saveOwnerPin(it); approve() }, onCancel = { pending = null })
             else PinPrompt("Approve adult profile ${profile.name}", ownerPin, approve, { pending = null })
         } else if (!profile.needsEntryPin || profile.pinHash.isBlank()) {
             LaunchedEffect(profile.id) { pending = null; onSelected(profile) }

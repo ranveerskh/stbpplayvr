@@ -265,13 +265,19 @@ class SettingsManager(private val context: Context) {
         }
     }.map { resolveThemePreference(it[keyTheme], hasExistingSettings = true) }
 
+    private val keyGlassBlur = intPreferencesKey("glass_background_blur_v1")
     private val keyGlassBackground = stringPreferencesKey("glass_background_v1")
     private val keyGlassCustomPath = stringPreferencesKey("glass_custom_background_v1")
     private val keyAdultTheme = stringPreferencesKey("adult_theme_v1")
     private val keyAdultCustomPath = stringPreferencesKey("adult_custom_background_v1")
     val glassAppearance: Flow<GlassAppearance> = context.dataStore.data.map { prefs ->
         GlassAppearance(parseGlassBackground(prefs[keyGlassBackground]), prefs[keyGlassCustomPath].orEmpty(),
-            parseAdultTheme(prefs[keyAdultTheme]), prefs[keyAdultCustomPath].orEmpty())
+            parseAdultTheme(prefs[keyAdultTheme]), prefs[keyAdultCustomPath].orEmpty(),
+            prefs[keyGlassBlur]?.takeIf { it in setOf(0, 50, 100) } ?: 0)
+    }
+    suspend fun setGlassBlur(value: Int) {
+        require(value in setOf(0, 50, 100))
+        context.dataStore.edit { it[keyGlassBlur] = value }
     }
     suspend fun setGlassBackground(value: GlassBackground) { context.dataStore.edit { it[keyGlassBackground] = value.name } }
     suspend fun setAdultTheme(value: AdultThemePreference) { context.dataStore.edit { it[keyAdultTheme] = value.name } }

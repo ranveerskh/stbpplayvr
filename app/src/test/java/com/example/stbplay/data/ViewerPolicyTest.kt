@@ -4,6 +4,17 @@ import com.example.stbplay.data.model.PortalStream
 import org.junit.Assert.*
 import org.junit.Test
 class ViewerPolicyTest {
+    @Test fun ownerPinModesProtectEntryOrRestrictedPlayback() {
+        val owner = ViewerProfile("owner", "Owner", 30, pinMode = ViewerPinMode.RESTRICTED_ONLY)
+        val adult = PortalStream("adult", "Adult", null, "category", "movie", isLocked = true)
+        assertFalse(owner.needsEntryPin)
+        assertTrue(owner.requiresRestrictedPin(adult, false))
+        assertFalse(owner.requiresRestrictedPin(adult.copy(isLocked = false), false))
+        val entry = owner.copy(pinMode = ViewerPinMode.PROFILE_ENTRY)
+        assertTrue(entry.needsEntryPin)
+        assertFalse(entry.requiresRestrictedPin(adult, true))
+    }
+
     @Test fun entryPinRespectsKidsAndPinMode() {
         assertFalse(ViewerProfile("k", "Kid", 10, pinHash = "legacy").needsEntryPin)
         assertTrue(ViewerProfile("a", "Adult", 30).needsEntryPin)
