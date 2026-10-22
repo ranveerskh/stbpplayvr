@@ -67,7 +67,8 @@ internal class PhonePlaybackGestures(private val host: SeekablePlayerView) {
                 candidate = event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER &&
                     event.x in edge..(host.width - edge) &&
                     event.y in (80f * dp)..(host.height - 96f * dp) &&
-                    !hitsControl(host, event.x, event.y)
+                    // Hiding controls can retain VISIBLE hit boxes while fading out.
+                    (!host.isControllerFullyVisible || !hitsControl(host, event.x, event.y))
                 brightnessSide = event.x < host.width / 2f
                 startLevel = if (brightnessSide) {
                     owner.window.attributes.screenBrightness.takeIf { it >= 0f } ?: runCatching {
