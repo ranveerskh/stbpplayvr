@@ -3,6 +3,7 @@ package com.example.stbplay.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -12,6 +13,11 @@ import com.example.stbplay.data.ViewerPinMode
 
 @Composable
 internal fun OwnerPinModeOptions(mode: ViewerPinMode, onChanged: (ViewerPinMode) -> Unit, firstRequester: FocusRequester? = null) {
+    val input = androidx.compose.ui.platform.LocalInputModeManager.current
+    val television = isTelevisionLayout()
+    LaunchedEffect(television) {
+        if (television) input.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
+    }
     Text("When should we ask for your PIN?")
     ViewerPinMode.entries.forEach { option ->
         QuestButton(onClick = { onChanged(option) }, modifier = Modifier.then(if (option == ViewerPinMode.PROFILE_ENTRY && firstRequester != null) Modifier.focusRequester(firstRequester) else Modifier).fillMaxWidth().heightIn(min = 48.dp)) {

@@ -211,6 +211,7 @@ class ViewerProfilesUiTest {
             ProviderPinSetupPrompt(onSave = {}, onCancel = {}, pinMode = mode, onPinModeChanged = { mode = it })
         } }
         rule.onNodeWithTag("pin-field:Confirm PIN").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
+        rule.onNodeWithTag("pin-field:Confirm PIN").assertIsFocused()
         val remote = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         remote.pressDPadDown(); rule.waitForIdle()
         rule.onNodeWithText("Every time I enter my profile", substring = true).assertIsFocused()

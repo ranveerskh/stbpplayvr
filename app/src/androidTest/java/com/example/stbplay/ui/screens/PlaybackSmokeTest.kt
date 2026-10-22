@@ -127,16 +127,25 @@ class PlaybackSmokeTest {
         } }
         val (_, player) = awaitVideo()
         rule.runOnIdle { player.repeatMode = Player.REPEAT_MODE_ONE }
+        val device = androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation())
+        val component = rule.activity.componentName.flattenToString()
+        fun returnFromLauncher() {
+            // Scenario.moveToState alone cannot bring a task forward after real Home.
+            device.executeShellCommand("am start -W --activity-reorder-to-front --activity-single-top -n $component")
+            rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            rule.runOnIdle { assertSame("Home return must keep the same player", player, playerView().player) }
+        }
         repeat(2) {
             rule.runOnIdle { player.play() }
             rule.waitUntil(10_000) { rule.runOnIdle { player.isPlaying } }
-            androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()).pressHome()
+            device.pressHome()
             rule.waitUntil(10_000) { rule.runOnIdle { !player.playWhenReady && !player.isPlaying } }
-            rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            returnFromLauncher()
             rule.waitUntil(10_000) { rule.runOnIdle { player.isPlaying } }
             rule.runOnIdle { player.pause() }
-            rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
-            rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            device.pressHome()
+            rule.waitUntil(10_000) { rule.runOnIdle { !player.playWhenReady } }
+            returnFromLauncher()
             rule.runOnIdle { assertFalse("A manually paused video must stay paused", player.playWhenReady) }
         }
     }

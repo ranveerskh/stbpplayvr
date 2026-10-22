@@ -25,10 +25,11 @@ class SeekablePlayerView @JvmOverloads constructor(
     var onControlsInteraction: (() -> Unit)? = null
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        val wasCaptured = phoneGestureCaptured
+        // Evaluate unobstructed video before revealing controls under this same finger.
+        val consumed = phoneGestures.intercept(event)
         if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_UP)
             onControlsInteraction?.invoke()
-        val wasCaptured = phoneGestureCaptured
-        val consumed = phoneGestures.intercept(event)
         if (consumed && !wasCaptured && event.actionMasked == MotionEvent.ACTION_MOVE) {
             val cancel = MotionEvent.obtain(event)
             cancel.action = MotionEvent.ACTION_CANCEL
