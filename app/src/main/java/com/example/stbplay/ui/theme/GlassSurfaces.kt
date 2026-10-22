@@ -23,7 +23,7 @@ fun glassSurfaceBorder(): Border = if (LocalStbPalette.current.glass)
 fun Modifier.glassEdge(radius: Dp = 12.dp): Modifier = if (LocalStbPalette.current.glass)
     border(1.dp, LocalStbPalette.current.edge, RoundedCornerShape(radius)) else this
 
-/** One cached static bitmap. No blur, RenderEffect, offscreen layer or animation. */
+/** Cached background bitmap; optional blur is computed once by Coil, never per frame. */
 @Composable
 fun Modifier.stbBackdrop(): Modifier {
     val palette = LocalStbPalette.current
@@ -42,7 +42,17 @@ fun Modifier.stbBackdrop(): Modifier {
         else -> if (landscape) com.example.stbplay.R.drawable.glass_backdrop else com.example.stbplay.R.drawable.glass_planet_portrait
     }
     val fallback = androidx.compose.ui.res.painterResource(resource)
-    val image = if (customPath.isNotBlank() && remember(customPath) { java.io.File(customPath).isFile })
+    val customAvailable = customPath.isNotBlank() && remember(customPath) { java.io.File(customPath).isFile }
+    val backdropContext = androidx.compose.ui.platform.LocalContext.current
+    val blurModel = remember(customPath, customAvailable, resource, appearance.blurPercent) {
+        coil.request.ImageRequest.Builder(backdropContext)
+            .data(if (customAvailable) java.io.File(customPath) else resource)
+            .size(512).allowHardware(false)
+            .transformations(StaticBackgroundBlur(appearance.blurPercent)).build()
+    }
+    val image = if (appearance.blurPercent > 0)
+        coil.compose.rememberAsyncImagePainter(blurModel, placeholder = fallback, error = fallback)
+        else if (customAvailable)
         coil.compose.rememberAsyncImagePainter(model = java.io.File(customPath), placeholder = fallback, error = fallback)
         else fallback
     return paint(image, sizeToIntrinsics = false, contentScale = androidx.compose.ui.layout.ContentScale.Crop)

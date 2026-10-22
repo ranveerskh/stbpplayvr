@@ -204,6 +204,50 @@ class ViewerProfilesUiTest {
         rule.runOnIdle { assertEquals("kid", selected?.id) }
         rule.onNodeWithText("PIN").assertDoesNotExist()
     }
+    @Test fun ownerSetupPinChoicesAreReachableWithTvRemote() {
+        org.junit.Assume.assumeTrue(rule.activity.isAndroidTvDevice())
+        var mode by mutableStateOf(ViewerPinMode.PROFILE_ENTRY)
+        rule.setContent { STBPlayTheme {
+            ProviderPinSetupPrompt(onSave = {}, onCancel = {}, pinMode = mode, onPinModeChanged = { mode = it })
+        } }
+        rule.onNodeWithTag("pin-field:Confirm PIN").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
+        rule.onNodeWithTag("pin-field:Confirm PIN").assertIsFocused()
+        val remote = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        remote.pressDPadDown(); rule.waitForIdle()
+        rule.onNodeWithText("Every time I enter my profile", substring = true).assertIsFocused()
+        remote.pressDPadDown(); rule.waitForIdle()
+        rule.onNodeWithText("Only for restricted content").assertIsFocused()
+        remote.pressDPadCenter(); rule.waitForIdle()
+        rule.runOnIdle { assertEquals(ViewerPinMode.RESTRICTED_ONLY, mode) }
+    }
+
+    @Test fun ownerRestrictedOnlyEntersWithoutPinAndEntryModeStillPrompts() {
+        var owner by mutableStateOf(ViewerProfile("owner", "Owner", 30, pinMode = ViewerPinMode.RESTRICTED_ONLY))
+        var selected: ViewerProfile? = null
+        rule.setContent { STBPlayTheme {
+            ViewerProfilesScreen(listOf(owner), "1234", onSelected = { selected = it }, onSave = { _, _ -> }, onSetOwnerPin = {})
+        } }
+        rule.onNodeWithText("Owner").performClick()
+        rule.runOnIdle { assertEquals(owner, selected); selected = null; owner = owner.copy(pinMode = ViewerPinMode.PROFILE_ENTRY) }
+        rule.onNodeWithText("Owner").performClick()
+        rule.runOnIdle { assertNull(selected) }
+        listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
+        rule.waitUntil(5_000) { selected != null }
+    }
+
+    @Test fun authenticatedOwnerCanSaveRestrictedOnlyFromProfileEditor() {
+        var saved: ViewerProfile? = null
+        rule.setContent { STBPlayTheme {
+            ViewerProfilesScreen(listOf(ViewerProfile("owner", "Owner", 30)), "1234", onSelected = {},
+                onSave = { profile, _ -> saved = profile }, onSetOwnerPin = {})
+        } }
+        rule.onNodeWithText("Manage profiles").performScrollTo().performClick()
+        listOf("1", "2", "3", "4").forEach { rule.onNodeWithText(it).performClick() }
+        rule.onNodeWithText("Only for restricted content").performScrollTo().performClick()
+        rule.onNodeWithText("Save profile").performScrollTo().performClick()
+        rule.runOnIdle { assertEquals("owner", saved?.id); assertEquals(ViewerPinMode.RESTRICTED_ONLY, saved?.pinMode) }
+    }
+
     @Test fun restrictedOnlyProfileEntersWithoutPrompt() {
         var selected: ViewerProfile? = null
         val profile = ViewerProfile("adult", "Adult", 30, pinHash = "stored", pinMode = ViewerPinMode.RESTRICTED_ONLY)

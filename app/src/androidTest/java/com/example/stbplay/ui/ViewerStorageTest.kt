@@ -12,6 +12,19 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ViewerStorageTest {
+    @Test fun ownerPinModeSurvivesReloadWithoutChangingOtherProfiles() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val manager = SettingsManager(context)
+        val old = manager.viewerProfiles.first().first { it.id == "owner" }
+        val others = manager.viewerProfiles.first().filterNot { it.id == "owner" }
+        try {
+            manager.saveViewer(old.copy(pinMode = ViewerPinMode.RESTRICTED_ONLY), "")
+            val saved = SettingsManager(context).viewerProfiles.first().first { it.id == "owner" }
+            assertEquals(ViewerPinMode.RESTRICTED_ONLY, saved.pinMode)
+            assertEquals(others, manager.viewerProfiles.first().filterNot { it.id == "owner" })
+        } finally { manager.saveViewer(old, "") }
+    }
+
     @Test fun viewerDataIsIsolatedAndOwnerRecordsArePreserved() = runBlocking {
         val manager = SettingsManager(InstrumentationRegistry.getInstrumentation().targetContext)
         val previousPortal = manager.portalSettings.first()

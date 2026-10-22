@@ -7,7 +7,8 @@ data class GlassAppearance(
     val background: GlassBackground = GlassBackground.PLANET,
     val customPath: String = "",
     val adultTheme: AdultThemePreference = AdultThemePreference.AFTER_DARK,
-    val adultCustomPath: String = ""
+    val adultCustomPath: String = "",
+    val blurPercent: Int = 0
 )
 
 internal fun parseGlassBackground(raw: String?): GlassBackground =
