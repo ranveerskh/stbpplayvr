@@ -133,7 +133,8 @@ class PlaybackSmokeTest {
             // Scenario.moveToState alone cannot bring a task forward after real Home.
             device.executeShellCommand("am start -W --activity-reorder-to-front --activity-single-top -n $component")
             rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
-            rule.runOnIdle { assertSame("Home return must keep the same player", player, playerView().player) }
+            val restoredView = playerView()
+            rule.runOnIdle { assertSame("Home return must keep the same player", player, restoredView.player) }
         }
         repeat(2) {
             rule.runOnIdle { player.play() }

@@ -10,11 +10,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import com.example.stbplay.data.ViewerPinMode
+import com.example.stbplay.isAndroidTvDevice
 
 @Composable
 internal fun OwnerPinModeOptions(mode: ViewerPinMode, onChanged: (ViewerPinMode) -> Unit, firstRequester: FocusRequester? = null) {
     val input = androidx.compose.ui.platform.LocalInputModeManager.current
-    val television = isTelevisionLayout()
+    val television = androidx.compose.ui.platform.LocalContext.current.isAndroidTvDevice()
     LaunchedEffect(television) {
         if (television) input.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
     }
