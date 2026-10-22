@@ -9,7 +9,7 @@ class ViewerPolicyTest {
         val adult = PortalStream("adult", "Adult", null, "category", "movie", isLocked = true)
         assertFalse(owner.needsEntryPin)
         assertTrue(owner.requiresRestrictedPin(adult, false))
-        assertFalse(owner.requiresRestrictedPin(adult.copy(isLocked = false), false))
+        assertFalse(owner.requiresRestrictedPin(adult.copy(isLocked = false, name = "Normal movie"), false))
         val entry = owner.copy(pinMode = ViewerPinMode.PROFILE_ENTRY)
         assertTrue(entry.needsEntryPin)
         assertFalse(entry.requiresRestrictedPin(adult, true))
